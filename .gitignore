@@ -8,6 +8,7 @@ __pycache__/
 # Virtual environment folders
 venv/
 jetenv/
+.venv/
 .env/
 
 # Package distribution
