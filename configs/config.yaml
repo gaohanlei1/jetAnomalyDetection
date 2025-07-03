@@ -11,13 +11,14 @@ data:
   background: qcd
   signal: wjet
   # remote data
-  raw_qcd: /isilon/export/home/mstamenk/jet-anomaly-summer25/downloads/jekrupa/v2_2/2017/QCD/QCD_Pt_1000to1400_TuneCP5_13TeV_pythia8/QCD_Pt_1000to1400/211109_133059/0000
-  raw_wjet: /isilon/export/home/mstamenk/jet-anomaly-summer25/downloads/jekrupa/v2_2/2017/WJetsToQQ/WJetsToQQ_HT-400to600_TuneCP5_13TeV-madgraphMLM-pythia8/WJetsToQQ_HT-400to600/211108_171900/0000
+  raw_qcd: /isilon/export/home/mstamenk/jet-anomaly-summer25/downloads/jekrupa/v2_2/2017/QCD/QCD_Pt_1000to1400_TuneCP5_13TeV_pythia8/QCD_Pt_1000to1400/211109_133059/0000/
+  raw_wjet: /isilon/export/home/mstamenk/jet-anomaly-summer25/downloads/jekrupa/v2_2/2017/WJetsToQQ/WJetsToQQ_HT-400to600_TuneCP5_13TeV-madgraphMLM-pythia8/WJetsToQQ_HT-400to600/211108_171900/0000/
   # # local/symlinked data
   # raw_qcd: data/raw/QCD/
   # raw_wjet: data/raw/WJet/
   preprocessed_data_dir: data/preprocessed/
   processed_data_dir: data/processed/
+  used_raw_data_dir: data/used/ 
   train_file: datatype1small.pkl
   test_file: datatype2small.pkl
 

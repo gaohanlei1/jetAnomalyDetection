@@ -24,9 +24,9 @@ filename = Path(__file__).name
 import logging
 LOGGING_LEVEL = logging.DEBUG   # | INFO | WARNING | ERROR | CRITICAL
 logger = logging.getLogger(__name__)
-fh = logging.FileHandler(f"{filename}.log")
-fh.setLevel(LOGGING_LEVEL)
-logger.addHandler(fh)
+
+# after preprocessing, move the raw data file into a subfolder?
+MOVE_AFTERWARDS = True
 
 def get_fatjets(events): 
     fatjets = events.FatJet
@@ -112,21 +112,33 @@ def load_root(filepath):
 
     return pd.DataFrame.from_dict(data)
 
-def load_h5():
-    raise NotImplementedError
+# def load_h5():
+#     raise NotImplementedError
 
-def main(datapath, savepath, datatype, filetype):
+def preprocess_file(data_filename):
+    data_file_path = config["data"]["raw_" + qcd_or_wjet] + data_filename
+    output_file_path = f"{config['data']['preprocessed_data_dir']}/{qcd_or_wjet}.pkl" 
+
+    df = load_root(data_file_path)
+    df.to_pickle(output_file_path)
+    logging.info(f"Preprocessed {data_filename} ({data_type}) into {output_file_path}")
+    
+    if MOVE_AFTERWARDS:
+        os.renames(data_file_path, config["data"]["used_raw_data_dir"] + )
+
+def main(data_filename, data_type):
     # TODO: should we actually care about this warning? 
     warnings.filterwarnings("ignore", message="Found duplicate branch")
 
-    if filetype == '.h5':
-        load_h5()
-    else:
-        df = load_root(datapath)
+    # if filetype == '.h5':
+    #     load_h5()
+    # else:
+    qcd_or_wjet = config['data'][data_type]
     
-    qcd_or_wjet = config['data'][datatype]
-    df.to_pickle(f"{savepath}/{qcd_or_wjet}.pkl")
-    logging.info(f"Saved {datatype} as {qcd_or_wjet}.pkl")
+    if data_filename is None:
+        pass 
+    else:
+        
 
 
 if "__main__": 
@@ -134,26 +146,34 @@ if "__main__":
         prog='Preprocess',
         description='preprocesses jet data for anomaly detection'
     )
-    parser.add_argument('--data_path', type=str, required=True, help='path where the data is stored')
-    parser.add_argument('--save_path', type=str, required=True, help='path where the processed data will be saved')
+    parser.add_argument(
+        '--filename', type=str, required=False,
+        help='name of file to preprocess; if none, preprocesses all files in the data folder (defined in configs/config.yaml)'
+    )
+    # parser.add_argument('--save_path', type=str, required=False, help='path where the processed data will be saved')
     parser.add_argument('--data_type', choices=['background', 'signal'], required=True, help='"background" or "signal"')
-    parser.add_argument('--file_type', choices=['.root', '.h5'], required=False, default='.root')
+    # parser.add_argument('--file_type', choices=['.root', '.h5'], required=False, default='.root')
 
     args = parser.parse_args()
-    data_path = args.data_path
-    save_path = args.save_path
+    data_filename = args.filename
+    # save_path = args.save_path
     data_type = args.data_type
-    file_type = args.file_type
+    # file_type = args.file_type
+
+    session_name = f"{filename}_{data_filename}_{data_type}"
+    fh = logging.FileHandler(f"logs/{session_name}.log")
+    fh.setLevel(LOGGING_LEVEL)
+    logger.addHandler(fh)
 
     if MEASURE_PERF:
         with Profile() as prof:
-            main(data_path, save_path, data_type, file_type)
+            main(data_filename, data_type)
         
         stats = pstats.Stats(prof)
         stats.sort_stats(pstats.SortKey.TIME)
-        stats.dump_stats(filename=f"{filename}_{data_type}.prof")
+        stats.dump_stats(filename=f"logs/{session_name}.prof")
     else:
-        main(data_path, save_path, data_type, file_type)
+        main(data_filename, data_type)
 
 
 # example call: 
