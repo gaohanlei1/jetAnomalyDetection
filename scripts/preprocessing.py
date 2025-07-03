@@ -3,10 +3,14 @@ import numpy as np
 import awkward as ak
 from fast_histogram import histogram2d
 import os
+import sys
 import pandas as pd 
 from tqdm import tqdm 
 import warnings
 import argparse
+
+# Add parent directory to import local project modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import constants as c
 
 import yaml
@@ -17,9 +21,6 @@ MEASURE_PERF = True
 if MEASURE_PERF:
     from cProfile import Profile
     import pstats
-
-from pathlib import Path 
-filename = Path(__file__).name
 
 import logging
 LOGGING_LEVEL = logging.DEBUG   # | INFO | WARNING | ERROR | CRITICAL
@@ -53,7 +54,8 @@ def get_fatjets(events):
     fatjets = fatjets[mask]
     sort_i = ak.argsort(fatjets.pt, axis=1)
     
-    if len(fatjets) == 0 or (len(fatjets) == 1 and fatjets[0][0] is None) or len(sort_i[0]) == 0:
+    if len(fatjets) == 0 or len(fatjets[0]) == 0 or (len(fatjets) == 1 and fatjets[0][0] is None) or len(sort_i[0]) == 0:
+        # logging.warning(f"Skipped fatjet after masking: {fatjets}")
         return -1, -1
     
     fatjets = ak.firsts(fatjets[sort_i])
@@ -118,7 +120,7 @@ def load_root(filepath):
 def preprocess_file(data_filename, qcd_or_wjet):
     data_folder_path = config["data"]["raw_" + qcd_or_wjet]
     data_file_path = data_folder_path + data_filename
-    output_file_path = f"{config['data']['preprocessed_data_dir']}/{qcd_or_wjet}.pkl" 
+    output_file_path = f"{config['data']['preprocessed_data_dir']}/{qcd_or_wjet}_{data_filename.replace('/', '')}.pkl" 
 
     df = load_root(data_file_path)
     df.to_pickle(output_file_path)
@@ -139,7 +141,7 @@ def main(data_filename, data_type):
     if data_filename is None:
         data_folder_path = config["data"]["raw_" + qcd_or_wjet]
         for file in os.listdir(data_folder_path):
-            if os.isfile(os.join(data_folder_path, file)):
+            if os.path.isfile(os.path.join(data_folder_path, file)):
                 preprocess_file(file, qcd_or_wjet)        
     else:
         preprocess_file(data_filename, qcd_or_wjet)
@@ -164,7 +166,7 @@ if "__main__":
     data_type = args.data_type
     # file_type = args.file_type
 
-    session_name = f"{filename}_{data_filename}_{data_type}"
+    session_name = f"preproc_{data_filename}_{data_type}"
     fh = logging.FileHandler(f"logs/{session_name}.log")
     fh.setLevel(LOGGING_LEVEL)
     logger.addHandler(fh)

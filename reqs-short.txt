@@ -22,4 +22,4 @@ pyyaml==6.0.1
 pyarrow==20.0.0
 
 coffea==0.7.20
-fast-histogram==0.11
+fast-histogram==0.14

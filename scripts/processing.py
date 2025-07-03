@@ -2,7 +2,7 @@
 Preprocess and visualize raw jet data for anomaly detection.
 
 This script:
-- Loads pickled jet data for two classes (e.g., QCD and WJets).
+- Loads pickled jet data for two classes (e.g. background: QCD, signal: WJets).
 - Applies feature engineering including derived variables and filtering.
 - Scales all features using percentile-based normalization.
 - Visualizes distributions of selected features before and after scaling.
