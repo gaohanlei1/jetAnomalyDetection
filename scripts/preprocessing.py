@@ -115,8 +115,9 @@ def load_root(filepath):
 # def load_h5():
 #     raise NotImplementedError
 
-def preprocess_file(data_filename):
-    data_file_path = config["data"]["raw_" + qcd_or_wjet] + data_filename
+def preprocess_file(data_filename, qcd_or_wjet):
+    data_folder_path = config["data"]["raw_" + qcd_or_wjet]
+    data_file_path = data_folder_path + data_filename
     output_file_path = f"{config['data']['preprocessed_data_dir']}/{qcd_or_wjet}.pkl" 
 
     df = load_root(data_file_path)
@@ -124,7 +125,7 @@ def preprocess_file(data_filename):
     logging.info(f"Preprocessed {data_filename} ({data_type}) into {output_file_path}")
     
     if MOVE_AFTERWARDS:
-        os.renames(data_file_path, config["data"]["used_raw_data_dir"] + )
+        os.renames(data_file_path, data_folder_path + data_filename)
 
 def main(data_filename, data_type):
     # TODO: should we actually care about this warning? 
@@ -136,9 +137,12 @@ def main(data_filename, data_type):
     qcd_or_wjet = config['data'][data_type]
     
     if data_filename is None:
-        pass 
+        data_folder_path = config["data"]["raw_" + qcd_or_wjet]
+        for file in os.listdir(data_folder_path):
+            if os.isfile(os.join(data_folder_path, file)):
+                preprocess_file(file, qcd_or_wjet)        
     else:
-        
+        preprocess_file(data_filename, qcd_or_wjet)
 
 
 if "__main__": 

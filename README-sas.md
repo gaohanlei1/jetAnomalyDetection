@@ -14,7 +14,7 @@
 - Collect the backgorund (QCD) `.root` data files into one folder, and the signal (WJet) ones into another.
     - Add the folder paths into `./configs/config.yaml`.
 
-    - (`source setup_data_symlinks.sh` to create symlinks to the remote raw data folders into `./data/raw/`, if you want to use the local `raw` data folder during preprocessing.)
+    - `source setup_data_symlinks.sh` to create symlinks to the remote raw data folders into `./data/raw/`, to access the data easier.
 
 - After activating the venv, `source prep_bg_qcd.sh/prep_sg_wjet.pkl <.root data file path>` to preprocess the specified .root file. It's saved in the location specified in `configs/config.yaml`, by default (TODO!!)
 
