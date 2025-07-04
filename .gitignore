@@ -69,3 +69,6 @@ Thumbs.db
 
 # Tensorboard event files
 events.out.tfevents.*
+
+# local test files
+.untracked/

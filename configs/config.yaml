@@ -1,10 +1,10 @@
 # configs/config.yaml
 
 # Debugging
-# dbg:
-#   measure_perf: true
-#   # 10: DEBUG; 20: INFO; 30: WARNING; 40: ERROR
-#   logging_level: 10
+dbg:
+  measure_perf: true
+  # 10: DEBUG; 20: INFO; 30: WARNING; 40: ERROR
+  logging_level: 20
 
 # Paths
 data:

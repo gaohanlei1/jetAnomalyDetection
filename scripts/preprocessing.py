@@ -6,27 +6,26 @@ import os
 import sys
 import pandas as pd 
 from tqdm import tqdm 
-import warnings
+# import warnings
 import argparse
+import logging
 
 # Add parent directory to import local project modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import constants as c
+from helpers import helpers
+config = helpers.load_config()
 
-import yaml
-
-MEASURE_PERF = True
+MEASURE_PERF = config["dbg"]["measure_perf"]
 if MEASURE_PERF:
     from cProfile import Profile
     import pstats
 
-import logging
-LOGGING_LEVEL = logging.INFO   # DEBUG | INFO | WARNING | ERROR | CRITICAL
-
 # after preprocessing, move the raw data file into a subfolder?
 MOVE_AFTERWARDS = True
-# limit to number of events; 0 for none
-EVENT_NUM = 50
+# number of preprocessed events per saved file; 0 for no divisions
+#   this program processes like 5 events/s
+EVENTS_PER_FILE = 10000
 
 def get_fatjets(events): 
     fatjets = events.FatJet
@@ -102,8 +101,10 @@ def load_root(filepath):
         events = NanoEventsFactory.from_root(filepath, schemaclass = PFNanoAODSchema).events()
 
         for i in tqdm(range(len(events))):
-            if EVENT_NUM and i >= EVENT_NUM:
-                logging.info(f"{EVENT_NUM} events reached.")
+            logging.info(f"{i=}")
+            # if EVENT_NUM and i >= EVENT_NUM:
+            if i >= 100:
+                # logging.info(f"{EVENT_NUM} events reached.")
                 return pd.DataFrame.from_dict(data)
 
             properties, property_names = process_event_root(events[i:i+1])
@@ -114,6 +115,8 @@ def load_root(filepath):
             
             for i, prop in enumerate(properties): 
                 data[property_names[i]].append(prop)
+
+            logging.info(f"Processed!")
 
     return pd.DataFrame.from_dict(data)
 
@@ -135,7 +138,7 @@ def preprocess_file(data_filename, jet_type):
 
 def main(data_filename, data_type):
     # TODO: should we actually care about this warning? 
-    warnings.filterwarnings("ignore", message="Found duplicate branch")
+    logging.warning("Found duplicate branch")
 
     # if filetype == ".h5":
     #     load_h5()
@@ -145,16 +148,13 @@ def main(data_filename, data_type):
     if data_filename is None:
         data_folder_path = config["data"]["raw_" + jet_type]
         for file in os.listdir(data_folder_path):
-            if os.path.isfile(os.path.join(data_folder_path, file)):
-                preprocess_file(file, jet_type)        
+            if os.path.isfile(os.path.join(data_folder_path, file)) and os.path.splitext(file)[1] == ".root":
+                preprocess_file(file, jet_type)
     else:
         preprocess_file(data_filename, jet_type)
 
 
 if __name__ == "__main__":
-    with open("configs/config.yaml", "r") as f:
-        config = yaml.safe_load(f)
-        
     parser = argparse.ArgumentParser(
         prog="Preprocess",
         description="preprocesses jet data for anomaly detection"
@@ -164,7 +164,7 @@ if __name__ == "__main__":
         help="name of file to preprocess; if none, preprocesses all files in the data folder (defined in configs/config.yaml)"
     )
     # parser.add_argument("--save_path", type=str, required=False, help="path where the processed data will be saved")
-    parser.add_argument("--data_type", choices=["background", "signal"], required=True, help=""background" or "signal"")
+    parser.add_argument("--data_type", choices=["background", "signal"], required=True, help="'background' or 'signal'")
     # parser.add_argument("--file_type", choices=[".root", ".h5"], required=False, default=".root")
 
     args = parser.parse_args()
@@ -173,10 +173,10 @@ if __name__ == "__main__":
     data_type = args.data_type
     # file_type = args.file_type
 
-    session_name = f"preproc_{data_filename}_{data_type}"
+    session_name = f"preproc_{data_filename}_{data_type}_{helpers.curr_time()}"
     logging.basicConfig(
         filename = f"logs/{session_name}.log",
-        level=LOGGING_LEVEL
+        level=config["dbg"]["logging_level"]
     )
 
     if MEASURE_PERF:
