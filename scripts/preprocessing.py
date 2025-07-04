@@ -10,12 +10,10 @@ import warnings
 import argparse
 
 # Add parent directory to import local project modules
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import constants as c
 
 import yaml
-with open("configs/config.yaml", "r") as f:
-    config = yaml.safe_load(f)
 
 MEASURE_PERF = True
 if MEASURE_PERF:
@@ -23,11 +21,12 @@ if MEASURE_PERF:
     import pstats
 
 import logging
-LOGGING_LEVEL = logging.DEBUG   # | INFO | WARNING | ERROR | CRITICAL
-logger = logging.getLogger(__name__)
+LOGGING_LEVEL = logging.INFO   # DEBUG | INFO | WARNING | ERROR | CRITICAL
 
 # after preprocessing, move the raw data file into a subfolder?
 MOVE_AFTERWARDS = True
+# limit to number of events; 0 for none
+EVENT_NUM = 50
 
 def get_fatjets(events): 
     fatjets = events.FatJet
@@ -39,7 +38,7 @@ def get_fatjets(events):
     electrons = fatjets.nearest(electrons[electrons.pt > c.ELECTRON_PT_LOWER_BOUND])
     muons = events.Muon
     muons = fatjets.nearest(muons[muons.pt > c.MUON_PT_LOWER_BOUND])
-    
+
     mask = (
         (ak.fill_none(fatjets.delta_r(electrons) > c.ELECTRON_R_LOWER_BOUND, True)) &
         (ak.fill_none(fatjets.delta_r(muons) > c.MUON_R_LOWER_BOUND, True)) & 
@@ -48,12 +47,12 @@ def get_fatjets(events):
         (fatjets.pt > c.FATJET_PT_LOWER_BOUND) &
         (abs(fatjets.eta) < c.FATJET_ETA_BOUNDS) &
         (ak.num(fatjets) > 0) &
-        (~ak.is_none(fatjets[:, 0]))
+        (~ak.is_none(fatjets))
     )
 
     fatjets = fatjets[mask]
     sort_i = ak.argsort(fatjets.pt, axis=1)
-    
+
     if len(fatjets) == 0 or len(fatjets[0]) == 0 or (len(fatjets) == 1 and fatjets[0][0] is None) or len(sort_i[0]) == 0:
         # logging.warning(f"Skipped fatjet after masking: {fatjets}")
         return -1, -1
@@ -97,30 +96,35 @@ def process_event_root(events):
 
 def load_root(filepath):
     data = {}
-    logger.info(f"{filepath=}")
+    logging.info(f"Loading root, {filepath=}")
     
     if os.path.splitext((filepath))[-1] == ".root" and os.path.isfile(filepath):
         events = NanoEventsFactory.from_root(filepath, schemaclass = PFNanoAODSchema).events()
 
-    for i in tqdm(range(len(events))):
-        properties, property_names = process_event_root(events[i:i+1])
-        if properties == -1: continue
+        for i in tqdm(range(len(events))):
+            if EVENT_NUM and i >= EVENT_NUM:
+                logging.info(f"{EVENT_NUM} events reached.")
+                return pd.DataFrame.from_dict(data)
 
-        if not data: 
-            data = {property_name: [] for property_name in property_names}
-        
-        for i, prop in enumerate(properties): 
-            data[property_names[i]].append(prop)
+            properties, property_names = process_event_root(events[i:i+1])
+            if properties == -1: continue
+
+            if not data: 
+                data = {property_name: [] for property_name in property_names}
+            
+            for i, prop in enumerate(properties): 
+                data[property_names[i]].append(prop)
 
     return pd.DataFrame.from_dict(data)
 
 # def load_h5():
 #     raise NotImplementedError
 
-def preprocess_file(data_filename, qcd_or_wjet):
-    data_folder_path = config["data"]["raw_" + qcd_or_wjet]
+def preprocess_file(data_filename, jet_type):
+    logging.info(f"Now preprocessing {data_filename} ({jet_type})")
+    data_folder_path = config["data"]["raw_" + jet_type]
     data_file_path = data_folder_path + data_filename
-    output_file_path = f"{config['data']['preprocessed_data_dir']}/{qcd_or_wjet}_{data_filename.replace('/', '')}.pkl" 
+    output_file_path = f"{config['data']['preprocessed_data_dir']}/{jet_type}/{data_filename.replace('/', '').replace('.root','')}.pkl" 
 
     df = load_root(data_file_path)
     df.to_pickle(output_file_path)
@@ -133,32 +137,35 @@ def main(data_filename, data_type):
     # TODO: should we actually care about this warning? 
     warnings.filterwarnings("ignore", message="Found duplicate branch")
 
-    # if filetype == '.h5':
+    # if filetype == ".h5":
     #     load_h5()
     # else:
-    qcd_or_wjet = config['data'][data_type]
+    jet_type = config["data"][data_type]
     
     if data_filename is None:
-        data_folder_path = config["data"]["raw_" + qcd_or_wjet]
+        data_folder_path = config["data"]["raw_" + jet_type]
         for file in os.listdir(data_folder_path):
             if os.path.isfile(os.path.join(data_folder_path, file)):
-                preprocess_file(file, qcd_or_wjet)        
+                preprocess_file(file, jet_type)        
     else:
-        preprocess_file(data_filename, qcd_or_wjet)
+        preprocess_file(data_filename, jet_type)
 
 
-if "__main__": 
+if __name__ == "__main__":
+    with open("configs/config.yaml", "r") as f:
+        config = yaml.safe_load(f)
+        
     parser = argparse.ArgumentParser(
-        prog='Preprocess',
-        description='preprocesses jet data for anomaly detection'
+        prog="Preprocess",
+        description="preprocesses jet data for anomaly detection"
     )
     parser.add_argument(
-        '--filename', type=str, required=False,
-        help='name of file to preprocess; if none, preprocesses all files in the data folder (defined in configs/config.yaml)'
+        "--filename", type=str, required=False,
+        help="name of file to preprocess; if none, preprocesses all files in the data folder (defined in configs/config.yaml)"
     )
-    # parser.add_argument('--save_path', type=str, required=False, help='path where the processed data will be saved')
-    parser.add_argument('--data_type', choices=['background', 'signal'], required=True, help='"background" or "signal"')
-    # parser.add_argument('--file_type', choices=['.root', '.h5'], required=False, default='.root')
+    # parser.add_argument("--save_path", type=str, required=False, help="path where the processed data will be saved")
+    parser.add_argument("--data_type", choices=["background", "signal"], required=True, help=""background" or "signal"")
+    # parser.add_argument("--file_type", choices=[".root", ".h5"], required=False, default=".root")
 
     args = parser.parse_args()
     data_filename = args.filename
@@ -167,9 +174,10 @@ if "__main__":
     # file_type = args.file_type
 
     session_name = f"preproc_{data_filename}_{data_type}"
-    fh = logging.FileHandler(f"logs/{session_name}.log")
-    fh.setLevel(LOGGING_LEVEL)
-    logger.addHandler(fh)
+    logging.basicConfig(
+        filename = f"logs/{session_name}.log",
+        level=LOGGING_LEVEL
+    )
 
     if MEASURE_PERF:
         with Profile() as prof:
@@ -183,8 +191,8 @@ if "__main__":
 
 
 # example call: 
-# python preprocessing.py --data_path '/isilon/data/users/jpfeife2/AutoEncoder-Anomaly-Detection/data/WJET/400to600/nano_mc2018_1-1.root' --save_path '/isilon/data/users/jpfeife2/AutoEncoder-Anomaly-Detection/processed_data' --data_type 'signal' --file_type '.root'
+# python preprocessing.py --data_path "/isilon/data/users/jpfeife2/AutoEncoder-Anomaly-Detection/data/WJET/400to600/nano_mc2018_1-1.root" --save_path "/isilon/data/users/jpfeife2/AutoEncoder-Anomaly-Detection/processed_data" --data_type "signal" --file_type ".root"
     
-# background ='/isilon/data/users/jpfeife2/AutoEncoder-Anomaly-Detection/data/QCD/300to500/nano_mc2018_12_a677915bd61e6c9ff968b87c36658d9d_0.root'
-# signal = '/isilon/data/users/jpfeife2/AutoEncoder-Anomaly-Detection/data/WJET/400to600/nano_mc2018_1-1.root'
-# main(signal, '/isilon/data/users/jpfeife2/AutoEncoder-Anomaly-Detection/processed_data', 'signal', '.root')
+# background ="/isilon/data/users/jpfeife2/AutoEncoder-Anomaly-Detection/data/QCD/300to500/nano_mc2018_12_a677915bd61e6c9ff968b87c36658d9d_0.root"
+# signal = "/isilon/data/users/jpfeife2/AutoEncoder-Anomaly-Detection/data/WJET/400to600/nano_mc2018_1-1.root"
+# main(signal, "/isilon/data/users/jpfeife2/AutoEncoder-Anomaly-Detection/processed_data", "signal", ".root")
