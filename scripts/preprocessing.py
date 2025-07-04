@@ -100,12 +100,20 @@ def load_root(filepath):
     if os.path.splitext((filepath))[-1] == ".root" and os.path.isfile(filepath):
         events = NanoEventsFactory.from_root(filepath, schemaclass = PFNanoAODSchema).events()
 
+        # TODO: here, we have the full events loaded
+        #   we should be able to start splitting for each CPU here
+        #       maybe with Pool etc, splice events and use that as the data arg?
+        #   need to create a new func to take a range of events and process like below
+        #   BUT!! also need to split each CPU to allow intermittent saving
+        #       could be done w/ yield; then the func would return an iterator that needs to be processed
+        #       !!! - each process would prob need to call its own saving func!! not the main thread!!!!
+
         for i in tqdm(range(len(events))):
-            logging.info(f"{i=}")
-            # if EVENT_NUM and i >= EVENT_NUM:
-            if i >= 100:
-                # logging.info(f"{EVENT_NUM} events reached.")
-                return pd.DataFrame.from_dict(data)
+            # logging.info(f"{i=}")
+            # # if EVENT_NUM and i >= EVENT_NUM:
+            # if i >= 100:
+            #     # logging.info(f"{EVENT_NUM} events reached.")
+            #     return pd.DataFrame.from_dict(data)
 
             properties, property_names = process_event_root(events[i:i+1])
             if properties == -1: continue
@@ -115,8 +123,14 @@ def load_root(filepath):
             
             for i, prop in enumerate(properties): 
                 data[property_names[i]].append(prop)
+            
+            # if i % EVENTS_PER_FILE == 0:
+            #     logging.info(f"Processed {EVENTS_PER_FILE} events, saving to file...")
+            #     # care needs to be taken to make a proper progress bar... maybe a global locked var w/ total num of events in main thread?
+            #     yield pd.DataFrame.from_dict(data)
+            #     data = {}
 
-            logging.info(f"Processed!")
+            # logging.info(f"Processed!")
 
     return pd.DataFrame.from_dict(data)
 
@@ -129,7 +143,9 @@ def preprocess_file(data_filename, jet_type):
     data_file_path = data_folder_path + data_filename
     output_file_path = f"{config['data']['preprocessed_data_dir']}/{jet_type}/{data_filename.replace('/', '').replace('.root','')}.pkl" 
 
+    # TODO: this should be an iterator!
     df = load_root(data_file_path)
+    # TODO: the below may need to be moved to a separate func that each subprocess can call on its own
     df.to_pickle(output_file_path)
     logging.info(f"Preprocessed {data_filename} ({data_type}) into {output_file_path}")
     

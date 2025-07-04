@@ -22,4 +22,11 @@
 For now, I'll just make a script that preprocesses one file?)
 
 
+## Helpers
+
+- `python3.9 helpers/print_df_info.py --path data/preprocessed/<jet-type>/<data>.pkl` to inspect the size `(rows * columns)` and column names of a pickled DataFrame, as a sanity check to make sure a data file contains actual data.
+
 ## To-dos
+
+- Making `preprocessing.py` save in batches
+    - multiprocessing for `preprocessing.py` c;

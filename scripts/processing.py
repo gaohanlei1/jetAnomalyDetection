@@ -42,43 +42,19 @@ from visualize.plot_property_distributions import plot_property_distribution
 # PDG IDs to consider as valid charged particles
 VALID_PDG = [-11, 11, -13, 13, -211, 211]
 
-# def arg_setup():
-#     # Returns the qcd and wjet arguments (str | None)
-#     parser = argparse.ArgumentParser(
-#         prog="Processing",
-#         description="Processes and scales preprocessed QCD + WJet data for training"
-#     )
-#     parser.add_argument(
-#         "--qcd", type=str, required=False,
-#         help="name of the QCD file in the preprocessed data directory to process; if both --qcd and --wjet are none, then this will randomly pair the files present"
-#     )
-#     parser.add_argument(
-#         "--wjet", type=str, required=False,
-#         help="name of the WJet file to process; if both --qcd and --wjet are none, then random pairing"
-#     )
-#     args = parser.parse_args()
-#     return args.qcd, args.wjet
 
-if __name__ == "__main__":
-    # qcd_file, wjet_file = arg_setup()
-
-    # TODO: separate these sections into functions for the diff stages
-
+def load_modify_data():
     # Paths to folders containing preprocessed raw data (concatenated together before processing)
     qcd_folder_path  = os.path.join(config["data"]["preprocessed_data_dir"], "qcd")
     wjet_folder_path = os.path.join(config["data"]["preprocessed_data_dir"], "wjet")
     # note: if you are running on cern resources, use your "eos" path here for the data
-
-    # Dataset labels (used for file naming and plots)
-    qcd_label  = config["data"]["qcd_label"]
-    wjet_label = config["data"]["wjet_label"]
 
     # aligning qcd and wjet infos, since we'll run a for loop on both separately
     df_lists     = qcd_df_list, wjet_df_list = [], []
     folder_paths = qcd_folder_path, wjet_folder_path
     labels       = qcd_label, wjet_label
     combined_dfs = [qcd_combined, wjet_combined] = [None, None]
-    modified_dfs = [qcd_modified, wjet_modified] = [None, None]
+    # modified_dfs = [qcd_modified, wjet_modified] = [None, None]
 
     for i in range(len(df_lists)):
         for file in tqdm(os.listdir(folder_paths[i]), desc=f"Loading {labels[i]} files"):
@@ -91,24 +67,29 @@ if __name__ == "__main__":
 
         # === FEATURE ENGINEERING ===
         # Compute derived features, apply one-hot encoding, filter PFCands, drop rows w/ invalid or missing entries
-        modified_dfs[i] = modify_df(combined_dfs[i].copy(), VALID_PDG).dropna()
-        # helpers.df_info(modified_dfs[i])
+        yield modify_df(combined_dfs[i].copy(), VALID_PDG).dropna()
 
-
-    # === SCALING ===
-
+def scale_data(qcd_modified, wjet_modified):
     # Select variables to scale (assumes first 17 are metadata or unscaled base features)
-    variables_to_analyze = modified_dfs[0].columns[17:]
+    variables_to_analyze = qcd_modified.columns[17:]
 
     # Compute robust scaling values using QCD dataset
-    scaler_dict = find_scalers(modified_dfs[0].copy(), labels[0], cols=variables_to_analyze)
+    scaler_dict = find_scalers(qcd_modified.copy(), qcd_label, cols=variables_to_analyze)
 
     # Apply scaling to both datasets using QCD-derived scalers
-    qcd_scaled,  qcd_scaled_vals,  qcd_raw_vals,  zero1 = apply_scalers(modified_dfs[0].copy(), scaler_dict)
-    wjet_scaled, wjet_scaled_vals, wjet_raw_vals, zero2 = apply_scalers(modified_dfs[1].copy(), scaler_dict)
+    qcd_scaled,  qcd_scaled_vals,  qcd_raw_vals,  zero1 = apply_scalers(qcd_modified.copy(), scaler_dict)
+    wjet_scaled, wjet_scaled_vals, wjet_raw_vals, zero2 = apply_scalers(wjet_modified.copy(), scaler_dict)
 
+    return (
+        qcd_scaled,  qcd_scaled_vals,  qcd_raw_vals,  zero1,
+        wjet_scaled, wjet_scaled_vals, wjet_raw_vals, zero2
+    )
 
-    # === VISUALIZATION ===
+def visualize_save_data(scaled):
+    (
+        qcd_scaled,  qcd_scaled_vals,  qcd_raw_vals,  zero1,
+        wjet_scaled, wjet_scaled_vals, wjet_raw_vals, zero2
+    ) = scaled
 
     # Plot raw and scaled distributions for selected variable(s)
     for prop in ["log_pt"]:  # NOTE: Modify this list to include other features as needed
@@ -140,7 +121,21 @@ if __name__ == "__main__":
         # plt.show()
         plt.savefig(f"plots/proc_distr_{helpers.curr_time()}.png")
 
-    qcd_scaled.to_pickle(f"{config['data']['processed_data_dir']}{qcd_label}_scaled.pkl")
-    wjet_scaled.to_pickle(f"{config['data']['processed_data_dir']}{wjet_label}_scaled.pkl")
+        qcd_scaled.to_pickle(f"{config['data']['processed_data_dir']}{qcd_label}_scaled.pkl")
+        wjet_scaled.to_pickle(f"{config['data']['processed_data_dir']}{wjet_label}_scaled.pkl")
+
+
+if __name__ == "__main__":
+    # Dataset labels (used for file naming and plots)
+    qcd_label  = config["data"]["qcd_label"]
+    wjet_label = config["data"]["wjet_label"]
+    
+    qcd_modified, wjet_modified = tuple(load_modify_data())
+
+    # === SCALING ===
+    scaled = scale_data(qcd_modified, wjet_modified)
+    
+    # === VISUALIZATION ===
+    visualize_save_data(scaled)
 
     logging.info(f"Saved in {config['data']['processed_data_dir']}!")
