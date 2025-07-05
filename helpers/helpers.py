@@ -8,12 +8,13 @@ def load_config():
 
 def curr_time() -> str:
     # Returns current time to use as a timestamp for naming files
-    return dt.now().strftime("%j-%H%M-%S")
+    return dt.now().strftime("%j-%H%M-%S")  # %f gives 6 digit microseconds
 
 def to_df(file_path):
     # Returns the given pickled pandas DataFrame.
     assert file_path.endswith(".pkl"), "Only .pkl files, sorry!"
     return pd.read_pickle(file_path)
 
-def df_info(df):
-    print(f"{df.shape=}\n{df.columns=}\n")
+def df_info(df, printcols):
+    print(f"{df.shape=}\n")
+    if printcols: print(f"{df.columns=}")
