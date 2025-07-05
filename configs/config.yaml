@@ -18,6 +18,8 @@ data:
   # local/symlinked data
   raw_qcd: data/raw/qcd/
   raw_wjet: data/raw/wjet/
+  # after preprocessing, move the raw data file into a subfolder?
+  move_to_used: true
   used_raw_data_dir: used/
   
   # after preprocessing, all the data should be in <dir>/<jet_type>, e.g. data/preprocessed/qcd/

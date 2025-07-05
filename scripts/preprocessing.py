@@ -5,8 +5,7 @@ from fast_histogram import histogram2d
 import os
 import sys
 import pandas as pd 
-from tqdm import tqdm 
-# import warnings
+from tqdm import tqdm
 import argparse
 import logging
 
@@ -24,11 +23,9 @@ if MEASURE_PERF:
     from cProfile import Profile
     import pstats
 
-# after preprocessing, move the raw data file into a subfolder?
-MOVE_AFTERWARDS = True
 # number of preprocessed events per saved file; 0 for no divisions
 #   this program processes like 5 events/s
-EVENTS_PER_FILE = 100
+EVENTS_PER_FILE = 500
 # to limit the number of events; 0 for all events
 EVENT_LIMIT = 0
 
@@ -137,6 +134,11 @@ def load_root(data_filename, jet_type):
             # each invocation of the function will receive an ELT of the iterator, not a slice
             # the chunk is just loosely defined as the range over which to pick elts for each cpu
             pool.map(preproc_events_slice, split_events)
+    
+    if config["data"]["move_to_used"]:
+        new_path = os.path.join(data_folder_path, config["data"]["used_raw_data_dir"], data_filename)
+        os.renames(data_file_path, new_path)
+        logging.info(f"Moved {data_file_path} to {new_path}.")
 
 # def load_h5():
 #     raise NotImplementedError
@@ -162,7 +164,7 @@ def preproc_events_slice(event_range):
         for j, prop in enumerate(properties): 
             data[property_names[j]].append(prop)
         
-        if (i - event_range["start"]) != 0 and i % EVENTS_PER_FILE == 0:
+        if (i - event_range["start"]) != 0 and EVENTS_PER_FILE != 0 and i % EVENTS_PER_FILE == 0:
             logging.info(f"Preprocessed {i - EVENTS_PER_FILE} to {i} ({EVENTS_PER_FILE} events)")
             save_df(data, event_range)
             data = {}
@@ -178,14 +180,6 @@ def save_df(data, event_range):
     pd.DataFrame.from_dict(data).to_pickle(output_file_path)
     logging.info(f"Preprocessed into {output_file_path}.")
 
-def preprocess_file(data_filename, jet_type):
-    load_root(data_filename, jet_type)
-
-    if MOVE_AFTERWARDS:
-        new_path = os.path.join(data_folder_path, config["data"]["used_raw_data_dir"], data_filename)
-        os.renames(data_file_path, new_path)
-        logging.info(f"Moved {data_file_path} to {new_path}.")
-
 def main(data_filename, data_type):
     # if filetype == ".h5":
     #     load_h5()
@@ -197,9 +191,9 @@ def main(data_filename, data_type):
         for file in os.listdir(data_folder_path):
             logging.info(f"Next file/dir in {data_folder_path}: '{file}'")
             if os.path.isfile(os.path.join(data_folder_path, file)) and os.path.splitext(file)[1] == ".root":
-                preprocess_file(file, jet_type)
+                load_root(file, jet_type)
     else:
-        preprocess_file(data_filename, jet_type)
+        load_root(data_filename, jet_type)
 
 
 if __name__ == "__main__":
