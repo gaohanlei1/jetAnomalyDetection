@@ -25,13 +25,9 @@ from helpers import helpers
 config = helpers.load_config()
 
 import logging
-logging.basicConfig(
-    filename = f"logs/proc_{helpers.curr_time()}.log",
-    level=config["dbg"]["logging_level"]
-)
+helpers.log_config(f"logs/proc_{helpers.curr_time()}.log")
 
-MEASURE_PERF = config["dbg"]["measure_perf"]
-if MEASURE_PERF:
+if config["dbg"]["measure_perf"]:
     from cProfile import Profile
     import pstats
 
@@ -41,10 +37,18 @@ from visualize.plot_property_distributions import plot_property_distribution
 
 # PDG IDs to consider as valid charged particles
 VALID_PDG = [-11, 11, -13, 13, -211, 211]
+# NOTE: Modify this list to include other features as needed
+PROPS = ["log_pt"]
 
+'''
+ISSUES:
+- oh god that scaled data struct is horrendous
+- subfolders!!!
+'''
 
 def load_modify_data():
     # Paths to folders containing preprocessed raw data (concatenated together before processing)
+    # NOTE: remember that WJet HTs should be around double that of QCD's Pts!
     qcd_folder_path  = os.path.join(config["data"]["preprocessed_data_dir"], "qcd")
     wjet_folder_path = os.path.join(config["data"]["preprocessed_data_dir"], "wjet")
     # note: if you are running on cern resources, use your "eos" path here for the data
@@ -62,14 +66,17 @@ def load_modify_data():
             if os.path.isfile(curr_path) and os.path.splitext(file)[1] == ".pkl":
                 df_lists[i].append(pd.read_pickle(curr_path))
         
+        logging.info(f"Concatenating {labels[i]}:")
         combined_dfs[i] = pd.concat(df_lists[i], ignore_index=True)
-        print(f"Combined {labels[i]} data length: {len(combined_dfs[i])}")
+        logging.info(f"Combined {labels[i]} data length: {len(combined_dfs[i])}")
 
         # === FEATURE ENGINEERING ===
         # Compute derived features, apply one-hot encoding, filter PFCands, drop rows w/ invalid or missing entries
         yield modify_df(combined_dfs[i].copy(), VALID_PDG).dropna()
 
 def scale_data(qcd_modified, wjet_modified):
+    logging.info("Now, scaling data with QCD as the base!")
+
     # Select variables to scale (assumes first 17 are metadata or unscaled base features)
     variables_to_analyze = qcd_modified.columns[17:]
 
@@ -77,22 +84,26 @@ def scale_data(qcd_modified, wjet_modified):
     scaler_dict = find_scalers(qcd_modified.copy(), qcd_label, cols=variables_to_analyze)
 
     # Apply scaling to both datasets using QCD-derived scalers
+    logging.info("Scalers found, now applying to qcd:")
     qcd_scaled,  qcd_scaled_vals,  qcd_raw_vals,  zero1 = apply_scalers(qcd_modified.copy(), scaler_dict)
+    logging.info("And now wjet:")
     wjet_scaled, wjet_scaled_vals, wjet_raw_vals, zero2 = apply_scalers(wjet_modified.copy(), scaler_dict)
+    logging.info("Done!")
 
     return (
         qcd_scaled,  qcd_scaled_vals,  qcd_raw_vals,  zero1,
         wjet_scaled, wjet_scaled_vals, wjet_raw_vals, zero2
     )
 
-def visualize_save_data(scaled):
+def visualize_data(scaled):
     (
         qcd_scaled,  qcd_scaled_vals,  qcd_raw_vals,  zero1,
         wjet_scaled, wjet_scaled_vals, wjet_raw_vals, zero2
     ) = scaled
 
     # Plot raw and scaled distributions for selected variable(s)
-    for prop in ["log_pt"]:  # NOTE: Modify this list to include other features as needed
+    logging.info("Plotting data:")
+    for prop in PROPS:
         fig, axes = plt.subplots(1, 4, figsize=(20, 5))
 
         # Raw, with zeros
@@ -119,23 +130,41 @@ def visualize_save_data(scaled):
 
         plt.tight_layout()
         # plt.show()
-        plt.savefig(f"plots/proc_distr_{helpers.curr_time()}.png")
+        fig_path = f"plots/proc_distr_{helpers.curr_time()}.png"
+        plt.savefig(fig_path)
+        logging.info(f"Saved figure into {fig_path}")
 
-        qcd_scaled.to_pickle(f"{config['data']['processed_data_dir']}{qcd_label}_scaled.pkl")
-        wjet_scaled.to_pickle(f"{config['data']['processed_data_dir']}{wjet_label}_scaled.pkl")
+def save_data(scaled):
+    (
+        qcd_scaled,  qcd_scaled_vals,  qcd_raw_vals,  zero1,
+        wjet_scaled, wjet_scaled_vals, wjet_raw_vals, zero2
+    ) = scaled
 
+    qcd_output_path  = f"{config['data']['processed_data_dir']}{qcd_label}_scaled.pkl"
+    wjet_output_path = f"{config['data']['processed_data_dir']}{wjet_label}_scaled.pkl"
+    logging.info("Now, saving data!")
+    qcd_scaled.to_pickle(qcd_output_path),   logging.info(f"Saved in {qcd_output_path}!")
+    wjet_scaled.to_pickle(wjet_output_path), logging.info(f"Saved in {wjet_output_path}!")
 
-if __name__ == "__main__":
+def main():
     # Dataset labels (used for file naming and plots)
     qcd_label  = config["data"]["qcd_label"]
     wjet_label = config["data"]["wjet_label"]
-    
+
     qcd_modified, wjet_modified = tuple(load_modify_data())
 
     # === SCALING ===
     scaled = scale_data(qcd_modified, wjet_modified)
     
     # === VISUALIZATION ===
-    visualize_save_data(scaled)
+    visualize_data(scaled)
 
-    logging.info(f"Saved in {config['data']['processed_data_dir']}!")
+    # === SAVING ===
+    save_data(scaled)
+
+
+if __name__ == "__main__":
+    if config["dbg"]["measure_perf"]:
+        helpers.profile_func(f"logs/proc_{helpers.curr_time()}.prof", main)
+    else:
+        main()

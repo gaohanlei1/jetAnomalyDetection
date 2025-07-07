@@ -9,6 +9,10 @@ from tqdm import tqdm
 import argparse
 import logging
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="coffea")
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="coffea")
+
 from multiprocessing import Pool, Manager, cpu_count, Value, Lock
 CPUS = cpu_count() - 1
 
@@ -17,17 +21,16 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import constants as c
 from helpers import helpers
 config = helpers.load_config()
-
-MEASURE_PERF = config["dbg"]["measure_perf"]
-if MEASURE_PERF:
-    from cProfile import Profile
-    import pstats
-
-# number of preprocessed events per saved file; 0 for no divisions
-#   this program processes like 5 events/s
-EVENTS_PER_FILE = 500
+helpes.log_config()
+    
 # to limit the number of events; 0 for all events
 EVENT_LIMIT = 0
+
+'''
+ISSUES:
+- pretty convoluted system for passing args to the subprocesses - should just make a class/dict to pass
+- also, the funcs themselves are badly sectioned; passing args between them is hard and
+'''
 
 def get_fatjets(events): 
     fatjets = events.FatJet
@@ -148,7 +151,8 @@ def preproc_events_slice(event_range):
         if value.value == 0:
             value.value = os.getpid()
 
-    logging.info(f"{os.getpid()}, parent {os.getppid()}: Received range {event_range['start']} to {event_range['end']} ({event_range['end'] - event_range['start']} events).")
+    curr_events_num = event_range["end"] - event_range["start"]
+    logging.info(f"{os.getpid()}: Received range {event_range['start']} to {event_range['end']} ({curr_events_num} events).")
     events = NanoEventsFactory.from_root(event_range['file_path'], schemaclass = PFNanoAODSchema).events()
     data = {}
 
@@ -164,11 +168,12 @@ def preproc_events_slice(event_range):
         for j, prop in enumerate(properties): 
             data[property_names[j]].append(prop)
         
-        if (i - event_range["start"]) != 0 and EVENTS_PER_FILE != 0 and i % EVENTS_PER_FILE == 0:
-            logging.info(f"Preprocessed {i - EVENTS_PER_FILE} to {i} ({EVENTS_PER_FILE} events)")
+        if (i - event_range["start"]) != 0 and config["data"]["events_per_file"] != 0 and i % config["data"]["events_per_file"] == 0:
+            logging.info(f"Preprocessed {i - config['data']['events_per_file']} to {i}, {config['data']['events_per_file']} events. {i - event_range['start']}/{curr_events_num} ({round((i - event_range['start'] + 1)/curr_events_num * 100)}%)")
             save_df(data, event_range)
             data = {}
     
+    logging.info(f"{os.getpid()}: Preprocessed last few events, from {event_range['start']} to {event_range['end']}!")
     save_df(data, event_range)
 
 def save_df(data, event_range):
@@ -207,32 +212,19 @@ if __name__ == "__main__":
     )
     # parser.add_argument("--save_path", type=str, required=False, help="path where the processed data will be saved")
     parser.add_argument("--data_type", choices=["background", "signal"], required=True, help="'background' or 'signal'")
+    parser.add_argument("--subfolder", required=False, help=f"label/subfolder name, if you want to save to a subfolder within the preprocessed data folder")
     # parser.add_argument("--file_type", choices=[".root", ".h5"], required=False, default=".root")
 
     args = parser.parse_args()
     data_filename = args.filename
-    # save_path = args.save_path
     data_type = args.data_type
-    # file_type = args.file_type
+    subfolder = args.subfolder
 
     session_name = f"preproc_{'all' if data_filename is None else data_filename}_{data_type}_{helpers.curr_time()}"
-    logging.basicConfig(
-        # filename = f"logs/{session_name}.log",
-        handlers = [
-            logging.FileHandler(f"logs/{session_name}.log"),
-            logging.StreamHandler(sys.stdout)
-        ],
-        level=config["dbg"]["logging_level"]
-    )
+    helpers.log_config(f"logs/{session_name}.log")
     logging.info("Set up logger!")
 
-    if MEASURE_PERF:
-        logging.info("Will measure perf.")
-        with Profile() as prof:
-            main(data_filename, data_type)
-        
-        stats = pstats.Stats(prof)
-        stats.sort_stats(pstats.SortKey.TIME)
-        stats.dump_stats(filename=f"logs/{session_name}.prof")
+    if config["dbg"]["measure_perf"]:
+        helpers.profile_func(f"logs/{session_name}.prof", main, data_filename, data_type)
     else:
         main(data_filename, data_type)

@@ -17,9 +17,12 @@
     - `source setup_data_symlinks.sh` to create symlinks to the remote raw data folders into `./data/raw/`, to access the data easier. This will allow you to use `config['data']['move_to_used']: true`, which will move each data file into a `./used/` subdirectory, in case you abort preprocessing halfway, so that the next run will exclude the `used` data files.
 
 - After activating the venv, `python3.9 scripts/preprocessing.py --data_type <background OR signal>` to preprocess the given data type (with the raw data path being specified in `configs/config.yaml`).
+    - To save into a subfolder within the preprocessed data directory, add `--subfolder <name>`. I'd recommend using the label of the jet you're using, like `QCD_Pt400to600`, since we need this info when processing. (TODO!!!)
     - If you want to process a specific file, add `--filename <filename_in_data_folder>`.
 
 ## Processing
+
+- (TODO: implement subfolders/labels)
 
 - Assuming all the preprocessed data files are in `config['data']['preprocessed_data_dir']/<jet_type>/` (not any lower subdirectories), run `python3.9 scripts/processing.py` to start processing the `qcd` and `wjet` files.
     - This will concatenate all the data files of each jet type into their own combined DataFrame, process that, and output into the folder specified in the config.
@@ -30,3 +33,7 @@
     - Also add `--printcols` to print the columns, and `--print` to try straight up printing the DataFrames.
 
 ## To-dos
+
+- Refactoring `preprocessing.py` and cleaning up the multiprocessing mess
+
+- Adding bash scripts for preprocessing + processing etc.

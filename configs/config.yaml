@@ -2,12 +2,13 @@
 
 # Debugging
 dbg:
-  measure_perf: true
+  measure_perf: false
   # 10: DEBUG; 20: INFO; 30: WARNING; 40: ERROR
   logging_level: 20
 
 # Paths
 data:
+  events_per_file: 1000
   background: qcd
   signal: wjet
   
