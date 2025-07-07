@@ -21,7 +21,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import constants as c
 from helpers import helpers
 config = helpers.load_config()
-helpes.log_config()
     
 # to limit the number of events; 0 for all events
 EVENT_LIMIT = 0
