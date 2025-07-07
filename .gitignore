@@ -8,6 +8,8 @@ __pycache__/
 # Virtual environment folders
 venv/
 jetenv/
+.jetvenv/
+.venv/
 .env/
 
 # Package distribution
@@ -17,8 +19,10 @@ dist/
 *.egg-info/
 
 # Logs and debug files
+logs/*
 *.log
 *.out
+*.prof
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints
@@ -30,6 +34,7 @@ dist/
 *.csv
 *.json
 *.db
+*.root
 
 # PyTorch model checkpoints
 *.pt
@@ -64,3 +69,6 @@ Thumbs.db
 
 # Tensorboard event files
 events.out.tfevents.*
+
+# local test files
+.untracked/
