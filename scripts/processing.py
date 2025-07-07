@@ -40,6 +40,10 @@ VALID_PDG = [-11, 11, -13, 13, -211, 211]
 # NOTE: Modify this list to include other features as needed
 PROPS = ["log_pt"]
 
+# Dataset labels (used for file naming and plots)
+QCD_LABEL  = config["data"]["qcd_label"]
+WJET_LABEL = config["data"]["wjet_label"]
+
 '''
 ISSUES:
 - oh god that scaled data struct is horrendous
@@ -56,7 +60,7 @@ def load_modify_data():
     # aligning qcd and wjet infos, since we'll run a for loop on both separately
     df_lists     = qcd_df_list, wjet_df_list = [], []
     folder_paths = qcd_folder_path, wjet_folder_path
-    labels       = qcd_label, wjet_label
+    labels       = QCD_LABEL, WJET_LABEL
     combined_dfs = [qcd_combined, wjet_combined] = [None, None]
     # modified_dfs = [qcd_modified, wjet_modified] = [None, None]
 
@@ -81,7 +85,7 @@ def scale_data(qcd_modified, wjet_modified):
     variables_to_analyze = qcd_modified.columns[17:]
 
     # Compute robust scaling values using QCD dataset
-    scaler_dict = find_scalers(qcd_modified.copy(), qcd_label, cols=variables_to_analyze)
+    scaler_dict = find_scalers(qcd_modified.copy(), QCD_LABEL, cols=variables_to_analyze)
 
     # Apply scaling to both datasets using QCD-derived scalers
     logging.info("Scalers found, now applying to qcd:")
@@ -108,23 +112,23 @@ def visualize_data(scaled):
 
         # Raw, with zeros
         plot_property_distribution(qcd_raw_vals[prop], wjet_raw_vals[prop], prop,
-                                qcd_label, wjet_label,
+                                QCD_LABEL, WJET_LABEL,
                                 ax=axes[0], is_scaled=False, include_zeros=True)
 
         # Raw, excluding zeros
         plot_property_distribution(qcd_raw_vals[prop], wjet_raw_vals[prop], prop,
-                                qcd_label, wjet_label,
+                                QCD_LABEL, WJET_LABEL,
                                 ax=axes[1], is_scaled=False, include_zeros=False,
                                 scaled_zero1=0.0, scaled_zero2=0.0)
 
         # Scaled, with zeros
         plot_property_distribution(qcd_scaled_vals[prop], wjet_scaled_vals[prop], prop,
-                                qcd_label, wjet_label,
+                                QCD_LABEL, WJET_LABEL,
                                 ax=axes[2], is_scaled=True, include_zeros=True)
 
         # Scaled, excluding zeros
         plot_property_distribution(qcd_scaled_vals[prop], wjet_scaled_vals[prop], prop,
-                                qcd_label, wjet_label,
+                                QCD_LABEL, WJET_LABEL,
                                 ax=axes[3], is_scaled=True, include_zeros=False,
                                 scaled_zero1=zero1[prop], scaled_zero2=zero2[prop])
 
@@ -140,17 +144,13 @@ def save_data(scaled):
         wjet_scaled, wjet_scaled_vals, wjet_raw_vals, zero2
     ) = scaled
 
-    qcd_output_path  = f"{config['data']['processed_data_dir']}{qcd_label}_scaled.pkl"
-    wjet_output_path = f"{config['data']['processed_data_dir']}{wjet_label}_scaled.pkl"
+    qcd_output_path  = f"{config['data']['processed_data_dir']}{QCD_LABEL}_scaled.pkl"
+    wjet_output_path = f"{config['data']['processed_data_dir']}{WJET_LABEL}_scaled.pkl"
     logging.info("Now, saving data!")
     qcd_scaled.to_pickle(qcd_output_path),   logging.info(f"Saved in {qcd_output_path}!")
     wjet_scaled.to_pickle(wjet_output_path), logging.info(f"Saved in {wjet_output_path}!")
 
 def main():
-    # Dataset labels (used for file naming and plots)
-    qcd_label  = config["data"]["qcd_label"]
-    wjet_label = config["data"]["wjet_label"]
-
     qcd_modified, wjet_modified = tuple(load_modify_data())
 
     # === SCALING ===
