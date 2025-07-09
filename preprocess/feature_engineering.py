@@ -13,6 +13,12 @@ All transformations are designed for preprocessing LHC jet datasets for ML pipel
 import numpy as np
 import pandas as pd
 from typing import List
+import logging
+
+# Add parent directory to import local project modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from helpers import helpers
+helpers.log_config()
 
 def calculate_d_over_dErr(row: pd.Series, label: str, valid_pdg: List[str]) -> np.ndarray:
     """
@@ -123,17 +129,26 @@ def modify_df(df: pd.DataFrame, pdg: List[str]) -> pd.DataFrame:
     Returns:
         pd.DataFrame: Fully processed DataFrame ready for graph construction.
     """
+    logging.info(f"Entered modify_df! {len(df)=}")
     df['dz/dzErr'] = df.apply(lambda row: calculate_d_over_dErr(row, label='dz', valid_pdg=pdg), axis=1)
+    logging.info(f"Found dz/dzErr")
     df['d0/d0Err'] = df.apply(lambda row: calculate_d_over_dErr(row, label='d0', valid_pdg=pdg), axis=1)
+    logging.info(f"Found d0/d0Err")
     df['dR'] = df.apply(calculate_dR, axis=1)
+    logging.info(f"Found dR")
     df['within_bounds'] = df.apply(within_bounds, axis=1)
+    logging.info(f"Found within_bounds")
     df['log_pt'] = df.apply(lambda row: np.log(np.array(row['pt'])), axis=1)
+    logging.info(f"Found log_pt")
 
     # Compute one-hot encodings using full PDG set
     unique_pdg_ids = sorted(df['pdgId'].explode().unique().tolist())
+    logging.info(f"Found unique_pdg_ids")
     df = df.apply(lambda row: one_hot_encode_pdgId(row, unique_pdg_ids), axis=1)
+    logging.info(f"Found one-hot lists")
 
     # Filter out particles outside bounds
     df = df.apply(lambda row: filter_row(row, row['within_bounds']), axis=1)
+    logging.info(f"Returning!")
 
     return df

@@ -13,7 +13,7 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="coffea")
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="coffea")
 
-from multiprocessing import Pool, Manager, cpu_count, Value, Lock
+from multiprocessing import Pool, Manager, cpu_count
 CPUS = cpu_count() - 1
 
 # Add parent directory to import local project modules
@@ -97,66 +97,78 @@ def process_event_root(events):
 
     return properties, property_names
 
-def init_proc(value_arg):
-    global value
-    value = value_arg
-
 def load_root(data_filename, jet_type):
     data_folder_path = config["data"]["raw_" + jet_type]
     data_file_path = os.path.join(data_folder_path, data_filename)
     output_file_basename = f"{os.path.splitext(os.path.basename(data_filename))[0]}"
     logging.info(f"Now preprocessing {data_file_path}")
 
-    # should move this check outside
-    if os.path.splitext((data_file_path))[-1] == ".root" and os.path.isfile(data_file_path):
-        # - So, I'll be doing sth very stupid here: loading the same file multiple times
-        # - Why? coz stupid ass pickle can't pickle coffea events for whatever reason,
-        #  and coffea has fuckall documentation, so idk how to get length etc
-        # - if this bugs you, you can try using pathos.multiprocessing, which might pickle
-        # if EVENT_LIMIT: events = events[:EVENT_LIMIT]
-        num_events = len(NanoEventsFactory.from_root(data_file_path, schemaclass = PFNanoAODSchema).events())
-        logging.info(f"{num_events} events in total, splitting into {CPUS} chunks.")
-        start_i = np.linspace(0, num_events, endpoint=False, dtype=int, num=CPUS)
-        end_i   = np.append(start_i[1:], num_events)
-        first_pid = Value('i', 0)
+    # - So, I'll be doing sth very stupid here: loading the same file multiple times
+    # - Why? coz stupid ass pickle can't pickle coffea events for whatever reason,
+    #  and coffea has fuckall documentation, so idk how to get length etc
+    # - if this bugs you, you can try using pathos.multiprocessing, which might pickle
+    # if EVENT_LIMIT: events = events[:EVENT_LIMIT]
+    num_events = len(NanoEventsFactory.from_root(data_file_path, schemaclass = PFNanoAODSchema).events())
+    logging.info(f"{num_events} events in total, splitting into {CPUS} chunks.")
+    start_i = np.linspace(0, num_events, endpoint=False, dtype=int, num=CPUS)
+    end_i   = np.append(start_i[1:], num_events)
+
+    with (Pool(CPUS) as pool, Manager() as m):
+        logging.info(f"Intialised pool {pool} with {CPUS} CPUs.")
+
+        pid_list = m.list()
+        pid_leauque = m.Lock()
         split_events = [
             {
                 "start" : start,
                 "end"   : end,
-                "filename" : data_filename,
-                "jet_type" : jet_type,
-                "file_path": data_file_path,
-                "basename" : output_file_basename
+                "filename"  : data_filename,
+                "jet_type"  : jet_type,
+                "file_path" : data_file_path,
+                "basename"  : output_file_basename,
+                "pid_list"  : pid_list,
+                "pid_lock"  : pid_leauque
             }
             for start, end in zip(start_i, end_i)
         ]
 
-        with Pool(CPUS, initializer=init_proc, initargs=(first_pid,)) as pool:
-            logging.info(f"Intialised pool {pool} with {CPUS} CPUs.")
-            # each invocation of the function will receive an ELT of the iterator, not a slice
-            # the chunk is just loosely defined as the range over which to pick elts for each cpu
-            pool.map(preproc_events_slice, split_events)
-    
+        # each invocation of the function will receive an ELT of the iterator, not a slice
+        # the chunk is just loosely defined as the range over which to pick elts for each cpu
+        pool.map(preproc_events_slice, split_events)
+
+    # del m, pool
+
     if config["data"]["move_to_used"]:
         new_path = os.path.join(data_folder_path, config["data"]["used_raw_data_dir"], data_filename)
         os.renames(data_file_path, new_path)
-        logging.info(f"Moved {data_file_path} to {new_path}.")
+        logging.info(
+            f"""=====
+            Moved {data_file_path} to {new_path}.
+            =====
+            """)
 
 # def load_h5():
 #     raise NotImplementedError
 
 def preproc_events_slice(event_range):
-    with value.get_lock():
-        if value.value == 0:
-            value.value = os.getpid()
+    pid = os.getpid()
+    with event_range["pid_lock"]:
+        # no need to check whether it already exists, since duplicate pids aren't possible?
+        event_range["pid_list"].append(pid)
+        pid_posn = event_range["pid_list"].index(pid)
 
     curr_events_num = event_range["end"] - event_range["start"]
-    logging.info(f"{os.getpid()}: Received range {event_range['start']} to {event_range['end']} ({curr_events_num} events).")
+    logging.info(f"#{pid_posn} ({pid}): Received range {event_range['start']} to {event_range['end']} ({curr_events_num} events).")
     events = NanoEventsFactory.from_root(event_range['file_path'], schemaclass = PFNanoAODSchema).events()
     data = {}
-
+    
+    # sth I wouldnta guessed: tqdm works nicely w/ multiple subprocesses, even w/o position!
+    # it jitters around as it shows different progresses at the same time
     iterator = range(event_range['start'], event_range['end'])
-    iterator = tqdm(iterator) if value.value == os.getpid() else iterator
+    iterator = iterator if config["dbg"]["only_one_progress_bar"] and pid_posn != 0 else tqdm(
+        iterator, desc=f"Process {pid_posn}", position=pid_posn, leave=None
+    )
+
     for i in iterator:
         properties, property_names = process_event_root(events[i:i+1])
         if properties == -1: continue
@@ -168,11 +180,11 @@ def preproc_events_slice(event_range):
             data[property_names[j]].append(prop)
         
         if (i - event_range["start"]) != 0 and config["data"]["events_per_file"] != 0 and i % config["data"]["events_per_file"] == 0:
-            logging.info(f"Preprocessed {i - config['data']['events_per_file']} to {i}, {config['data']['events_per_file']} events. {i - event_range['start']}/{curr_events_num} ({round((i - event_range['start'] + 1)/curr_events_num * 100)}%)")
+            logging.info(f"#{pid_posn} ({pid}): Preprocessed {i - config['data']['events_per_file']} to {i}, {config['data']['events_per_file']} events. {i - event_range['start']}/{curr_events_num} ({round((i - event_range['start'] + 1)/curr_events_num * 100)}%)")
             save_df(data, event_range)
             data = {}
     
-    logging.info(f"{os.getpid()}: Preprocessed last few events, from {event_range['start']} to {event_range['end']}!")
+    logging.info(f"#{pid_posn} ({pid}):  Preprocessed last few events, from {event_range['start']} to {event_range['end']}!")
     save_df(data, event_range)
 
 def save_df(data, event_range):
@@ -197,7 +209,8 @@ def main(data_filename, data_type):
             if os.path.isfile(os.path.join(data_folder_path, file)) and os.path.splitext(file)[1] == ".root":
                 load_root(file, jet_type)
     else:
-        load_root(data_filename, jet_type)
+        if os.path.isfile(data_filename) and os.path.splitext(data_filename)[1] == ".root":
+            load_root(data_filename, jet_type)
 
 
 if __name__ == "__main__":

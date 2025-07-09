@@ -5,10 +5,11 @@ dbg:
   measure_perf: false
   # 10: DEBUG; 20: INFO; 30: WARNING; 40: ERROR
   logging_level: 20
+  only_one_progress_bar: false
 
 # Paths
 data:
-  events_per_file: 1000
+  events_per_file: 0
   background: qcd
   signal: wjet
   

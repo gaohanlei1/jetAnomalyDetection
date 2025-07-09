@@ -76,7 +76,11 @@ def load_modify_data():
 
         # === FEATURE ENGINEERING ===
         # Compute derived features, apply one-hot encoding, filter PFCands, drop rows w/ invalid or missing entries
-        yield modify_df(combined_dfs[i].copy(), VALID_PDG).dropna()
+        df_cpy = combined_dfs[i].copy()
+        logging.info(f"Copied {labels[i]},")
+        modified_df = modify_df(df_cpy, VALID_PDG)
+        logging.info(f"modified {labels[i]},")
+        yield modified_df.dropna()
 
 def scale_data(qcd_modified, wjet_modified):
     logging.info("Now, scaling data with QCD as the base!")
