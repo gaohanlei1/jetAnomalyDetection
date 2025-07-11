@@ -70,17 +70,19 @@ def load_modify_data():
             if os.path.isfile(curr_path) and os.path.splitext(file)[1] == ".pkl":
                 df_lists[i].append(pd.read_pickle(curr_path))
         
+        helpers.secs_since_last_ping()
         logging.info(f"Concatenating {labels[i]}:")
         combined_dfs[i] = pd.concat(df_lists[i], ignore_index=True)
-        logging.info(f"Combined {labels[i]} data length: {len(combined_dfs[i])}")
+        logging.info(f"Combined {labels[i]} data length: {len(combined_dfs[i])} {helpers.time_taken()}")
 
         # === FEATURE ENGINEERING ===
         # Compute derived features, apply one-hot encoding, filter PFCands, drop rows w/ invalid or missing entries
         df_cpy = combined_dfs[i].copy()
-        logging.info(f"Copied {labels[i]},")
+        logging.info(f"Copied {labels[i]} {helpers.time_taken()}")
         modified_df = modify_df(df_cpy, VALID_PDG)
-        logging.info(f"modified {labels[i]},")
+        logging.info(f"Modified {labels[i]} {helpers.time_taken()}")
         yield modified_df.dropna()
+        logging.info(f"Dropped missing vals and yielded {helpers.time_taken()}")
 
 def scale_data(qcd_modified, wjet_modified):
     logging.info("Now, scaling data with QCD as the base!")
@@ -92,11 +94,11 @@ def scale_data(qcd_modified, wjet_modified):
     scaler_dict = find_scalers(qcd_modified.copy(), QCD_LABEL, cols=variables_to_analyze)
 
     # Apply scaling to both datasets using QCD-derived scalers
-    logging.info("Scalers found, now applying to qcd:")
+    logging.info(f"Scalers found {helpers.time_taken()}, now applying to qcd:")
     qcd_scaled,  qcd_scaled_vals,  qcd_raw_vals,  zero1 = apply_scalers(qcd_modified.copy(), scaler_dict)
-    logging.info("And now wjet:")
+    logging.info(f"{helpers.time_taken()} Now wjet:")
     wjet_scaled, wjet_scaled_vals, wjet_raw_vals, zero2 = apply_scalers(wjet_modified.copy(), scaler_dict)
-    logging.info("Done!")
+    logging.info(f"Done! {helpers.time_taken()}")
 
     return (
         qcd_scaled,  qcd_scaled_vals,  qcd_raw_vals,  zero1,

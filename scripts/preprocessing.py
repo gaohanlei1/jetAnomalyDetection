@@ -14,7 +14,8 @@ warnings.filterwarnings("ignore", category=UserWarning, module="coffea")
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="coffea")
 
 from multiprocessing import Pool, Manager, cpu_count
-CPUS = cpu_count() - 1
+# brux keeps freezing if I try to do cpu-1?
+CPUS = (cpu_count() * 3)//4
 
 # Add parent directory to import local project modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
