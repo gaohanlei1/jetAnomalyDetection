@@ -24,10 +24,6 @@ data:
   preprocessed_qcd: data/preprocessed/qcd
   preprocessed_wjet: data/preprocessed/wjet
   processed_data_dir: data/processed/
-  
-  # NOTE: WJet HT range should be around double that of QCD Pt range!
-  qcd_label:  QCD_Pt_1000-1400
-  wjet_label: WJet_HT_400-600
 
 # Model Hyperparameters
 model:
