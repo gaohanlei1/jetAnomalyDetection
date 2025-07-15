@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     if os.path.isfile(args.path):
-        print_info(args)
+        print_info(args.path, args.printcols, args.print)
     else:
         # print(f"Printing info of dfs in {args.path}")
         for file in os.listdir(args.path):
