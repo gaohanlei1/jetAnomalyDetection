@@ -40,15 +40,15 @@ if __name__ == "__main__":
         description="Concatenates DataFrames (e.g. preprocessed or processed data files) in a folder. Default behaviour: concatenate all .pkl files in current working directory"
     )
     parser.add_argument(
-        '--path', type=str, required=False, default=".",
+        "--path", "-p", type=str, required=False, default=".",
         help='Path of folder that contains all the pickled DataFrames to concatenate; default: "." (current directory)'
     )
     parser.add_argument(
-        '--filter', type=str, required=False,
+        "--filter", "-f", type=str, required=False,
         help='If provided, will only join the .pkl files that contain this keyword (e.g. 170to300)'
     )
     parser.add_argument(
-        '--name', type=str, required=False,
+        "--name", "-n", type=str, required=False,
         help='Name of output file; by default, named with the first filename and the current time'
     )
     args = parser.parse_args()

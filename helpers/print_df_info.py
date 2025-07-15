@@ -15,15 +15,15 @@ if __name__ == "__main__":
         description="outputs info about the pickled DataFrame\ne.g. 'python3.9 helpers/check_pkl_len.py --path data/preprocessed/qcd/data1.pkl'"
     )
     parser.add_argument(
-        "--path", type=str, required=True,
+        "--path", "-p", type=str, required=True,
         help=".pkl file or folder path; if folder, loops over all files"
     )
     parser.add_argument(
-        "--print", default=False, action=argparse.BooleanOptionalAction,
+        "--print", "-r", default=False, action=argparse.BooleanOptionalAction,
         help="print all rows"
     )
     parser.add_argument(
-        "--printcols", default=False, action=argparse.BooleanOptionalAction,
+        "--printcols", "-c", default=False, action=argparse.BooleanOptionalAction,
         help="print columns"
     )
 

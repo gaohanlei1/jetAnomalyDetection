@@ -3,6 +3,7 @@ from datetime import datetime as dt
 import pandas as pd
 import logging
 import sys
+import os
 from time import time
 
 def load_config():
@@ -64,3 +65,9 @@ def to_df(file_path):
 def df_info(df, printcols):
     print(f"{df.shape=}\n")
     if printcols: print(f"{df.columns=}")
+
+def get_trimmed_name(filename):
+    return os.path.splitext(os.path.basename(filename))[0]
+
+def get_extension(filename):
+    return os.path.splitext(os.path.basename(filename))[1]

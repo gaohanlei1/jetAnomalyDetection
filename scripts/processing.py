@@ -44,17 +44,12 @@ PROPS = ["log_pt"]
 QCD_LABEL  = config["data"]["qcd_label"]
 WJET_LABEL = config["data"]["wjet_label"]
 
-'''
-ISSUES:
-- oh god that scaled data struct is horrendous
-- subfolders!!!
-'''
 
 def load_modify_data():
     # Paths to folders containing preprocessed raw data (concatenated together before processing)
     # NOTE: remember that WJet HTs should be around double that of QCD's Pts!
-    qcd_folder_path  = os.path.join(config["data"]["preprocessed_data_dir"], "qcd")
-    wjet_folder_path = os.path.join(config["data"]["preprocessed_data_dir"], "wjet")
+    qcd_folder_path  = config["data"]["preprocessed_qcd"]
+    wjet_folder_path = config["data"]["preprocessed_wjet"]
     # note: if you are running on cern resources, use your "eos" path here for the data
 
     # aligning qcd and wjet infos, since we'll run a for loop on both separately

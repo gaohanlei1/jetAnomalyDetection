@@ -9,6 +9,13 @@ from tqdm import tqdm
 import argparse
 import logging
 
+'''
+NOTE!
+I'm suppressing like 50 warnings that come up everytime I run the program,
+which all complain about duplicate branches in the .root files used to load events.
+Coffea only takes the first instance of each duplicate branch
+- dunno if this is an issue?
+'''
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="coffea")
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="coffea")
@@ -22,9 +29,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import constants as c
 from helpers import helpers
 config = helpers.load_config()
-    
-# to limit the number of events; 0 for all events
-EVENT_LIMIT = 0
 
 '''
 ISSUES:
@@ -36,6 +40,7 @@ def get_fatjets(events):
     fatjets = events.FatJet
     # store unmasked fjs
     store_fj = [fj for fj in fatjets[0]]
+    logging.debug(f"{fatjets.fields=}")
 
     # accept jets that do not have electrons or muons nearby   
     electrons = events.Electron
@@ -93,23 +98,19 @@ def process_event_root(events):
     fields = pfcands.fields
     for field in fields: 
         if field not in ("pt", "eta", "phi"):
+            # logging.debug(f"Added {field=} to property_names")
             properties.append(ak.to_numpy(pfcands[field]).flatten()[pfcs])
             property_names.append(field)
 
     return properties, property_names
 
-def load_root(data_filename, jet_type):
-    data_folder_path = config["data"]["raw_" + jet_type]
-    data_file_path = os.path.join(data_folder_path, data_filename)
-    output_file_basename = f"{os.path.splitext(os.path.basename(data_filename))[0]}"
-    logging.info(f"Now preprocessing {data_file_path}")
+def load_root(filepath, jet_type, subfolder):
+    logging.info(f"Now preprocessing {filepath}")
 
     # - So, I'll be doing sth very stupid here: loading the same file multiple times
-    # - Why? coz stupid ass pickle can't pickle coffea events for whatever reason,
-    #  and coffea has fuckall documentation, so idk how to get length etc
-    # - if this bugs you, you can try using pathos.multiprocessing, which might pickle
+    # - coz pickle can't pickle coffea events for whatever reason
     # if EVENT_LIMIT: events = events[:EVENT_LIMIT]
-    num_events = len(NanoEventsFactory.from_root(data_file_path, schemaclass = PFNanoAODSchema).events())
+    num_events = len(NanoEventsFactory.from_root(filepath, schemaclass = PFNanoAODSchema).events())
     logging.info(f"{num_events} events in total, splitting into {CPUS} chunks.")
     start_i = np.linspace(0, num_events, endpoint=False, dtype=int, num=CPUS)
     end_i   = np.append(start_i[1:], num_events)
@@ -118,54 +119,55 @@ def load_root(data_filename, jet_type):
         logging.info(f"Intialised pool {pool} with {CPUS} CPUs.")
 
         pid_list = m.list()
-        pid_leauque = m.Lock()
-        split_events = [
+        pid_lock = m.Lock()
+        shared_datas = [
             {
                 "start" : start,
                 "end"   : end,
-                "filename"  : data_filename,
                 "jet_type"  : jet_type,
-                "file_path" : data_file_path,
-                "basename"  : output_file_basename,
+                "filepath" : filepath,
                 "pid_list"  : pid_list,
-                "pid_lock"  : pid_leauque
+                "pid_lock"  : pid_lock,
+                "subfolder" : subfolder
             }
             for start, end in zip(start_i, end_i)
         ]
 
         # each invocation of the function will receive an ELT of the iterator, not a slice
         # the chunk is just loosely defined as the range over which to pick elts for each cpu
-        pool.map(preproc_events_slice, split_events)
-
-    # del m, pool
+        pool.map(preproc_events_slice, shared_datas)
 
     if config["data"]["move_to_used"]:
-        new_path = os.path.join(data_folder_path, config["data"]["used_raw_data_dir"], data_filename)
-        os.renames(data_file_path, new_path)
-        logging.info(
-            f"""=====
-            Moved {data_file_path} to {new_path}.
-            =====
-            """)
+        move_to_used(filepath)        
+
+def move_to_used(filepath):
+    new_path = os.path.join(os.path.dirname(filepath), "used", filepath)
+    os.renames(filepath, new_path)
+    logging.info(f"Moved '{filepath}' to '{new_path}'.")
 
 # def load_h5():
 #     raise NotImplementedError
 
-def preproc_events_slice(event_range):
+def preproc_events_slice(metadata):
     pid = os.getpid()
-    with event_range["pid_lock"]:
+    with metadata["pid_lock"]:
         # no need to check whether it already exists, since duplicate pids aren't possible?
-        event_range["pid_list"].append(pid)
-        pid_posn = event_range["pid_list"].index(pid)
+        metadata["pid_list"].append(pid)
+        pid_posn = metadata["pid_list"].index(pid)
 
-    curr_events_num = event_range["end"] - event_range["start"]
-    logging.info(f"#{pid_posn} ({pid}): Received range {event_range['start']} to {event_range['end']} ({curr_events_num} events).")
-    events = NanoEventsFactory.from_root(event_range['file_path'], schemaclass = PFNanoAODSchema).events()
+    curr_events_num = metadata["end"] - metadata["start"]
+    logging.info(f"#{pid_posn} ({pid}): Received range {metadata['start']} to {metadata['end']} ({curr_events_num} events).")
+    events = NanoEventsFactory.from_root(
+        metadata['filepath'], schemaclass = PFNanoAODSchema
+        ).events()[metadata['start'] : metadata['end']]
     data = {}
+
+    logging.debug(f"{events.fields=}")
     
     # sth I wouldnta guessed: tqdm works nicely w/ multiple subprocesses, even w/o position!
     # it jitters around as it shows different progresses at the same time
-    iterator = range(event_range['start'], event_range['end'])
+    # iterator = range(metadata['start'], metadata['end'])
+    iterator = range(curr_events_num)
     iterator = iterator if config["dbg"]["only_one_progress_bar"] and pid_posn != 0 else tqdm(
         iterator, desc=f"Process {pid_posn}", position=pid_posn, leave=None
     )
@@ -179,39 +181,52 @@ def preproc_events_slice(event_range):
         
         for j, prop in enumerate(properties): 
             data[property_names[j]].append(prop)
-        
-        if (i - event_range["start"]) != 0 and config["data"]["events_per_file"] != 0 and i % config["data"]["events_per_file"] == 0:
-            logging.info(f"#{pid_posn} ({pid}): Preprocessed {i - config['data']['events_per_file']} to {i}, {config['data']['events_per_file']} events. {i - event_range['start']}/{curr_events_num} ({round((i - event_range['start'] + 1)/curr_events_num * 100)}%)")
-            save_df(data, event_range)
-            data = {}
-    
-    logging.info(f"#{pid_posn} ({pid}):  Preprocessed last few events, from {event_range['start']} to {event_range['end']}!")
-    save_df(data, event_range)
 
-def save_df(data, event_range):
+        curr_i = i - metadata['start']
+        if curr_i != 0 and curr_i % 50 == 0: break
+    
+    logging.info(f"#{pid_posn} ({pid}):  Preprocessed last few events, from {metadata['start']} to {metadata['end']}!")
+    save_df(data, metadata)
+
+def save_df(data_dict, metadata):
     logging.info(f"Received new df, saving!")
+    basename = helpers.get_trimmed_name(metadata["filepath"])
     output_file_path = os.path.join(
-        config["data"]["preprocessed_data_dir"],
-        f"{event_range['jet_type']}/{event_range['basename']}_{os.getpid()}_{helpers.curr_time()}.pkl"
+        config["data"]["preprocessed_" + metadata["jet_type"]],
+        basename if metadata["subfolder"] else "",
+        f"{basename}_{os.getpid()}_{helpers.curr_time()}.pkl"
     )
-    pd.DataFrame.from_dict(data).to_pickle(output_file_path)
+    os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
+    pd.DataFrame.from_dict(data_dict).to_pickle(output_file_path)
     logging.info(f"Preprocessed into {output_file_path}.")
 
-def main(data_filename, data_type):
+def main(data_path, data_type, subfolder):
     # if filetype == ".h5":
     #     load_h5()
     # else:
     jet_type = config["data"][data_type]
+    folder_path = config["data"]["raw_" + jet_type]
     
-    if data_filename is None:
-        data_folder_path = config["data"]["raw_" + jet_type]
-        for file in os.listdir(data_folder_path):
-            logging.info(f"Next file/dir in {data_folder_path}: '{file}'")
-            if os.path.isfile(os.path.join(data_folder_path, file)) and os.path.splitext(file)[1] == ".root":
-                load_root(file, jet_type)
-    else:
-        if os.path.isfile(data_filename) and os.path.splitext(data_filename)[1] == ".root":
-            load_root(data_filename, jet_type)
+    # default, set to folder path defined in config
+    if data_path is None:
+        data_path = folder_path
+
+    if not os.path.exists(data_path):
+        # if it's a filename within default folder, use that
+        data_path = os.path.join(folder_path, data_path)
+        if not os.path.exists(data_path):
+            raise Exception(f"Invalid path: {data_path=}\n{jet_type=}")
+
+    # by now, guaranteed to be full file paths
+    files = [data_path] if os.path.isfile(data_path) else [
+        file for file in os.listdir(data_path)
+        if os.path.isfile(os.path.join(data_path, file))
+    ]
+
+    for file in files:
+        logging.info(f"Next file for {data_path=}: '{file}'")
+        if os.path.splitext(file)[1] == ".root":
+            load_root(file, jet_type, subfolder)
 
 
 if __name__ == "__main__":
@@ -220,24 +235,24 @@ if __name__ == "__main__":
         description="preprocesses jet data for anomaly detection"
     )
     parser.add_argument(
-        "--filename", type=str, required=False,
-        help="name of file to preprocess; if none, preprocesses all files in the data folder (defined in configs/config.yaml)"
+        "--path", "-p", "--filename", type=str, required=False,
+        help="Path to single .root file to preprocess, or name of single file within the data folder, or path to folder containing multiple .root files with the same type/label (e.g. QCD170to300). Default: uses the path in configs/config.yaml"
     )
-    # parser.add_argument("--save_path", type=str, required=False, help="path where the processed data will be saved")
-    parser.add_argument("--data_type", choices=["background", "signal"], required=True, help="'background' or 'signal'")
-    parser.add_argument("--subfolder", required=False, help=f"label/subfolder name, if you want to save to a subfolder within the preprocessed data folder")
-    # parser.add_argument("--file_type", choices=[".root", ".h5"], required=False, default=".root")
-
+    parser.add_argument(
+        "--type", "--data_type", "-t", choices=["background", "signal"], required=True,
+        help=f"'background' ({config['data']['background']}) or 'signal' ({config['data']['signal']})"
+    )
+    parser.add_argument(
+        "--subfolder", "-s", required=False, default=False, action=argparse.BooleanOptionalAction,
+        help=f"If provided, save to subfolder within preprocessed directory"
+    )
     args = parser.parse_args()
-    data_filename = args.filename
-    data_type = args.data_type
-    subfolder = args.subfolder
 
-    session_name = f"preproc_{'all' if data_filename is None else data_filename}_{data_type}_{helpers.curr_time()}"
+    session_name = f"preproc_{args.type}_{helpers.curr_time()}"
     helpers.log_config(f"logs/{session_name}.log")
     logging.info("Set up logger!")
 
     if config["dbg"]["measure_perf"]:
-        helpers.profile_func(f"logs/{session_name}.prof", main, data_filename, data_type)
+        helpers.profile_func(f"logs/{session_name}.prof", main, args.path, args.type, args.subfolder)
     else:
-        main(data_filename, data_type)
+        main(args.path, args.type, args.subfolder)
