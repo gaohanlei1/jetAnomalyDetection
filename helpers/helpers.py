@@ -46,6 +46,8 @@ def secs_since_last_ping() -> float:
     or 0 if first time.
     Saves state! Using globals... :(
     '''
+    # yes, this would be better as a class;
+    # yes, I shouldn't care coz I'm already over-engineering this
     global LAST_PING
     curr_time = time()
     if LAST_PING is None: LAST_PING = curr_time
@@ -55,7 +57,7 @@ def secs_since_last_ping() -> float:
 
 def time_taken() -> str:
     '''Formats the time since last call to secs_since_last_ping()'''
-    return f"(took {secs_since_last_ping()} s)"
+    return f" (took {secs_since_last_ping()} s)"
 
 def to_df(file_path):
     # Returns the given pickled pandas DataFrame.

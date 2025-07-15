@@ -28,8 +28,8 @@ def concat_pkls(folder_path: str, filter_str: str | None, output_name: str | Non
             throw Exception(f"Columns are different:\n{columns=}\nvs\n{next_columns=}")
     
     concatted = pd.concat(dfs)
-    if not output_name: output_name = f"{os.path.splitext(name)[0]}{helpers.curr_time()}.pkl"
-    concatted.to_pickle(SAVE_NAME)
+    if not output_name: output_name = f"{helpers.get_trimmed_name(name)}{helpers.curr_time()}.pkl"
+    concatted.to_pickle(os.path.join(folder_path, output_name))
 
     return concatted
 
