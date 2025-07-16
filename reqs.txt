@@ -1,15 +1,3 @@
-# Core packages
-# torch-geometric==2.5.1
-
-# PyG extensions (to be installed with wheels manually, see setup instructions)
-# These will not work directly from pip without the correct compiler and wheel links
-# See: https://data.pyg.org/whl/
-# Instead of installing from pip here, they should be installed separately like:
-# python3 -m pip install --ignore-installed torch-scatter -f https://data.pyg.org/whl/torch-2.2.1+cu121.html
-# python3 -m pip install --ignore-installed  torch-sparse -f https://data.pyg.org/whl/torch-2.2.1+cu121.html
-# python3 -m pip install --ignore-installed  torch-cluster -f https://data.pyg.org/whl/torch-2.2.1+cu121.html
-# python3 -m pip install --ignore-installed  torch-geometric -f https://data.pyg.org/whl/torch-2.2.1+cu121.html
-
 # General dependencies
 numpy==1.25.0
 pandas==2.2.0

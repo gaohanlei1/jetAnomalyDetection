@@ -6,4 +6,4 @@ source start_venv.sh
 #.venv/bin/python -m pip install --upgrade pip
 
 pip install -r reqs.txt
-# pip install -r addl_reqs.txt
+source install_addl_reqs_cuda.sh

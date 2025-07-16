@@ -181,14 +181,15 @@ class DataProcessor:
         self.wjet_scaled.to_pickle(wjet_output_path), logging.info(f"Saved in {wjet_output_path}!")
 
 
-def visualize(qcd_scaled, wjet_scaled, label_bg, label_sg, props):
+def visualize(qcd_scaled_vals, wjet_scaled_vals, label_bg, label_sg, props):
     # Plot raw and scaled distributions for selected variable(s)
     logging.info("Plotting data:")
     for prop in props:
         fig, axes = plt.subplots(1, 1, figsize=(20, 5))
         
         plot_property_distribution(
-            qcd_scaled[prop], wjet_scaled[prop], prop,
+            # ISSUE: this uses vals, not actual scaled
+            qcd_scaled_vals[prop], wjet_scaled_vals[prop], prop,
             label_bg, label_sg,
             ax=axes, is_scaled=True, include_zeros=True
         )

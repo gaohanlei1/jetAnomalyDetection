@@ -32,28 +32,33 @@
 
 
 - Slight fixes here n there, adding more fields to processed data visualisation (pt, eta, phi)
-    - result:
+    - still bugging a bit
 
 - Joined and organised preproc'd files, sent the link to Arjun so he can use them for processing (takes 5-20 mins) and training
+    - processing now just takes `python3.9 scripts/processing.py -b <qcdpath.pkl> -s <wjetpath.pkl>`
 
 - Have been trying to transition more into the technical/model side of things, but a bunch of technical issues still pop up
-    - Virtual environment was still incomplete, so I pored through multiple vers and finally found the cmds to install the correct vers; adding those to reqs
-    - Still testing!
+    - Virtual environment was still incomplete, so I finally diagnosed the issues and found the correct versions to install
+    - still may need tweaking if I try to use GPU or CPU drivers; for now, moved everything to CPU
+
+- Starting to train the old autoencoder w/ the new preproc files; shows my preproc + proc pipeline works, loss decreases
+    - doesn't have Arjun's modifications yet
 
 
 **NOW:**
 
-- Since Arjun's still busy training, with his permission I'm snooping around his local repo on brux and merging the changes myself into a new branch
+- Since Arjun's still busy training, with his permission I'm merging his work on brux into a new branch
     - doable since he hasn't touched the preproc/proc scripts much, it's the training + viz scripts
-- Familiarising myself with the model changes and the visualisations  
 
-- The graphing above
-    - Use uproot?
+- Familiarising myself with the model changes and the visualisations
+    - Graphing properties other than log_pt
+        - Arjun did this with WWto4Q, so I'll do it w/ the other preproc'd WJet files
+    - Analysing the new `.root`s themselves w/ uproot 
 
-- Using processed jet pairs to ACTUALLY TRAIN THE AUTOENCODER (after merging w/ Arjun's)
-    - then starting to work on the autoencoder, e.g. the device config
+- Using processed jet pairs to train Arjun's model
+    - then starting to work on the autoencoder myself, perform param sweeps etc
 
-- Training takes a while (34 epochs -> 20 mins), so I'll look into using GPU
+- Training takes a while (34 epochs -> 20 mins), so I'll look into using the Brux GPU (promised for a while - almost getting to it!!!)
 
 
 **extras:**
