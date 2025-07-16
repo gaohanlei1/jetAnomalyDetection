@@ -1,18 +1,22 @@
 import pandas as pd
 import argparse
-import helpers
 import os
+import sys
+
+# Add parent directory to import local project modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from helpers import helpers_main
 
 def print_info(path, printcols, printall):
     print(f"{path=}")
-    df = helpers.to_df(path)
-    helpers.df_info(df, printcols)
+    df = helpers_main.to_df(path)
+    helpers_main.df_info(df, printcols)
     if printall: print(df)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog="Pickled DataFrame Analyser",
-        description="outputs info about the pickled DataFrame\ne.g. 'python3.9 helpers/check_pkl_len.py --path data/preprocessed/qcd/data1.pkl'"
+        description="outputs info about the pickled DataFrame\ne.g. 'python3.9 helpers_main/check_pkl_len.py --path data/preprocessed/qcd/data1.pkl'"
     )
     parser.add_argument(
         "--path", "-p", type=str, required=True,

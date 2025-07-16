@@ -3,9 +3,11 @@ import os
 import sys
 import argparse
 
-import helpers
+# Add parent directory to import local project modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from helpers import helpers_main
 
-def concat_pkls(folder_path, filter_str, output_name):
+def concat_pkls(folder_path, filter_str=None, output_name=None):
     '''
     Joins all the pickled pd.DataFrames in the folder into one, saves this, and returns it.
     Checks whether the columns are consistent across all files.
@@ -28,11 +30,11 @@ def concat_pkls(folder_path, filter_str, output_name):
     
     concatted = pd.concat(dfs)
 
-    os.makedirs(folder_path, exist_ok=True)
-    if not output_name: output_name = f"concat_{helpers.curr_time()}.pkl"
+    if not output_name: output_name = f"concat_{'' if filter_str is None else filter_str}_{helpers_main.curr_time()}.pkl"
     output_path = os.path.join(folder_path, output_name)
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     concatted.to_pickle(output_path)
-    print(f"Concatenated the files in {folder_path} with filter '{'' if not filter_str else filter_str}',\ninto {output_path=}")
+    print(f"Concatenated {len(dfs)} files in {folder_path} with filter '{'' if not filter_str else filter_str}',\ninto {output_path=}")
     
     return concatted
 

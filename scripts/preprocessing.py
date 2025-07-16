@@ -27,8 +27,9 @@ CPUS = (cpu_count() * 3)//4
 # Add parent directory to import local project modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import constants as c
-from helpers import helpers
-config = helpers.load_config()
+from helpers import helpers_main
+from helpers import join_dfs
+config = helpers_main.load_config()
 
 '''
 ISSUES:
@@ -85,9 +86,12 @@ def process_event_root(events):
         return -1, -1
     pfcands = events.PFCands
 
-    eta = ak.to_numpy(pfcands["phi"] - fatjets["phi"]).flatten()[pfcs]
-    phi = ak.to_numpy(pfcands["eta"] - fatjets["eta"]).flatten()[pfcs]
-    pt  = ak.to_numpy(pfcands["pt"]/fatjets["pt"]).flatten()[pfcs]
+    # eta = ak.to_numpy(pfcands["phi"] - fatjets["phi"]).flatten()[pfcs]
+    # phi = ak.to_numpy(pfcands["eta"] - fatjets["eta"]).flatten()[pfcs]
+    # pt  = ak.to_numpy(pfcands["pt"]/fatjets["pt"]).flatten()[pfcs]
+    eta = ak.flatten(pfcands["phi"] - fatjets["phi"])[pfcs]
+    phi = ak.flatten(pfcands["eta"] - fatjets["eta"])[pfcs]
+    pt  = ak.flatten(pfcands["pt"]/fatjets["pt"])[pfcs]
     # TODO: old ratio based on whether it is qcd or wjet -> this is not model agnostic !!!
       # check that current pt scheme is correct
 
@@ -99,7 +103,7 @@ def process_event_root(events):
     for field in fields: 
         if field not in ("pt", "eta", "phi"):
             # logging.debug(f"Added {field=} to property_names")
-            properties.append(ak.to_numpy(pfcands[field]).flatten()[pfcs])
+            properties.append(ak.flatten(pfcands[field])[pfcs])
             property_names.append(field)
 
     return properties, property_names
@@ -138,10 +142,15 @@ def load_root(filepath, jet_type, subfolder):
         pool.map(preproc_events_slice, shared_datas)
 
     if config["data"]["move_to_used"]:
-        move_to_used(filepath)        
+        move_to_used(filepath)
+
+    if subfolder:
+        subfolder_path = os.path.join(config["data"]["preprocessed_" + jet_type], helpers_main.get_trimmed_name(filepath))
+        join_dfs.concat_pkls(subfolder_path)
+        logging.info(f"Concatenated into {subfolder_path}; you can delete the non-concat files!")
 
 def move_to_used(filepath):
-    new_path = os.path.join(os.path.dirname(filepath), "used", filepath)
+    new_path = os.path.join(os.path.dirname(filepath), "used", os.path.basename(filepath))
     os.renames(filepath, new_path)
     logging.info(f"Moved '{filepath}' to '{new_path}'.")
 
@@ -182,19 +191,19 @@ def preproc_events_slice(metadata):
         for j, prop in enumerate(properties): 
             data[property_names[j]].append(prop)
 
-        curr_i = i - metadata['start']
-        if curr_i != 0 and curr_i % 50 == 0: break
+        # curr_i = i - metadata['start']
+        # if curr_i != 0 and curr_i % 20 == 0: break
     
     logging.info(f"#{pid_posn} ({pid}):  Preprocessed last few events, from {metadata['start']} to {metadata['end']}!")
     save_df(data, metadata)
 
 def save_df(data_dict, metadata):
     logging.info(f"Received new df, saving!")
-    basename = helpers.get_trimmed_name(metadata["filepath"])
+    basename = helpers_main.get_trimmed_name(metadata["filepath"])
     output_file_path = os.path.join(
         config["data"]["preprocessed_" + metadata["jet_type"]],
         basename if metadata["subfolder"] else "",
-        f"{basename}_{os.getpid()}_{helpers.curr_time()}.pkl"
+        f"{basename}_{os.getpid()}_{helpers_main.curr_time()}.pkl"
     )
     os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
     pd.DataFrame.from_dict(data_dict).to_pickle(output_file_path)
@@ -244,15 +253,15 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--subfolder", "-s", required=False, default=False, action=argparse.BooleanOptionalAction,
-        help=f"If provided, save to subfolder within preprocessed directory"
+        help=f"If provided, save to subfolder within preprocessed directory. Also concatenates all .pkl files within that subfolder!\n(Make sure the subfolder name is unique)"
     )
     args = parser.parse_args()
 
-    session_name = f"preproc_{args.type}_{helpers.curr_time()}"
-    helpers.log_config(f"logs/{session_name}.log")
+    session_name = f"preproc_{args.type}_{helpers_main.curr_time()}"
+    helpers_main.log_config(f"logs/{session_name}.log")
     logging.info("Set up logger!")
 
     if config["dbg"]["measure_perf"]:
-        helpers.profile_func(f"logs/{session_name}.prof", main, args.path, args.type, args.subfolder)
+        helpers_main.profile_func(f"logs/{session_name}.prof", main, args.path, args.type, args.subfolder)
     else:
         main(args.path, args.type, args.subfolder)

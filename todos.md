@@ -2,11 +2,6 @@
 
 ## Fri - 11.07.25
 
-**DONE:**
-- Finished preprocessing all the new files
-- Script to join dfs together
-- Processing takes a while on large dfs, diagnosing this 
-
 **NOW:**
 - Analysing Pt distributions of the new btv-nano data between a matching QCD and WJet pair:
     - from the raw ROOT files (Arjun already did this, showed pretty big separation)
@@ -20,22 +15,31 @@
     - GPU computation
     - using JAX or other JIT options
     - playing around w/ the number of workers etc.
-- Counterpoint: not needed
+- Counterpoint: not
 
-
-- Adding arguments to preprocessing:
-    - `--subfolder` option to save preprocessed files in their own subfolders from each `.root`
-    - `--concat` option to concatenate saved `.root` files automatically
-
-- Adding `--qcd-name` and `--wjet-name` options to processing to be able to specify the filenames directly, instead of from `config.yaml`
-
-- Updating readme after the above; maybe replacing the main README?
-
-- TRY REMOVING `ak.to_numpy` FROM PREPROCESSING! Could do it w/ just `ak.flatten`?
 
 
 ## Tue - 15.07.25 (sis's bday!!!)
 
 **DONE:**
-- Updated readme, added subfolder support, etc.
-- 
+- Updated readme
+
+- Added subfolder/concat support, refactored pre/processing, etc.
+    - removed `ak.to_numpy` and other stuff
+
+- Concatenated and organising all preprocessed data files for Arjun to use
+    - Should start processing pairs
+
+
+**NOW:**
+
+- Checking and merging w/ Arjun's changes pre-emptively; or at least, making a branch?
+
+- The graphing above
+
+- Processing a buncha jet pairs, and then USING THEM TO ACTUALLY TRAIN THE AUTOENCODER (after merging w/ Arjun's)
+    - then starting to work on the autoencoder, e.g. the device config
+
+
+
+

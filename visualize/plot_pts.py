@@ -12,9 +12,9 @@ import matplotlib.pyplot as plt
 
 # Add parent directory to import local project modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from helpers import helpers
-config = helpers.load_config()
-helpers.log_config(f"logs/plotpt_{helpers.curr_time()}.log")
+from helpers import helpers_main
+config = helpers_main.load_config()
+helpers_main.log_config(f"logs/plotpt_{helpers_main.curr_time()}.log")
 
 from scripts.preprocessing import get_fatjets
 from visualize.plot_property_distributions import plot_property_distribution
@@ -33,7 +33,7 @@ def plot_pt(qcd_events, wjet_events):
         "QCD", "WJet",
         ax=axes[0], is_scaled=False, include_zeros=True)
     
-    plt.savefig(f"plots/{helpers.curr_time()}.png")
+    plt.savefig(f"plots/{helpers_main.curr_time()}.png")
 
 
 def plot_raw_pt(events):
@@ -41,7 +41,7 @@ def plot_raw_pt(events):
     counts, bins = np.histogram(fatjet_pts, bins=100)
     plt.stairs(counts, bins)
     plt.show()
-    plt.savefig(f"plots/{helpers.curr_time()}.png")
+    plt.savefig(f"plots/{helpers_main.curr_time()}.png")
 
 def get_pt(fatjets):
     logging.info(f"{fatjets=}")
@@ -63,7 +63,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--qcdpath", type=str, required=True,
-        help="path to a single raw .root QCD file (combine with helpers/join_dfs.py if needed)"
+        help="path to a single raw .root QCD file (combine with helpers_main/join_dfs.py if needed)"
     )
     parser.add_argument(
         "--wjetpath", type=str, required=True,

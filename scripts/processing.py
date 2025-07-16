@@ -21,11 +21,11 @@ import argparse
 
 # Add parent directory to import local project modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from helpers import helpers
-config = helpers.load_config()
+from helpers import helpers_main
+config = helpers_main.load_config()
 
 import logging
-helpers.log_config(f"logs/proc_{helpers.curr_time()}.log")
+helpers_main.log_config(f"logs/proc_{helpers_main.curr_time()}.log")
 
 if config["dbg"]["measure_perf"]:
     from cProfile import Profile
@@ -53,10 +53,9 @@ class DataProcessor:
     
     def load_concat_jet_data(self, folder_path, jet_label):
         '''
-        Loads and joins on the
-        preprocessed .pkl files in the given directory.
+        Loads and joins all the preprocessed .pkl files in the given directory.
         '''
-        helpers.secs_since_last_ping()
+        helpers_main.secs_since_last_ping()
         preproc_dfs = [
             pd.read_pickle(os.path.join(folder_path, file))
             for file in tqdm(os.listdir(folder_path), desc=f"Loading {jet_label} files")
@@ -65,9 +64,9 @@ class DataProcessor:
             and (not self.filter or jet_label in file)
         ]
    
-        logging.info(f"Concatenating {jet_label}:" + helpers.time_taken())
+        logging.info(f"Concatenating {jet_label}:" + helpers_main.time_taken())
         combined = pd.concat(preproc_dfs, ignore_index=True)
-        logging.info(f"Combined {jet_label} data length: {len(combined)} {helpers.time_taken()}")
+        logging.info(f"Combined {jet_label} data length: {len(combined)} {helpers_main.time_taken()}")
         return combined
 
     def feature_engineer(self, combined_data, jet_label):
@@ -77,13 +76,13 @@ class DataProcessor:
         drop rows w/ invalid or missing entries
         '''
         # df_cpy = combined_data.copy()
-        # logging.info(f"Copied {jet_label} {helpers.time_taken()}")
+        # logging.info(f"Copied {jet_label} {helpers_main.time_taken()}")
         # modified_df = modify_df(df_cpy, VALID_PDG)
 
         modified_data = modify_df(combined_data.copy(), self.VALID_PDG)
-        logging.info(f"Modified {jet_label} {helpers.time_taken()}")
+        logging.info(f"Modified {jet_label} {helpers_main.time_taken()}")
         modified_data = modified_data.dropna()
-        logging.info(f"Dropped missing vals {helpers.time_taken()}")
+        logging.info(f"Dropped missing vals {helpers_main.time_taken()}")
         return modified_data
 
     def load_modify(self):
@@ -108,18 +107,18 @@ class DataProcessor:
         # scaler_dict = find_scalers(self.qcd_modified, self.label_bg, cols=variables_to_analyze)
 
         # Apply scaling to both datasets using QCD-derived scalers
-        logging.info(f"Scalers found {helpers.time_taken()}, now applying to qcd:")
+        logging.info(f"Scalers found {helpers_main.time_taken()}, now applying to qcd:")
         (
             self.qcd_scaled,  self.qcd_scaled_vals,  self.qcd_raw_vals,  self.zero1
         ) = apply_scalers(self.qcd_modified.copy(), scaler_dict)
         # .copy()
 
-        logging.info(f"{helpers.time_taken()} Now wjet:")
+        logging.info(f"{helpers_main.time_taken()} Now wjet:")
         (
             self.wjet_scaled, self.wjet_scaled_vals, self.wjet_raw_vals, self.zero2
         ) = apply_scalers(self.wjet_modified.copy(), scaler_dict)
         # .copy()
-        logging.info(f"Done! {helpers.time_taken()}")
+        logging.info(f"Done! {helpers_main.time_taken()}")
 
     def visualize_data(self):
         # Plot raw and scaled distributions for selected variable(s)
@@ -159,7 +158,7 @@ class DataProcessor:
 
             plt.tight_layout()
             if self.DISPLAY_PLOT: plt.show()
-            fig_path = f"plots/proc_distr_{self.label_bg}+{self.label_sg}_{helpers.curr_time()}.png"
+            fig_path = f"plots/proc_distr_{self.label_bg}+{self.label_sg}_{helpers_main.curr_time()}.png"
             plt.savefig(fig_path)
             logging.info(f"Saved figure into {fig_path}")
 
@@ -211,6 +210,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if config["dbg"]["measure_perf"]:
-        helpers.profile_func(f"logs/proc_{helpers.curr_time()}.prof", main, args)
+        helpers_main.profile_func(f"logs/proc_{helpers_main.curr_time()}.prof", main, args)
     else:
         main(args)
