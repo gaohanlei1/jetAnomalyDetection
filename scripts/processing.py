@@ -42,8 +42,7 @@ class DataProcessor:
     # PDG IDs to consider as valid charged particles
     VALID_PDG = [-11, 11, -13, 13, -211, 211]
     # NOTE: Modify this list to include other features as needed.
-    # VVVV not correct!! 
-    # possible props: ['pt', 'eta', 'phi', 'trkHighPurity', 'charge', 'lostInnerHits', 'lostOuterHits', 'numberOfHits', 'numberOfPixelHits', 'pdgId', 'pvAssocQuality', 'trkAlgo', 'trkQuality', 'd0', 'd0Err', 'dz', 'dzErr', 'mass', 'puppiWeight', 'puppiWeightNoLep', 'trkChi2', 'trkEta', 'trkP', 'trkPhi', 'trkPt', 'vtxChi2', 'dz/dzErr', 'd0/d0Err', 'dR', 'within_bounds', 'log_pt', 'pdgId_-211', 'pdgId_-13', 'pdgId_-11', 'pdgId_11', 'pdgId_13', 'pdgId_22', 'pdgId_130', 'pdgId_211']
+    # possible props: ['mass', 'puppiWeight', 'puppiWeightNoLep', 'trkChi2', 'vtxChi2', 'dz/dzErr', 'd0/d0Err', 'dR', 'within_bounds', 'log_pt']
     PROPS = ["log_pt"]
     # disable when running over SSH or similar
     DISPLAY_PLOT = False
@@ -67,7 +66,7 @@ class DataProcessor:
             os.path.join(data_path, file) for file in os.listdir(data_path)
         ]
         preproc_dfs = [
-            pd.read_pickle(file).head(100)
+            pd.read_pickle(file)            #.head(100)
             for file in tqdm(preproc_paths, desc=f"Loading {jet_label} files")
             if os.path.isfile(file)
             and os.path.splitext(file)[1] == ".pkl"

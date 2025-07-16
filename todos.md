@@ -22,17 +22,10 @@
 ## Tue - 15.07.25 (sis's bday!!!)
 
 **DONE:**
-- Updated readme
-
-- Added subfolder/concat support, refactored pre/processing, etc.
-    - removed `ak.to_numpy` and other stuff
-
 - Concatenated, organised, and sent all preprocessed data files to Arjun
     - Processed `QCD_PT-170to300_13p6TeV + WJetsToQQ_HT-400to600`
 
-
-- Slight fixes here n there, adding more fields to processed data visualisation (pt, eta, phi)
-    - still bugging a bit
+- Slight fixes here n there, adding more fields to processed data visualisation (like Arjun's done)
 
 - Joined and organised preproc'd files, sent the link to Arjun so he can use them for processing (takes 5-20 mins) and training
     - processing now just takes `python3.9 scripts/processing.py -b <qcdpath.pkl> -s <wjetpath.pkl>`
@@ -44,6 +37,7 @@
 - Starting to train the old autoencoder w/ the new preproc files; shows my preproc + proc pipeline works, loss decreases
     - doesn't have Arjun's modifications yet
 
+- (small fun stuff) Added subfolder/concat support, refactored pre/processing, removed `ak.to_numpy` etc.
 
 **NOW:**
 
@@ -58,7 +52,8 @@
 - Using processed jet pairs to train Arjun's model
     - then starting to work on the autoencoder myself, perform param sweeps etc
 
-- Training takes a while (34 epochs -> 20 mins), so I'll look into using the Brux GPU (promised for a while - almost getting to it!!!)
+- Training takes a while (34 epochs -> 20 mins), so I'll look into using the Brux GPU
+    - promised for a while - finally getting to it!!!
 
 
 **extras:**
