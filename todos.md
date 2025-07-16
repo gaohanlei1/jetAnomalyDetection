@@ -27,7 +27,7 @@
 - Added subfolder/concat support, refactored pre/processing, etc.
     - removed `ak.to_numpy` and other stuff
 
-- Concatenated and organising all preprocessed data files for Arjun to use
+- Concatenated, organised, and sent all preprocessed data files to Arjun
     - Should start processing pairs
 
 
@@ -37,9 +37,15 @@
 
 - The graphing above
 
-- Processing a buncha jet pairs, and then USING THEM TO ACTUALLY TRAIN THE AUTOENCODER (after merging w/ Arjun's)
+- Using processed jet pairs to ACTUALLY TRAIN THE AUTOENCODER (after merging w/ Arjun's)
     - then starting to work on the autoencoder, e.g. the device config
 
 
+
+*extras:*
+
+- Diagnosing the QCD50to80 issue - why do all events get rejected?
+
+- Maybe concatenating the old data files in multiple parts? For WJets_HT-400to600
 
 

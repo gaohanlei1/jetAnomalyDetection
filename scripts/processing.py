@@ -46,20 +46,26 @@ class DataProcessor:
 
     # NOTE: remember that WJet HTs should be around double that of QCD's Pts!
     def __init__(self, cli_args):
-        self.bg_folder, self.sg_folder = cli_args.background, cli_args.signal
+        self.data_bg, self.data_sg = cli_args.background, cli_args.signal
         self.label_bg,  self.label_sg  = cli_args.label_bg, cli_args.label_sg
-        self.bg_preproc_dfs, self.sg_preproc_dfs = [], []
         self.filter = cli_args.filter
+
+        self.qcd_modified, self.wjet_modified = None, None
+        self.qcd_scaled,  self.qcd_scaled_vals,  self.qcd_raw_vals,  self.zero1 = None, None, None, None
+        self.wjet_scaled, self.wjet_scaled_vals, self.wjet_raw_vals, self.zero2 = None, None, None, None
     
-    def load_concat_jet_data(self, folder_path, jet_label):
+    def load_concat_jet_data(self, data_path, jet_label):
         '''
         Loads and joins all the preprocessed .pkl files in the given directory.
         '''
         helpers_main.secs_since_last_ping()
+        preproc_paths = [data_path] if os.path.isfile(data_path) else [
+            os.path.join(data_path, file) for file in os.listdir(data_path)
+        ]
         preproc_dfs = [
-            pd.read_pickle(os.path.join(folder_path, file))
-            for file in tqdm(os.listdir(folder_path), desc=f"Loading {jet_label} files")
-            if os.path.isfile(os.path.join(folder_path, file))
+            pd.read_pickle(file)
+            for file in tqdm(preproc_paths, desc=f"Loading {jet_label} files")
+            if os.path.isfile(file)
             and os.path.splitext(file)[1] == ".pkl"
             and (not self.filter or jet_label in file)
         ]
@@ -89,10 +95,10 @@ class DataProcessor:
         # Loads the preprocessed files and performs feature engineering on them.
         # note: if you are running on cern resources, use your "eos" path for the data
         self.qcd_modified  = self.feature_engineer(
-            self.load_concat_jet_data(self.bg_folder, self.label_bg), self.label_bg
+            self.load_concat_jet_data(self.data_bg, self.label_bg), self.label_bg
         )
         self.wjet_modified = self.feature_engineer(
-            self.load_concat_jet_data(self.sg_folder, self.label_sg), self.label_sg
+            self.load_concat_jet_data(self.data_sg, self.label_sg), self.label_sg
         )
 
     def scale_data(self):
@@ -189,11 +195,11 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--background", "--bg", "-b", type=str, required=False, default=config["data"]["preprocessed_qcd"],
-        help="Folder path to the background preprocessed data (QCD). Default: uses the path in configs/config.yaml"
+        help="File/folder path to the background preprocessed data (QCD). Default: uses the path in configs/config.yaml"
     )
     parser.add_argument(
         "--signal", "--sg", "-s", type=str, required=False, default=config["data"]["preprocessed_wjet"],
-        help="Folder path to the background signal data (WJet). Default: uses the path in configs/config.yaml"
+        help="File/folder path to the background signal data (WJet). Default: uses the path in configs/config.yaml"
     )
     parser.add_argument(
         "--label_bg", "--lb", "-B", type=str, required=False, default="QCD",
