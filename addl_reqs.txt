@@ -1,0 +1,19 @@
+# additional reqs dling from jetvenv
+
+python3.9 -m pip install --ignore-installed torch-geometric==2.6.1
+
+######## matches my local jetvenv
+python3.9 -m pip install --ignore-installed torch-scatter   -f https://data.pyg.org/whl/torch-2.2.1+cu118.html
+# vvv this tries to install numpy==2.0.2 instead of the original 1.25.0, which is incompatible w/ matplotlib etc.
+# maybe use --no-deps? or uninstall numpy after this and reinstall numpy==1.25.0
+python3.9 -m pip install --ignore-installed torch-sparse    --no-deps -f https://data.pyg.org/whl/torch-2.2.1+cu118.html
+python3.9 -m pip install --ignore-installed torch-cluster   --no-deps -f https://data.pyg.org/whl/torch-2.2.1+cu118.html
+# vvv not needed? not in original venv
+# python3.9 -m pip install --ignore-installed torch-geometric --no-deps -f https://data.pyg.org/whl/torch-2.2.1+cu118.html
+
+# need to enable deps!
+python3.9 -m pip install --ignore-installed torch==2.2.1+cu118
+
+
+# however, these don't work with brux yet, coz no CUDA drivers?
+# so i'll now try to switch everything to cpu, or install w/o cuda drivers, or install w/ cpu drivers

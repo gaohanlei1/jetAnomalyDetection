@@ -107,11 +107,10 @@ def one_hot_encode_pdgId(row: pd.Series, pdg_ids: List[int]) -> pd.Series:
     Returns:
         pd.Series: Row with additional columns `pdgId_<value>` for each PDG ID.
     """
-    # this part takes the most time, since it's run `len(pdg_ids) * len(df)` times!
+    # this part takes the most time, since it's run `len(pdg_ids) * len(df)` times! (~6 * 18000)
     pdg_array = np.array(row['pdgId'])
     logging.debug(f"Entered one-hot, {len(pdg_array)=}")
     for pdg_id in pdg_ids:
-        logging.debug(f"Now making row pdgId_{pdg_id}")
         row[f'pdgId_{pdg_id}'] = (pdg_array == pdg_id).astype(int)
     return row
 

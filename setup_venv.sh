@@ -5,4 +5,5 @@ python3.9 -m venv .venv
 source start_venv.sh
 #.venv/bin/python -m pip install --upgrade pip
 
-pip install -r reqs-short.txt
+pip install -r reqs.txt
+# pip install -r addl_reqs.txt

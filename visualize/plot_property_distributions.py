@@ -16,18 +16,18 @@ def plot_property_distribution(datatype1_data: np.ndarray, datatype2_data: np.nd
     bins (int, optional): Number of bins for the histogram (default is 150).
     """
     indices_label = ""
-    if not include_zeros:
-        datatype1_data = [item for item in datatype1_data if not math.isclose(item, scaled_zero1, rel_tol=1e-4, abs_tol=0.0) and not math.isnan(item)]
-        datatype2_data = [item for item in datatype2_data if not math.isclose(item, scaled_zero2, rel_tol=1e-4, abs_tol=0.0) and not math.isnan(item)]
-        indices_label = ""
-    else: 
-        datatype1_data = [item for item in datatype1_data if not math.isnan(item)]
-        datatype2_data = [item for item in datatype2_data if not math.isnan(item)]
+    # include/exclude zeros
+    datatype1_data = [
+        item for item in datatype1_data if not math.isnan(item)
+        and (include_zeros or not math.isclose(item, scaled_zero1, rel_tol=1e-4, abs_tol=0.0))
+    ]
+    datatype2_data = [
+        item for item in datatype2_data if not math.isnan(item)
+        and (include_zeros or not math.isclose(item, scaled_zero2, rel_tol=1e-4, abs_tol=0.0))
+    ]
 
-    if is_scaled:
-        ax.set_title(f"Scaled Distribution of {prop_name} {indices_label}")
-    else:
-        ax.set_title(f"Distribution of {prop_name} {indices_label}")
+    ax.set_title(f"{'scaled ' if is_scaled else ''}distribution of {prop_name} {indices_label}{'' if include_zeros else ' (w/o zeroes)'}")
+    
     ax.set_xlabel(prop_name)
     ax.set_ylabel('Density')
 
