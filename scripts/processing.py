@@ -190,7 +190,7 @@ def visualize(qcd_scaled, wjet_scaled, label_bg, label_sg, props):
         plot_property_distribution(
             qcd_scaled[prop], wjet_scaled[prop], prop,
             label_bg, label_sg,
-            ax=axes[0], is_scaled=True, include_zeros=True
+            ax=axes, is_scaled=True, include_zeros=True
         )
 
         plt.tight_layout()

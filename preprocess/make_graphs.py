@@ -8,7 +8,7 @@ from typing import List
 
 
 def make_graph(data: dict, data_label: int, node_feature_names=['pt', 'eta', 'phi', 'd0/d0Err', 'dz/dzErr'], 
-               nearest_neighbors=16, device='cuda', method='eta_phi'):
+               nearest_neighbors=16, device='cpu', method='eta_phi'):
     """
     Build a graph from particle features, supporting different edge construction methods.
     """
@@ -41,7 +41,7 @@ def make_graph(data: dict, data_label: int, node_feature_names=['pt', 'eta', 'ph
 def graph_data_loader(df: pd.DataFrame,
                       data_label: int,
                       nearest_neighbors: int = 16,
-                      device: str = 'cuda') -> List[Data]:
+                      device: str = 'cpu') -> List[Data]:
     """
     Convert a dataframe of events into a list of graphs.
     """

@@ -41,7 +41,8 @@ datatype1 = pd.read_pickle(train_file)
 datatype2 = pd.read_pickle(test_file)
 
 # Device configuration
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device("cpu")
 
 # Hyperparameter grids for sweeping
 learning_rates = [1e-5, 5e-5, 1e-4]

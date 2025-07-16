@@ -39,7 +39,7 @@ model:
 training:
   initial_lr: 0.000005
   epochs: 10
-  device: cuda  # Options: 'cuda' or 'cpu'
+  device: cpu  # Options: 'cuda' or 'cpu'
 
 # Other
 misc:

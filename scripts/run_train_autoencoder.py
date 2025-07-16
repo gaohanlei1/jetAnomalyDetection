@@ -68,7 +68,8 @@ def run_autoencoder_training(train_graphs, test_graphs, signal_graphs, smallest_
     Returns:
         model (JetGraphAutoencoder): Trained model.
     """
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cpu")
 
     model = JetGraphAutoencoder(
         num_features=train_graphs[0].x.shape[1],
