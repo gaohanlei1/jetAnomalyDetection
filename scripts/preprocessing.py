@@ -32,9 +32,11 @@ from helpers import join_dfs
 config = helpers_main.load_config()
 
 '''
-ISSUES:
-- pretty convoluted system for passing args to the subprocesses - should just make a class/dict to pass
-- also, the funcs themselves are badly sectioned; passing args between them is hard and
+Possible improvements: classes
+
+Notes:
+- the treenames in the root files: ['tag;1', 'Events;1', 'LuminosityBlocks;1', 'Runs;1', 'MetaData;1', 'ParameterSets;1']
+- branchnames in ../helpers/rootbranches.txt
 '''
 
 def get_fatjets(events): 
@@ -85,10 +87,7 @@ def process_event_root(events):
     if isinstance(fatjets, int):
         return -1, -1
     pfcands = events.PFCands
-
-    # eta = ak.to_numpy(pfcands["phi"] - fatjets["phi"]).flatten()[pfcs]
-    # phi = ak.to_numpy(pfcands["eta"] - fatjets["eta"]).flatten()[pfcs]
-    # pt  = ak.to_numpy(pfcands["pt"]/fatjets["pt"]).flatten()[pfcs]
+    
     eta = ak.flatten(pfcands["phi"] - fatjets["phi"])[pfcs]
     phi = ak.flatten(pfcands["eta"] - fatjets["eta"])[pfcs]
     pt  = ak.flatten(pfcands["pt"]/fatjets["pt"])[pfcs]

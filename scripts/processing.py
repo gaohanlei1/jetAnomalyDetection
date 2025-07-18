@@ -37,7 +37,6 @@ from preprocess.feature_engineering import modify_df
 from preprocess.scaling import find_scalers, apply_scalers
 from visualize.plot_property_distributions import plot_property_distribution
 
-
 class DataProcessor:
     # PDG IDs to consider as valid charged particles
     VALID_PDG = [-11, 11, -13, 13, -211, 211]
@@ -159,7 +158,7 @@ class DataProcessor:
                 ax=axes[0], is_scaled=True, include_zeros=True
             )
 
-            # Scaled, excluding zeros
+            # Scaled, excluding (scaled?) zeros
             plot_property_distribution(
                 self.qcd_scaled_vals[prop], self.wjet_scaled_vals[prop], prop,
                 self.label_bg, self.label_sg,
@@ -176,12 +175,27 @@ class DataProcessor:
     def save_data(self):
         # Save data as .pkl!
         output_folder = os.path.join(config["data"]["processed_data_dir"], "scaledby_" + self.label_bg)
-        qcd_output_path  = os.path.join(output_folder, self.label_bg + "_scaled.pkl")
-        wjet_output_path = os.path.join(output_folder, self.label_sg + "_scaled.pkl")
-        logging.info("Now, saving data!")
-        self.qcd_scaled.to_pickle(qcd_output_path),   logging.info(f"Saved in {qcd_output_path}!")
-        self.wjet_scaled.to_pickle(wjet_output_path), logging.info(f"Saved in {wjet_output_path}!")
 
+        extras_folder = os.path.join(output_folder, "other")
+        os.makedirs(extras_folder, exist_ok=True)
+        logging.info("Now, saving data!")
+        
+        # checking if vals is just the exploded vers of the scaled pickles
+        pickle_dict(output_folder, self.qcd_scaled,  self.label_bg + "_scaled.pkl")
+        pickle_dict(output_folder, self.wjet_scaled, self.label_sg + "_scaled.pkl")
+        pickle_dict(extras_folder, self.qcd_scaled_vals,  self.label_bg + "_scaledvals.pkl")
+        pickle_dict(extras_folder, self.wjet_scaled_vals, self.label_sg + "_scaledvals.pkl")
+        pickle_dict(extras_folder, self.qcd_raw_vals,  self.label_bg + "_rawvals.pkl")
+        pickle_dict(extras_folder, self.wjet_raw_vals, self.label_sg + "_rawvals.pkl")
+        pickle_dict(extras_folder, self.zero1, self.label_bg + "_zero.pkl")
+        pickle_dict(extras_folder, self.zero2, self.label_sg + "_zero.pkl")
+
+def pickle_dict(folder_path, dickle_pickle, filename):
+    # Pickle a DataFrame or dict
+    filepath = os.path.join(folder_path, filename)
+    if isinstance(dickle_pickle, dict): dickle_pickle = pd.DataFrame.from_dict(dickle_pickle)
+    dickle_pickle.to_pickle(filepath)
+    logging.info(f"Saved into {filepath}!")
 
 def visualize(qcd_scaled_vals, wjet_scaled_vals, label_bg, label_sg, props):
     # Plot raw and scaled distributions for selected variable(s)

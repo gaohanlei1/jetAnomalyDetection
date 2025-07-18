@@ -109,7 +109,7 @@ def one_hot_encode_pdgId(row: pd.Series, pdg_ids: List[int]) -> pd.Series:
     """
     # this part takes the most time, since it's run `len(pdg_ids) * len(df)` times! (~6 * 18000)
     pdg_array = np.array(row['pdgId'])
-    logging.debug(f"Entered one-hot, {len(pdg_array)=}")
+    # logging.debug(f"Entered one-hot, {len(pdg_array)=}")
     for pdg_id in pdg_ids:
         row[f'pdgId_{pdg_id}'] = (pdg_array == pdg_id).astype(int)
     return row
@@ -133,6 +133,9 @@ def modify_df(df: pd.DataFrame, pdg: List[str]) -> pd.DataFrame:
     Returns:
         pd.DataFrame: Fully processed DataFrame ready for graph construction.
     """
+
+    # the data is represented as a list of particles for each event, so len(df.pt) == len(df.pdgIg) == ...
+    
     logging.info(f"Entered modify_df! {len(df)=}. Now calculating dz/dzErr...")
     helpers_main.secs_since_last_ping()
     # takes some time
@@ -149,11 +152,10 @@ def modify_df(df: pd.DataFrame, pdg: List[str]) -> pd.DataFrame:
     logging.info(f"Found within_bounds {helpers_main.time_taken()}")
 
     df['log_pt'] = df.apply(lambda row: np.log(np.array(row['pt'])), axis=1)
-    logging.info(f"Found log_pt {helpers_main.time_taken()}")
+    logging.info(f"Found log_pt {helpers_main.time_taken()}, calculating one-hot lists...")
 
     # Compute one-hot encodings using full PDG set
     unique_pdg_ids = sorted(df['pdgId'].explode().unique().tolist())
-    logging.info(f"Found unique_pdg_ids {helpers_main.time_taken()}, now calculating one-hot lists...")
     # TAKES THE MOST TIME!!!
     df = df.apply(lambda row: one_hot_encode_pdgId(row, unique_pdg_ids), axis=1)
     logging.info(f"Found one-hot lists {helpers_main.time_taken()}, now filtering out-of-bounds particles...")

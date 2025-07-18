@@ -101,3 +101,5 @@ python3.9 scripts/run_train_autoencoder.py
 
 - `python3.9 helpers/join_dfs.py --path <folder> --filter <jet_label>` to join all the `.pkl` files in the folder containing the specified label
     - e.g. to join all `QCD_Pt1800to2400_*.pkl` files
+
+- `raw_data_info` contains the treenames and branch names for the TTrees in the raw `.root` files, e.g. "Events" or "FatJet"

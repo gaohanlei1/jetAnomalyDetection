@@ -71,7 +71,7 @@ def apply_scalers(df: pd.DataFrame, scaler_dict: Dict[str, np.ndarray]) -> Tuple
             indices = [i for i, item in enumerate(flattened_list) if item != 0.0]
             org_data_dict[col] = flattened_list
 
-            if col[:3] != 'pdg':
+            if not col.startswith("pdg"):
                 per_minus_36, per_plus_36 = scaler_dict[col]
                 df[col] = df.apply(
                     lambda row: (((np.array(row[col]).reshape(-1, 1)) - per_minus_36) /

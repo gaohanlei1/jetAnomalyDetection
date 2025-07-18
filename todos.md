@@ -19,7 +19,7 @@
 
 
 
-## Tue - 15.07.25 (sis's bday!!!)
+## Tue - 15.07.25
 
 **DONE:**
 - Concatenated, organised, and sent all preprocessed data files to Arjun
@@ -39,32 +39,57 @@
 
 - (small fun stuff) Added subfolder/concat support, refactored pre/processing, removed `ak.to_numpy` etc.
 
+
+
+
+
+
+
+
+
+## Fri - 18.07.25
+
 **NOW:**
 
-- Since Arjun's still busy training, with his permission I'm merging his work on brux into a new branch
-    - doable since he hasn't touched the preproc/proc scripts much, it's the training + viz scripts
-
-- Familiarising myself with the model changes and the visualisations
-    - Graphing properties other than log_pt
-        - Arjun did this with WWto4Q, so I'll do it w/ the other preproc'd WJet files
-    - Analysing the new `.root`s themselves w/ uproot 
-
-- Using processed jet pairs to train Arjun's model
-    - then starting to work on the autoencoder myself, perform param sweeps etc
-
-- Training takes a while (34 epochs -> 20 mins), so I'll look into using the Brux GPU
-    - promised for a while - finally getting to it!!!
-
-
-**extras:**
+- Uprooting the `.root` files, plotting distributions of different features flattened out!
+    - and overlaying similar features to see how similar they are
+    - arjun hasn't uprooted the new .root files - do it and save the plots!
+    - correlation heatmaps? check out arjun's one
 
 - Diagnosing the QCD50to80 issue - why do all events get rejected?
+    - uprooting is confusing me a bit; try using arjun's pt_comparison.py to graph the FatJet_pt distributions for all QCDs
+        - why are they mostly empty??
+    - need to check/graph the data during get_fatjets() in preprocessing.py, too!
+        - different fields? is it still pt, or eta, or etc all at the same time?
+        - maybe count the number of events that are filtered out by certain filters? `len(fj[!filter])`
+    - the main thing to do is cross-check with the other .root files, see what's different
 
-- Maybe concatenating the old data files in multiple parts? For WJets_HT-400to600
+- Using the visualize() func in processing.py to visualise stuff like the zeroes after processing
+    - what gets excluded when `not include_zeros`? how are scaled zeroes distributed?
+    - also to visualise processed distributions in general across all fields
+        - errors out at mass I think, coz of inf/nan errors! try to filter out and redo
 
-- For `preprocess/feature_engineering.py`, the one-hot lists can be sped up using vectorisation; sth like:
-```py
-df[f"pdgId_{PDG_ID}"] = (df["pdgId"] == pdg_id).astype(int) for pdg_id in VALID_PDGS
-```
-    - Currently takes a bunch of minutes for 150 MB preprocessed files; so 10 mins for 1 GB etc.
+- Summing ALL the QCD data files, and THEN taking the 200-300 GeV Pt slice from both QCD and WJet (WWto4Q)
+    - point is more data + to see if the autoencoder can learn even when the Pt ranges are so similar
+    - tool to do this! lol
+        - and save diff ranges to train with?
+
+- After merging w/ main, start properly merging Arjun's changes into the repo on a new branch
+    - familiarise w/ the visualisations and other tools, update if needed (e.g. graphing other properties)
+    - familiarise w/ the model and what's been done so far
+        - what features have been used to train? how have the edges been modified? what hasn't been tried?
+        - what regions of parameters have been sweeped, and what haven't?
+
+- Merge w/ main again, and start streamlining/updating Arjun's code
+    - save different useful plots permanently (analysing all the raw/processed data)
+    
+- Look into ways to use Brux's GPU!
+
+- **Todos on Slack!!**
+    - using PFCands instead of FatJet?
+
+
+
+
+
 
