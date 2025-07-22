@@ -49,25 +49,25 @@
 
 ## Fri - 18.07.25
 
-**NOW:**
-
-- Uprooting the `.root` files, plotting distributions of different features flattened out!
-    - and overlaying similar features to see how similar they are
-    - arjun hasn't uprooted the new .root files - do it and save the plots!
-    - correlation heatmaps? check out arjun's one
-
+**DONE:**
 - Diagnosing the QCD50to80 issue - why do all events get rejected?
     - uprooting is confusing me a bit; try using arjun's pt_comparison.py to graph the FatJet_pt distributions for all QCDs
         - why are they mostly empty??
     - need to check/graph the data during get_fatjets() in preprocessing.py, too!
         - different fields? is it still pt, or eta, or etc all at the same time?
         - maybe count the number of events that are filtered out by certain filters? `len(fj[!filter])`
-    - the main thing to do is cross-check with the other .root files, see what's different
+    - the main thing to do is cross-check with the other .root files, see what's different\
+(answer: PT lower bound)
+
+
+**NOW:**
+- Plotting log_pt instead of pt for preproc/proc
 
 - Using the visualize() func in processing.py to visualise stuff like the zeroes after processing
     - what gets excluded when `not include_zeros`? how are scaled zeroes distributed?
     - also to visualise processed distributions in general across all fields
         - errors out at mass I think, coz of inf/nan errors! try to filter out and redo
+    - other possible stuff to plot: distribution of Pts for events with multiple fatjets instead of flattening them out
 
 - Summing ALL the QCD data files, and THEN taking the 200-300 GeV Pt slice from both QCD and WJet (WWto4Q)
     - point is more data + to see if the autoencoder can learn even when the Pt ranges are so similar
@@ -90,6 +90,12 @@
     - using PFCands instead of FatJet?
 
 
+**less important:**
+- Uprooting the `.root` files, plotting distributions of different features flattened out
+    - and overlaying similar features to see how similar they are
+    - arjun hasn't uprooted the new .root files - do it and save the plots!
+    - correlation heatmaps? check out arjun's one
+    - we'll also be using PFCands instead of just FatJets at some point - plot those!
 
 
 

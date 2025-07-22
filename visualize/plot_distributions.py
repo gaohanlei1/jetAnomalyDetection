@@ -131,7 +131,7 @@ def corresponding_preproc(raw_file_name, proc_files):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog="Plot Pt",
-        description="plots the Pts for preprocessing (comparing uproot and coffea!), processing, and/or post-processing"
+        description="Plots Pts of different characteristics (FatJets, FatJetPFCands, PFCands) at different processing stages (raw, preproc, proc)"
     )
     parser.add_argument(
         "--path1", "-q", type=str, required=True,
@@ -142,8 +142,21 @@ if __name__ == "__main__":
         help="(optional) path to 2nd data file (to plot both together); if provided, no folders for path1 or path2! TODO"
     )
     parser.add_argument(
-        "--type", "-t", choices=["raw", "preproc", "proc", "pre_and_proc"], default="raw",
-        help=f"plot the raw .root distributions (using uproot vs coffea before masking), the pickled distributions after preprocessing, or the pickled distributions after processing"
+        "--type", "-t", choices=["raw", "preproc", "proc", "raw_fjlen"], default="raw",
+        help=
+        f"""'raw': raw pt with uproot vs coffea;
+            'preproc': preproc flattened pt (ratio of FatJetPFCands.pt to FatJet.pt);
+            (BELOW ARE TO-DOs)
+            'proc': same as preproc, but modified and scaled (TODO: add include_zeros!);
+            'raw_fjlen': raw pts with uproot/coffea, but also partitioned into the number of jets per event
+            (LESS LIKELY TO-DOs)
+            'raw_fj_pfcs': raw pts of FatJetPFCands
+            'raw_pfcs': raw pts of PFCands
+            'raw_pfcslen': raw lengths of PFCands"""
+    )
+    parser.add_argument(
+        "--prop", "-p", type=str, default="pt",
+        help="the property to graph"
     )
 
     args = parser.parse_args()
@@ -193,7 +206,10 @@ if __name__ == "__main__":
 
                 filename = helpers_main.get_trimmed_name(file)
                 pkl = pd.read_pickle(file)
-                pts = pkl["pt"].explode().to_numpy()
+                if args.prop not in pkl.columns.tolist():
+                    logging.warning(f"Skipping no-{args.prop} {file=}")
+                    continue
+                props = pkl[args.prop].explode().to_numpy()
 
-                plot_distributions([pts], "Pt", label_list=[filename + "_pt"])
+                plot_distributions([props], args.prop, label_list=[filename + "_" + args.prop])
 

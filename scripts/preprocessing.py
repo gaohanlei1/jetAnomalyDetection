@@ -39,6 +39,18 @@ Notes:
 - branchnames in ../helpers/raw_data_info
 '''
 
+# class DataProcessor:
+
+#     def __init__(self):
+#         args = parser.parse_args()
+#         self.path = args.path
+#         self.type = args.type
+#         self.upperpt, self.lowerpt = args.upperpt, args.lowerpt
+#         self.subfolder = args.subfolder
+
+
+
+
 def get_fatjets(events): 
     fatjets = events.FatJet
     # store unmasked fjs
@@ -56,7 +68,9 @@ def get_fatjets(events):
         (ak.fill_none(fatjets.delta_r(muons) > c.MUON_R_LOWER_BOUND, True)) & 
         (~ak.is_none(fatjets.matched_gen, axis=1)) & 
         (fatjets.delta_r(fatjets.matched_gen) < c.MATCHED_GEN_R_LOWER_BOUND)& 
-        (fatjets.pt > c.FATJET_PT_LOWER_BOUND) &
+        # (fatjets.pt > c.FATJET_PT_LOWER_BOUND) &
+        (fatjets.pt > 200) &
+        (fatjets.pt < 300) &
         (abs(fatjets.eta) < c.FATJET_ETA_BOUNDS) &
         (ak.num(fatjets) > 0) &
         (~ak.is_none(fatjets))
@@ -254,6 +268,15 @@ if __name__ == "__main__":
         "--subfolder", "-s", required=False, default=False, action=argparse.BooleanOptionalAction,
         help=f"If provided, save to subfolder within preprocessed directory. Also concatenates all .pkl files within that subfolder!\n(Make sure the subfolder name is unique)"
     )
+    parser.add_argument(
+        "--upperpt", "-B", required=False,
+        help=f"upper bound on fatjet Pt?"
+    )
+    parser.add_argument(
+        "--lowerpt", "-b", required=False,
+        help=f"lower bound on fatjet Pt?"
+    )
+
     args = parser.parse_args()
 
     session_name = f"preproc_{args.type}_{helpers_main.curr_time()}"
