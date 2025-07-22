@@ -22,6 +22,13 @@ helpers_main.log_config(f"logs/plotpt_{helpers_main.curr_time()}.log")
 from scripts.preprocessing import get_fatjets
 from visualize import plot_property_distributions
 
+'''
+Usage:
+`python3.9 visualize/plot_distributions.py -q data/raw/path/` to plot the raw data distributions of the ROOT files in the path
+
+To-dos:
+- support to compare different files, e.g. raw vs preprocessed vs processed data
+'''
 
 def plot_distributions(data_list, prop_name, label_list=None, bins=150, include_zeros=True, scaled_zero=0.0):
     '''Plots and saves multiple datasets as overlapping histograms'''
@@ -42,8 +49,10 @@ def plot_distributions(data_list, prop_name, label_list=None, bins=150, include_
             and not math.isnan(item)
         ]
 
+        logging.info(f"{i}-th dataset ({label_list[i]}) has no data! Length before filtering NaNs and 0s: {len(data_list[i])}")
+
         if len(data) == 0:
-            logging.warning(f"{i}-th dataset ({label_list[i]}) has no data! Length before filtering NaNs and 0s: {len(data_list[i])}")
+            logging.warning("No data!")
         else:
             bin_range = (np.min(data), np.max(data))
         
@@ -59,8 +68,8 @@ def plot_pt(qcd_events, wjet_events):
 
     qcd_fj, qcd_pfc   = get_fatjets(qcd_events)
     wjet_fj, wjet_pfc = get_fatjets(wjet_events)
-    qcd_pt  = get_pt_from_events(qcd_fj)
-    wjet_pt = get_pt_from_events(wjet_fj)
+    qcd_pt  = get_pt_from_fatjets(qcd_fj)
+    wjet_pt = get_pt_from_fatjets(wjet_fj)
 
     # before any preproc
     plot_property_distribution(
@@ -90,8 +99,8 @@ def get_pt_from_root(filename, branch="FatJet_pt", treename="Events"):
         return ak.flatten(file[treename][branch].array()).to_numpy()
 
 
-def get_pt_from_events(fatjets):
-    logging.info(f"{fatjets=}")
+def get_pt_from_fatjets(fatjets):
+    logging.debug(f"{fatjets=}")
     if isinstance(fatjets, int): return np.array([0])
     # flattens out instances of multiple pts! can plot differences in this later
     return fatjets["pt"].to_numpy().flatten()
@@ -112,22 +121,31 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--path2", "-w", type=str, required=False,
-        help="(optional) path to 2nd data file (to plot both together); no folders! If provided, this will be plotted on top of the first file's distributions (TODO)"
+        help="(optional) path to 2nd data file (to plot both together); if provided, no folders for path1 or path2! TODO"
     )
     parser.add_argument(
         "--type", "-t", choices=["raw", "preproc", "proc", "all"], default="raw",
-        help=f"plot the raw .root distributions (using both uproot and coffea), the pickled distributions after preprocessing, and/or the pickled distributions after processing"
+        help=f"plot the raw .root distributions (using uproot, coffea but before masking, after masking, and after full preproc), the pickled distributions after preprocessing, and/or the pickled distributions after processing"
     )
 
     args = parser.parse_args()
 
     if args.path2 is not None:
-        # working on this
+        if args.type in ("raw", "all"):
+            pts = []
+            for filepath in (args.path1, args.path2):
+                ext = helpers_main.get_extension(filepath)
+                if ext == ".root":
+                    pts.append(get_pt_from_root(filepath))
+                    # pts.append(ak.flatten(load_events(filepath).FatJet).pt.to_numpy())
+                    # pts.append(get_pt_from_fatjets(get_fatjets(load_events(filepath))[0]))
+                elif ext == ".pkl":
+                    pts.append(pd.read_pickle(filepath))
+                else:
+                    raise Exception("Wrong filetype")
+            
+            plot_distributions(pts, "Pt", label_list=[helpers_main.get_trimmed_name(args.path1), helpers_main.get_trimmed_name(args.path2)])
 
-        # plot qcd/wjet pair
-        # Coffea loading and plotting
-        qcd_ev, wjet_ev = load_events(args.path1), load_events(args.path2)
-        plot_pt(qcd_ev, wjet_ev)
     else:
         if args.type in ("raw", "all"):
             files = [args.path1] if os.path.isfile(args.path1) else [
@@ -140,9 +158,11 @@ if __name__ == "__main__":
 
                 filename = helpers_main.get_trimmed_name(file)
                 root_pt = get_pt_from_root(file)
-                evs_pt  = get_pt_from_events(get_fatjets(load_events(file))[0])
                 
-                plot_distributions([root_pt, evs_pt], "Pt", label_list=[filename + "_uproot", filename + "_events"])
-
+                ev = load_events(file)
+                evs_raw_pt = ak.flatten(ev.FatJet).pt.to_numpy()
+                evs_masked_pt  = get_pt_from_fatjets(get_fatjets(ev)[0])
+                
+                plot_distributions([root_pt, evs_raw_pt, evs_masked_pt], "Pt", label_list=[filename + "_uproot", filename + "_eventsraw", filename + "_eventsmasked"])
 
 
