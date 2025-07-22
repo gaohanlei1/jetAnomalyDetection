@@ -241,7 +241,8 @@ def main(data_path, data_type, subfolder):
 
     # by now, guaranteed to be full file paths
     files = [data_path] if os.path.isfile(data_path) else [
-        file for file in os.listdir(data_path)
+        os.path.join(data_path, file)
+        for file in os.listdir(data_path)
         if os.path.isfile(os.path.join(data_path, file))
     ]
 
