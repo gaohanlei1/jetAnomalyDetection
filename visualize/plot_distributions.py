@@ -19,7 +19,7 @@ config = helpers_main.load_config()
 import logging
 helpers_main.log_config(f"logs/plotpt_{helpers_main.curr_time()}.log")
 
-from scripts.preprocessing import get_fatjets
+from scripts.preprocessing import get_fatjets, process_event_root
 from visualize import plot_property_distributions
 
 '''
@@ -47,9 +47,9 @@ def plot_distributions(data_list, prop_name, label_list=None, bins=150, include_
             item for item in data_list[i]
             if (include_zeros or not math.isclose(item, scaled_zero, rel_tol=1e-4, abs_tol=0.0))
             and not math.isnan(item)
-        ]
+        ]s
 
-        logging.info(f"{i}-th dataset ({label_list[i]}) has no data! Length before filtering NaNs and 0s: {len(data_list[i])}")
+        logging.info(f"{i}-th dataset {label_list[i]}'s length: {len(data)}! Length before filtering NaNs and 0s: {len(data_list[i])}")
 
         if len(data) == 0:
             logging.warning("No data!")
@@ -109,6 +109,24 @@ def get_pt_from_fatjets(fatjets):
 def load_events(root_path):
     return NanoEventsFactory.from_root(root_path, schemaclass = PFNanoAODSchema).events()
 
+# def preproc(events):
+#     data = {}
+#     for i in tqdm(range(len(events))):
+#         properties, property_names = process_event_root(events[i:i+1])
+#         if properties == -1: continue
+
+#         if not data: 
+#             data = {property_name: [] for property_name in property_names}
+        
+#         for j, prop in enumerate(properties): 
+#             data[property_names[j]].append(prop)
+#     return data["pt"]
+
+def corresponding_preproc(raw_file_name, proc_files):
+    '''Gets the preprocessed data file corresponding to this raw data file'''
+    for file in proc_files:
+        if helpers_main.get_trimmed_name(raw_file_name) in file: return file 
+    logging.warning(f"{raw_file_name=} not found within processed files - skipping!")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -125,7 +143,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--type", "-t", choices=["raw", "preproc", "proc", "all"], default="raw",
-        help=f"plot the raw .root distributions (using uproot, coffea but before masking, after masking, and after full preproc), the pickled distributions after preprocessing, and/or the pickled distributions after processing"
+        help=f"plot the raw .root distributions (using uproot, coffea but before masking, after masking), the pickled distributions after preprocessing, and/or the pickled distributions after processing"
     )
 
     args = parser.parse_args()
@@ -138,31 +156,38 @@ if __name__ == "__main__":
                 if ext == ".root":
                     pts.append(get_pt_from_root(filepath))
                     # pts.append(ak.flatten(load_events(filepath).FatJet).pt.to_numpy())
-                    # pts.append(get_pt_from_fatjets(get_fatjets(load_events(filepath))[0]))
                 elif ext == ".pkl":
                     pts.append(pd.read_pickle(filepath))
                 else:
                     raise Exception("Wrong filetype")
             
             plot_distributions(pts, "Pt", label_list=[helpers_main.get_trimmed_name(args.path1), helpers_main.get_trimmed_name(args.path2)])
-
     else:
         if args.type in ("raw", "all"):
             files = [args.path1] if os.path.isfile(args.path1) else [
                 os.path.join(args.path1, file) for file in os.listdir(args.path1)
                 if os.path.isfile(os.path.join(args.path1, file))
             ]
+            # temp
+            PREPROC_PATH = "/home/smajum14/CERN/git/jetAnomalyDetection/data/preprocessed/qcd/btvnano"
+            preproc_files = [
+                os.path.join(PREPROC_PATH, file)
+                for file in os.listdir(PREPROC_PATH)
+                if os.path.isfile(os.path.join(PREPROC_PATH, file))
+            ]
 
             for file in files:
-                logging.info(f"Now plotting {file=}!")
+                preproc_file = corresponding_preproc(file, preproc_files)
+                logging.info(f"Now plotting {file=}, with {preproc_file=}!")
 
                 filename = helpers_main.get_trimmed_name(file)
                 root_pt = get_pt_from_root(file)
                 
                 ev = load_events(file)
                 evs_raw_pt = ak.flatten(ev.FatJet).pt.to_numpy()
-                evs_masked_pt  = get_pt_from_fatjets(get_fatjets(ev)[0])
+
+                preproc = pd.read_pickle(preproc_file)
                 
-                plot_distributions([root_pt, evs_raw_pt, evs_masked_pt], "Pt", label_list=[filename + "_uproot", filename + "_eventsraw", filename + "_eventsmasked"])
+                plot_distributions([root_pt, evs_raw_pt, preproc["pt"]], "Pt", label_list=[filename + "_uproot", filename + "_events", preproc_file])
 
 

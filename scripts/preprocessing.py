@@ -174,8 +174,6 @@ def preproc_events_slice(metadata):
 
     logging.debug(f"{events.fields=}")
     
-    # sth I wouldnta guessed: tqdm works nicely w/ multiple subprocesses, even w/o position!
-    # it jitters around as it shows different progresses at the same time
     # iterator = range(metadata['start'], metadata['end'])
     iterator = range(curr_events_num)
     iterator = iterator if config["dbg"]["only_one_progress_bar"] and pid_posn != 0 else tqdm(
