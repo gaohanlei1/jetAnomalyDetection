@@ -7,7 +7,6 @@ import sys
 import pandas as pd 
 from tqdm import tqdm
 import argparse
-import logging
 import matplotlib.pyplot as plt
 import uproot
 import math
@@ -16,6 +15,8 @@ import math
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from helpers import helpers_main
 config = helpers_main.load_config()
+
+import logging
 helpers_main.log_config(f"logs/plotpt_{helpers_main.curr_time()}.log")
 
 from scripts.preprocessing import get_fatjets
@@ -33,13 +34,19 @@ def plot_distributions(data_list, prop_name, label_list=None, bins=150, include_
     plt.ylabel("Density")
     plt.title(f"Distribution of {prop_name} for {num} datasets" + ("" if include_zeros else " (without scaled zeroes)"))
 
+    bin_range = (0, 1)
     for i in range(len(data_list)):
         data = [
             item for item in data_list[i]
             if (include_zeros or not math.isclose(item, scaled_zero, rel_tol=1e-4, abs_tol=0.0))
             and not math.isnan(item)
         ]
-        bin_range = np.min(data), np.max(data)
+
+        if len(data) == 0:
+            logging.warning(f"{i}-th dataset ({label_list[i]}) has no data! Length before filtering NaNs and 0s: {len(data_list[i])}")
+        else:
+            bin_range = (np.min(data), np.max(data))
+        
         plt.hist(data, bins=bins, range=bin_range, density=True, label=label_list[i], alpha=0.5)
 
     plt.legend(loc="upper right")
@@ -129,21 +136,13 @@ if __name__ == "__main__":
             ]
 
             for file in files:
-                print(f"Now plotting {file=}!")
+                logging.info(f"Now plotting {file=}!")
 
                 filename = helpers_main.get_trimmed_name(file)
                 root_pt = get_pt_from_root(file)
                 evs_pt  = get_pt_from_events(get_fatjets(load_events(file))[0])
                 
                 plot_distributions([root_pt, evs_pt], "Pt", label_list=[filename + "_uproot", filename + "_events"])
-
-
-
-
-
-
-
-
 
 
 
