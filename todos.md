@@ -84,6 +84,7 @@
     - save different useful plots permanently (analysing all the raw/processed data)
     
 - Look into ways to use Brux's GPU!
+    - if successful, we can train for way more epochs hopefully
 
 - **Todos on Slack!!**
     - using PFCands instead of FatJet?

@@ -36,7 +36,7 @@ Possible improvements: classes
 
 Notes:
 - the treenames in the root files: ['tag;1', 'Events;1', 'LuminosityBlocks;1', 'Runs;1', 'MetaData;1', 'ParameterSets;1']
-- branchnames in ../helpers/rootbranches.txt
+- branchnames in ../helpers/raw_data_info
 '''
 
 def get_fatjets(events): 
@@ -61,6 +61,8 @@ def get_fatjets(events):
         (ak.num(fatjets) > 0) &
         (~ak.is_none(fatjets))
     )
+
+    # log after each mask!!
 
     fatjets = fatjets[mask]
     sort_i = ak.argsort(fatjets.pt, axis=1)
