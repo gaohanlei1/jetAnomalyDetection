@@ -47,7 +47,7 @@ def plot_distributions(data_list, prop_name, label_list=None, bins=150, include_
             item for item in data_list[i]
             if (include_zeros or not math.isclose(item, scaled_zero, rel_tol=1e-4, abs_tol=0.0))
             and not math.isnan(item)
-        ]s
+        ]
 
         logging.info(f"{i}-th dataset {label_list[i]}'s length: {len(data)}! Length before filtering NaNs and 0s: {len(data_list[i])}")
 
@@ -56,7 +56,7 @@ def plot_distributions(data_list, prop_name, label_list=None, bins=150, include_
         else:
             bin_range = (np.min(data), np.max(data))
         
-        plt.hist(data, bins=bins, range=bin_range, density=True, label=label_list[i], alpha=0.5)
+        plt.hist(data, bins=bins, range=bin_range, density=False, label=label_list[i], alpha=0.5)
 
     plt.legend(loc="upper right")
     plt.savefig(f"plots/distributions/hists_{prop_name}_{len(data_list)}_{helpers_main.curr_time()}.png")
@@ -142,52 +142,58 @@ if __name__ == "__main__":
         help="(optional) path to 2nd data file (to plot both together); if provided, no folders for path1 or path2! TODO"
     )
     parser.add_argument(
-        "--type", "-t", choices=["raw", "preproc", "proc", "all"], default="raw",
-        help=f"plot the raw .root distributions (using uproot, coffea but before masking, after masking), the pickled distributions after preprocessing, and/or the pickled distributions after processing"
+        "--type", "-t", choices=["raw", "preproc", "proc", "pre_and_proc"], default="raw",
+        help=f"plot the raw .root distributions (using uproot vs coffea before masking), the pickled distributions after preprocessing, or the pickled distributions after processing"
     )
 
     args = parser.parse_args()
 
     if args.path2 is not None:
-        if args.type in ("raw", "all"):
-            pts = []
-            for filepath in (args.path1, args.path2):
-                ext = helpers_main.get_extension(filepath)
-                if ext == ".root":
-                    pts.append(get_pt_from_root(filepath))
-                    # pts.append(ak.flatten(load_events(filepath).FatJet).pt.to_numpy())
-                elif ext == ".pkl":
-                    pts.append(pd.read_pickle(filepath))
-                else:
-                    raise Exception("Wrong filetype")
-            
-            plot_distributions(pts, "Pt", label_list=[helpers_main.get_trimmed_name(args.path1), helpers_main.get_trimmed_name(args.path2)])
+        pts = []
+        for filepath in (args.path1, args.path2):
+            ext = helpers_main.get_extension(filepath)
+            if ext == ".root":
+                pts.append(get_pt_from_root(filepath))
+                # pts.append(ak.flatten(load_events(filepath).FatJet).pt.to_numpy())
+            elif ext == ".pkl":
+                pts.append(pd.read_pickle(filepath)["pt"].explode().to_numpy())
+            else:
+                raise Exception("Wrong filetype")
+        
+        plot_distributions(pts, "Pt", label_list=[helpers_main.get_trimmed_name(args.path1), helpers_main.get_trimmed_name(args.path2)])
     else:
-        if args.type in ("raw", "all"):
-            files = [args.path1] if os.path.isfile(args.path1) else [
-                os.path.join(args.path1, file) for file in os.listdir(args.path1)
-                if os.path.isfile(os.path.join(args.path1, file))
-            ]
-            # temp
-            PREPROC_PATH = "/home/smajum14/CERN/git/jetAnomalyDetection/data/preprocessed/qcd/btvnano"
-            preproc_files = [
-                os.path.join(PREPROC_PATH, file)
-                for file in os.listdir(PREPROC_PATH)
-                if os.path.isfile(os.path.join(PREPROC_PATH, file))
-            ]
+        files = [args.path1] if os.path.isfile(args.path1) else [
+            os.path.join(args.path1, file) for file in os.listdir(args.path1)
+            if os.path.isfile(os.path.join(args.path1, file))
+        ]
 
+        if args.type == "raw":
             for file in files:
-                preproc_file = corresponding_preproc(file, preproc_files)
-                logging.info(f"Now plotting {file=}, with {preproc_file=}!")
+                if helpers_main.get_extension(file) != ".root":
+                    logging.warning(f"Skipping non-root {file=}")
+                    continue
+
+                logging.info(f"Now plotting {file=}!") #, with {preproc_file=}!")
 
                 filename = helpers_main.get_trimmed_name(file)
                 root_pt = get_pt_from_root(file)
                 
                 ev = load_events(file)
                 evs_raw_pt = ak.flatten(ev.FatJet).pt.to_numpy()
-
-                preproc = pd.read_pickle(preproc_file)
                 
-                plot_distributions([root_pt, evs_raw_pt, preproc["pt"]], "Pt", label_list=[filename + "_uproot", filename + "_events", preproc_file])
+                plot_distributions([root_pt, evs_raw_pt], "Pt", label_list=[filename + "_uproot", filename + "_events"])
 
+        elif args.type in ("preproc", "proc"):
+            for file in files:
+                if helpers_main.get_extension(file) != ".pkl":
+                    logging.warning(f"Skipping non-pkl {file=}")
+                    continue
+
+                logging.info(f"Now plotting {file=}!") #, with {preproc_file=}!")
+
+                filename = helpers_main.get_trimmed_name(file)
+                pkl = pd.read_pickle(file)
+                pts = pkl["pt"].explode().to_numpy()
+
+                plot_distributions([pts], "Pt", label_list=[filename + "_pt"])
 
