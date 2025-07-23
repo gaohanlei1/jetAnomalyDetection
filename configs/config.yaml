@@ -19,7 +19,7 @@ data:
   raw_qcd: data/raw/qcd/
   raw_wjet: data/raw/wjet/
   # after preprocessing, move the raw data file into a subfolder?
-  move_to_used: true
+  move_to_used: false
   
   preprocessed_qcd: data/preprocessed/qcd
   preprocessed_wjet: data/preprocessed/wjet

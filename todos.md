@@ -61,7 +61,9 @@
 
 
 **NOW:**
+
 - Plotting log_pt instead of pt for preproc/proc
+    - reason: to check how distributions change with processing
 
 - Using the visualize() func in processing.py to visualise stuff like the zeroes after processing
     - what gets excluded when `not include_zeros`? how are scaled zeroes distributed?

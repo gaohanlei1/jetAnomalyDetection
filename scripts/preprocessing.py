@@ -103,10 +103,10 @@ def process_event_root(events):
     if isinstance(fatjets, int):
         return -1, -1
     pfcands = events.PFCands
-    
-    eta = ak.flatten(pfcands["phi"] - fatjets["phi"])[pfcs]
-    phi = ak.flatten(pfcands["eta"] - fatjets["eta"])[pfcs]
-    pt  = ak.flatten(pfcands["pt"]/fatjets["pt"])[pfcs]
+
+    eta = ak.to_numpy(pfcands["phi"] - fatjets["phi"]).flatten()[pfcs]
+    phi = ak.to_numpy(pfcands["eta"] - fatjets["eta"]).flatten()[pfcs]
+    pt  = ak.to_numpy(pfcands["pt"]/fatjets["pt"]).flatten()[pfcs]
     # TODO: old ratio based on whether it is qcd or wjet -> this is not model agnostic !!!
       # check that current pt scheme is correct
 
@@ -118,7 +118,7 @@ def process_event_root(events):
     for field in fields: 
         if field not in ("pt", "eta", "phi"):
             # logging.debug(f"Added {field=} to property_names")
-            properties.append(ak.flatten(pfcands[field])[pfcs])
+            properties.append(ak.to_numpy(pfcands[field]).flatten()[pfcs])
             property_names.append(field)
 
     return properties, property_names
