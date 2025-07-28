@@ -8,8 +8,8 @@ Arjun's code
 '''
 
 # Replace with your actual file paths
-file1 = "/home/anagaman/jet-anomaly-summer25/data/QCD_PT-1000to1400_TuneCP5_13p6TeV_pythia8_1.root"
-file2 = "/home/anagaman/jet-anomaly-summer25/data/WWto4Q_TuneCP5_13p6TeV_powheg-pythia8_1.root"
+file1 = "data/QCD_PT-1000to1400_TuneCP5_13p6TeV_pythia8_1.root"
+file2 = "data/WWto4Q_TuneCP5_13p6TeV_powheg-pythia8_1.root"
 
 def get_pt_array(filename, branch="FatJet_pt", treename="Events"):
     with uproot.open(filename) as file:

@@ -49,6 +49,13 @@
 
 ## Fri - 18.07.25
 
+**Not imp:**
+- Uprooting the `.root` files, plotting distributions of different features flattened out
+    - and overlaying similar features to see how similar they are
+    - arjun hasn't uprooted the new .root files - do it and save the plots!
+    - correlation heatmaps? check out arjun's one     
+
+
 **DONE:**
 - Diagnosing the QCD50to80 issue - why do all events get rejected?
     - uprooting is confusing me a bit; try using arjun's pt_comparison.py to graph the FatJet_pt distributions for all QCDs
@@ -59,22 +66,27 @@
     - the main thing to do is cross-check with the other .root files, see what's different\
 (answer: PT lower bound)
 
+- Plotting distribution of Pts for events with multiple fatjets instead of flattening them out
+    - plotting for all btvnano `.root` data, to check for useful differences
+        - saved in a folder for future reference, `
+    - points:
+        - the 200 GeV cutoff actually nixes a lot of data that involves multiple fatjets in the same event
+            - since their Pts sum up to close to the average Pt
+            - doesn't this mean we're using less data? or is it not a good idea to sum these tgt during preproc
+
+- Fixed preprocessing bug that was making everything 10x slower; finally preprocessing files within 200-300 range   
+
 
 **NOW:**
-
-- Plotting log_pt instead of pt for preproc/proc
-    - reason: to check how distributions change with processing
-
-- Using the visualize() func in processing.py to visualise stuff like the zeroes after processing
-    - what gets excluded when `not include_zeros`? how are scaled zeroes distributed?
-    - also to visualise processed distributions in general across all fields
-        - errors out at mass I think, coz of inf/nan errors! try to filter out and redo
-    - other possible stuff to plot: distribution of Pts for events with multiple fatjets instead of flattening them out
-
 - Summing ALL the QCD data files, and THEN taking the 200-300 GeV Pt slice from both QCD and WJet (WWto4Q)
     - point is more data + to see if the autoencoder can learn even when the Pt ranges are so similar
     - tool to do this! lol
         - and save diff ranges to train with?
+    - *ISSUES:*
+        - doesn't seem to be easily possible to use the preprocessed data directly
+            - coz it saves ratio of fj to pfcs! what's that about?
+            - preproc needs to be done again for each range; not very helpful
+        - currently preprocessing all the QCD data separately
 
 - After merging w/ main, start properly merging Arjun's changes into the repo on a new branch
     - familiarise w/ the visualisations and other tools, update if needed (e.g. graphing other properties)
@@ -92,13 +104,15 @@
     - using PFCands instead of FatJet?
 
 
-**less important:**
-- Uprooting the `.root` files, plotting distributions of different features flattened out
-    - and overlaying similar features to see how similar they are
-    - arjun hasn't uprooted the new .root files - do it and save the plots!
-    - correlation heatmaps? check out arjun's one
-    - we'll also be using PFCands instead of just FatJets at some point - plot those!
+**later maybe:**
+- Using the visualize() func in processing.py to visualise stuff like the zeroes after processing
+    - what gets excluded when `not include_zeros`? how are scaled zeroes distributed?
+    - also to visualise processed distributions in general across all fields
+        - errors out at mass I think, coz of inf/nan errors! try to filter out and redo
+
+- Plot PFCands! since we may be using those for training at some point (instead of the ratio of fatjet to pfcs pt)
 
 
+**Questions:**
 
-
+- Why does preprocessing output the ratio of fatjet to pfcs pt?

@@ -69,7 +69,7 @@ def df_info(df, printcols):
     if printcols: print(f"{df.columns=}")
 
 def get_trimmed_name(filename):
-    return os.path.splitext(os.path.basename(filename))[0]
+    return os.path.splitext(os.path.basename(filename))[0].replace("/","").replace("\\","")
 
 def get_extension(filename):
-    return os.path.splitext(os.path.basename(filename))[1]
+    return os.path.splitext(os.path.basename(filename))[1].replace("/","").replace("\\","")

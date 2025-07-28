@@ -15,7 +15,7 @@ from sklearn.metrics import roc_curve, auc
 import pandas as pd
 
 
-def plot_loss(train_loss, val_loss, save_path='plots/loss.png'):
+def plot_loss(train_loss, val_loss, save_path='/home/anagaman/jet-anomaly-summer25/jetAnomalyDetection/plots/test-plots/loss.png'):
     """
     Plot training and validation loss curves over epochs.
 
@@ -40,7 +40,7 @@ def plot_loss(train_loss, val_loss, save_path='plots/loss.png'):
     plt.close()
 
 
-def plot_anomaly_score(test_scores, anomaly_scores, background_label, signal_label, save_path='plots/anomaly_score.png'):
+def plot_anomaly_score(test_scores, anomaly_scores, background_label, signal_label, save_path='plots/test-plots/anomaly_score.png'):
     """
     Plot a histogram comparing the anomaly scores (MSE loss) for signal and background samples.
 
@@ -74,61 +74,105 @@ def plot_anomaly_score(test_scores, anomaly_scores, background_label, signal_lab
     plt.savefig(save_path)
     plt.close()
 
+# ORIGINAL FUNCTION
+# def plot_roc_curve(model, signal_label, background_label, savepath, examples, loss_fn, properties=[]):
+#     """
+#     Compute and plot the ROC curve from anomaly scores for background vs. signal.
+
+#     Args:
+#         model (nn.Module): Trained autoencoder model containing loss attributes:
+#                            `background_test_loss` and `signal_loss`.
+#         signal_label (str): Label to annotate the signal class.
+#         background_label (str): Label to annotate the background class.
+#         savepath (str): Output path to save the ROC plot.
+#         examples (bool): Unused placeholder for compatibility.
+#         loss_fn (callable): Loss function used during training (e.g., MSELoss).
+#         properties (list): Reserved for optional filtering or scoring dimensions (unused).
+
+#     Returns:
+#         None. Prints AUC score and saves plot.
+#     """
+#     test_loss = model.background_test_loss
+#     anomaly_loss = model.signal_loss
+
+#     min_val = np.min([np.min(anomaly_loss), np.min(test_loss)])
+#     max_val = np.max([np.max(anomaly_loss), np.max(test_loss)])
+#     thresholds = np.linspace(min_val, max_val, num=500)
+
+#     e_signal = []     # True positive rate
+#     e_background = [] # False positive rate
+
+#     for threshold in thresholds:
+#         pred_signal = (test_loss > threshold).flatten()
+#         pred_background = (anomaly_loss > threshold).flatten()
+#         true_signal = np.ones_like(pred_signal)
+#         true_background = np.ones_like(pred_background)
+
+#         tp_signal = np.sum(np.logical_and(pred_signal, true_signal))
+#         tp_background = np.sum(np.logical_and(pred_background, true_background))
+
+#         tot_signal = len(true_signal)
+#         tot_background = len(true_background)
+
+#         e_signal.append(tp_signal / tot_signal)
+#         e_background.append(tp_background / tot_background)
+
+#     # Plot ROC
+#     plt.figure()
+#     plt.plot(e_signal, e_background, label='Autoencoder')
+#     plt.plot([0, 1], [0, 1], 'k--', label='Random guess')
+#     plt.xlabel(f'e_signal: {signal_label}')
+#     plt.ylabel(f'e_background: {background_label}')
+#     plt.title('Receiver Operating Characteristic (ROC) Curve')
+#     plt.legend()
+#     plt.grid()
+#     plt.tight_layout()
+
+#     auc_score = auc(e_signal, e_background)
+#     print(f'AUC: {auc_score:.3f}')
+#     plt.savefig(savepath)
+#     plt.close()
+
+from sklearn.metrics import roc_curve, auc
+import matplotlib.pyplot as plt
 
 def plot_roc_curve(model, signal_label, background_label, savepath, examples, loss_fn, properties=[]):
     """
-    Compute and plot the ROC curve from anomaly scores for background vs. signal.
+    Compute and plot the ROC curve using signal and background reconstruction losses.
 
     Args:
-        model (nn.Module): Trained autoencoder model containing loss attributes:
-                           `background_test_loss` and `signal_loss`.
-        signal_label (str): Label to annotate the signal class.
-        background_label (str): Label to annotate the background class.
-        savepath (str): Output path to save the ROC plot.
-        examples (bool): Unused placeholder for compatibility.
-        loss_fn (callable): Loss function used during training (e.g., MSELoss).
-        properties (list): Reserved for optional filtering or scoring dimensions (unused).
+        model (nn.Module): Trained autoencoder model containing `background_test_loss` and `signal_loss`.
+        signal_label (str): Label for signal class.
+        background_label (str): Label for background class.
+        savepath (str): File path to save the plot.
+        examples (bool): Unused.
+        loss_fn (callable): Loss function used.
+        properties (list): Reserved.
 
     Returns:
-        None. Prints AUC score and saves plot.
+        None
     """
-    test_loss = model.background_test_loss
-    anomaly_loss = model.signal_loss
+    test_loss = np.array(model.background_test_loss)
+    signal_loss = np.array(model.signal_loss)
 
-    min_val = np.min([np.min(anomaly_loss), np.min(test_loss)])
-    max_val = np.max([np.max(anomaly_loss), np.max(test_loss)])
-    thresholds = np.linspace(min_val, max_val, num=500)
+    # Labels: 0 = background, 1 = signal
+    y_true = np.concatenate([np.zeros_like(test_loss), np.ones_like(signal_loss)])
+    y_scores = np.concatenate([test_loss, signal_loss])
 
-    e_signal = []     # True positive rate
-    e_background = [] # False positive rate
+    fpr, tpr, _ = roc_curve(y_true, y_scores)
+    auc_score = auc(fpr, tpr)
 
-    for threshold in thresholds:
-        pred_signal = (test_loss > threshold).flatten()
-        pred_background = (anomaly_loss > threshold).flatten()
-        true_signal = np.ones_like(pred_signal)
-        true_background = np.ones_like(pred_background)
-
-        tp_signal = np.sum(np.logical_and(pred_signal, true_signal))
-        tp_background = np.sum(np.logical_and(pred_background, true_background))
-
-        tot_signal = len(true_signal)
-        tot_background = len(true_background)
-
-        e_signal.append(tp_signal / tot_signal)
-        e_background.append(tp_background / tot_background)
-
-    # Plot ROC
+    # Plot
     plt.figure()
-    plt.plot(e_signal, e_background, label='Autoencoder')
-    plt.plot([0, 1], [0, 1], 'k--', label='Random guess')
-    plt.xlabel(f'e_signal: {signal_label}')
-    plt.ylabel(f'e_background: {background_label}')
+    plt.plot(fpr, tpr, label=f'AUC = {auc_score:.3f}')
+    plt.plot([0, 1], [0, 1], 'k--', label='Random Guess')
+    plt.xlabel(f'False Positive Rate (background as {signal_label})')
+    plt.ylabel(f'True Positive Rate ({signal_label})')
     plt.title('Receiver Operating Characteristic (ROC) Curve')
+    plt.grid(True)
     plt.legend()
-    plt.grid()
     plt.tight_layout()
-
-    auc_score = auc(e_signal, e_background)
-    print(f'AUC: {auc_score:.3f}')
     plt.savefig(savepath)
     plt.close()
+
+    print(f"AUC: {auc_score:.3f}")

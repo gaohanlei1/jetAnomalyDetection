@@ -36,6 +36,11 @@ python3.9 scripts/processing.py
 python3.9 scripts/run_train_autoencoder.py
 ```
 
+**NOTE:** if you want to run the time-consuming scripts on Brux/LXPlus over SSH, prepend the command with `nohup`!\
+With this, you can close the SSH connection and the script will keep running - the terminal output just goes to `nohup.out` in the current dir.\
+e.g. `nohup python3.9 scripts/preprocessing.py -t background`\
+(Remember to check terminal output often with `cat nohup.out` to check for errors; e.g. because of no virtual environment)
+
 ## Overview
 
 - We preprocess `.root` jet data files into intermediate pickled DataFrames (`.pkl`),
@@ -59,6 +64,7 @@ python3.9 scripts/run_train_autoencoder.py
 
 - If you only have a single file to preprocess, run `python3.9 scripts/preprocessing.py -p <filepath> -t [background/signal]`
     - You should also set `move_to_used` to `false` if this is in a directory you can't write to
+    - Remember to add `nohup` if you want to leave it running over SSH!
 
 - Otherwise, collect your background (QCD) and/or signal (WJet) `.root` data files into two folders
 
@@ -85,6 +91,13 @@ python3.9 scripts/run_train_autoencoder.py
     - This will process the preprocessed `.pkl` files in the specified paths (defaults are set in `config.yaml`)
     - You can also add labels for each jet using `--label_bg` and `--label_sg`
     - NOTE: if you add `--filter`, then the program will use those labels to filter out preprocessed files
+
+
+### Training
+
+- TODO!!
+
+- Run `python3.9 scripts/run_train_autoencoder.py`??? After setting the train and test files?
 
 ### Visualisation
 

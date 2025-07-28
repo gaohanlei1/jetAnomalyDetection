@@ -2,10 +2,10 @@
 
 # Debugging
 dbg:
-  measure_perf: false
+  measure_perf: true
   # 10: DEBUG; 20: INFO; 30: WARNING; 40: ERROR
   logging_level: 20
-  only_one_progress_bar: false
+  only_one_progress_bar: true
 
 # Paths
 data:

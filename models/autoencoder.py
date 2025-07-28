@@ -134,3 +134,4 @@ class JetGraphAutoencoder(nn.Module):
 
         x = self.decoder(x, edge_index, batch, training)
         return x
+        

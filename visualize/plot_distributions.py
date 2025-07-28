@@ -30,16 +30,21 @@ To-dos:
 - support to compare different files, e.g. raw vs preprocessed vs processed data
 '''
 
-def plot_distributions(data_list, prop_name, label_list=None, bins=150, include_zeros=True, scaled_zero=0.0):
+def plot_distributions(
+    data_list, prop_name, long_label=None, filename=None, label_list=None,
+    bins=150, include_zeros=True, scaled_zero=0.0
+):
     '''Plots and saves multiple datasets as overlapping histograms'''
-    
+    if long_label is None: long_label = prop_name
+    if filename is None: filename = ''
+
     num = len(data_list)
     if len(label_list) != num: label_list = [None] * num
     plt.figure(figsize=(10, 6))
 
     plt.xlabel(prop_name)
     plt.ylabel("Density")
-    plt.title(f"Distribution of {prop_name} for {num} datasets" + ("" if include_zeros else " (without scaled zeroes)"))
+    plt.title(f"Distribution of '{long_label}' for {num} datasets" + ("" if include_zeros else " (without scaled zeroes)"))
 
     bin_range = (0, 1)
     for i in range(len(data_list)):
@@ -59,7 +64,9 @@ def plot_distributions(data_list, prop_name, label_list=None, bins=150, include_
         plt.hist(data, bins=bins, range=bin_range, density=False, label=label_list[i], alpha=0.5)
 
     plt.legend(loc="upper right")
-    plt.savefig(f"plots/distributions/hists_{prop_name}_{len(data_list)}_{helpers_main.curr_time()}.png")
+    fig_name = f"plots/distributions/hists_{prop_name}_{filename}_{len(data_list)}_{helpers_main.curr_time()}.png"
+    plt.savefig(fig_name)
+    logging.info(f"Saved into '{fig_name}'")
     plt.clf()
 
 
@@ -180,7 +187,7 @@ if __name__ == "__main__":
             if os.path.isfile(os.path.join(args.path1, file))
         ]
 
-        if args.type == "raw":
+        if args.type in ("raw", "raw_fjlen"):
             for file in files:
                 if helpers_main.get_extension(file) != ".root":
                     logging.warning(f"Skipping non-root {file=}")
@@ -192,9 +199,39 @@ if __name__ == "__main__":
                 root_pt = get_pt_from_root(file)
                 
                 ev = load_events(file)
-                evs_raw_pt = ak.flatten(ev.FatJet).pt.to_numpy()
+
+                if args.type == "raw":
+                    evs_raw_pt = ak.flatten(ev.FatJet).pt.to_numpy()
+                    plot_distributions([root_pt, evs_raw_pt], "Pt", label_list=[filename + "_uproot", filename + "_events"])
+                elif args.type == "raw_fjlen":
+                    lens = np.array([len(fjs) for fjs in ev.FatJet])
+                    len_arrs = []
+                    max_fjs = max(lens)
+                    for num_fjs in range(max_fjs):
+                        len_arrs.append(ev.FatJet[lens == num_fjs].pt)
+                        logging.info(f"Events with {num_fjs} sub-fjs: {len(len_arrs[-1])}")
+                    
+                    # plot the flattened distributions of the diff fjs
+                    plot_distributions(
+                        [ak.flatten(len_arr).to_numpy() for len_arr in len_arrs],
+                        "FatJet-Pt-flattened",
+                        label_list=[f"{i} fjs" for i in range(max_fjs)], filename=filename
+                    )
+
+                    # plot the distributions of the event fjs, averaged by event
+                    plot_distributions(
+                        [ak.mean(len_arr, axis=1).to_numpy() for len_arr in len_arrs],
+                        "FatJet-Pt-mean",
+                        label_list=[f"{i} fjs" for i in range(max_fjs)], filename=filename
+                    )
+
+                    # plot the distributions of the event fjs, summed by event
+                    plot_distributions(
+                        [ak.sum(len_arr, axis=1).to_numpy() for len_arr in len_arrs],
+                        "FatJet-Pt-sum",
+                        label_list=[f"{i} fjs" for i in range(max_fjs)], filename=filename
+                    )
                 
-                plot_distributions([root_pt, evs_raw_pt], "Pt", label_list=[filename + "_uproot", filename + "_events"])
 
         elif args.type in ("preproc", "proc"):
             for file in files:
