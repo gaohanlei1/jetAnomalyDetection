@@ -23,7 +23,7 @@ data:
   
   preprocessed_qcd: data/preprocessed/qcd
   preprocessed_wjet: data/preprocessed/wjet
-  processed_data_dir: data/processed/scaledby_QCD_PT-170to300/
+  processed_data_dir: data/processed/scaledby_QCD_PT-170to300_2/
 
   train_file: QCD_PT-170to300_13p6TeV_scaled.pkl
   test_file: WJetsToQQ_HT-400to600_scaled.pkl
