@@ -3,12 +3,15 @@ from datetime import datetime as dt
 import pandas as pd
 import logging
 import sys
+import os
+from time import time
 
 def load_config():
     with open("configs/config.yaml", "r") as f:
         return yaml.safe_load(f)
 
 config = load_config()
+LAST_PING = None
 
 def log_config(filename):
     logging.basicConfig(
@@ -37,6 +40,25 @@ def curr_time() -> str:
     # Returns current time to use as a timestamp for naming files
     return dt.now().strftime("%j-%H%M-%S")  # %f gives 6 digit microseconds
 
+def secs_since_last_ping() -> float:
+    '''
+    Returns seconds (to 4 d.p.) past since the last time this function was called,
+    or 0 if first time.
+    Saves state! Using globals... :(
+    '''
+    # yes, this would be better as a class;
+    # yes, I shouldn't care coz I'm already over-engineering this
+    global LAST_PING
+    curr_time = time()
+    if LAST_PING is None: LAST_PING = curr_time
+    elapsed = curr_time - LAST_PING
+    LAST_PING = curr_time
+    return round(elapsed, 4)
+
+def time_taken() -> str:
+    '''Formats the time since last call to secs_since_last_ping()'''
+    return f" (took {secs_since_last_ping()} s)"
+
 def to_df(file_path):
     # Returns the given pickled pandas DataFrame.
     assert file_path.endswith(".pkl"), "Only .pkl files, sorry!"
@@ -45,3 +67,9 @@ def to_df(file_path):
 def df_info(df, printcols):
     print(f"{df.shape=}\n")
     if printcols: print(f"{df.columns=}")
+
+def get_trimmed_name(filename):
+    return os.path.splitext(os.path.basename(filename))[0].replace("/","").replace("\\","")
+
+def get_extension(filename):
+    return os.path.splitext(os.path.basename(filename))[1].replace("/","").replace("\\","")

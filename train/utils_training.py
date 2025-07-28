@@ -10,6 +10,10 @@ This module includes:
 import torch
 import numpy as np
 from torch_geometric.loader import DataLoader
+from torch.optim.lr_scheduler import StepLR
+from torch_geometric.data import Data
+from typing import List, Tuple
+
 
 def train_loop(dataloader, model, loss_fn, optimizer):
     """
@@ -33,6 +37,7 @@ def train_loop(dataloader, model, loss_fn, optimizer):
         pred = pred[:, :X.x.shape[1]]  # Only reconstruct original feature dimensions
 
         loss = loss_fn(pred, X.x)
+
         total_loss.append(float(loss))
 
         loss.backward()
@@ -76,8 +81,68 @@ def eval_loop(dataloader, model, loss_fn, test=False, signal=False):
 
     return loss
 
+# def normalize_graph_features(
+#     graphs: List[Data]
+# ) -> Tuple[List[Data], torch.Tensor, torch.Tensor]:
+#     """
+#     Normalize features across all graphs using the global mean and std.
 
-def train_model(train_dataloader, test_dataloader, signal_dataloader, model, loss_fn, optimizer, epochs, batch_size):
+#     Args:
+#         graphs (List[Data]): List of PyG graphs with node features.
+
+#     Returns:
+#         Tuple containing:
+#         - List[Data]: Normalized graphs
+#         - torch.Tensor: Feature mean
+#         - torch.Tensor: Feature std
+#     """
+#     # Stack all node features to compute global stats
+#     all_features = torch.cat([graph.x for graph in graphs], dim=0)
+#     mean = all_features.mean(dim=0)
+#     std = all_features.std(dim=0)
+
+#     # Avoid divide-by-zero
+#     std[std == 0] = 1.0
+
+#     # Normalize each graph
+#     for graph in graphs:
+#         graph.x = (graph.x - mean) / std
+
+#     return graphs, mean, std
+
+def normalize_graph_features(
+    graphs: List[Data],
+    mean: torch.Tensor = None,
+    std: torch.Tensor = None
+) -> Tuple[List[Data], torch.Tensor, torch.Tensor]:
+    """
+    Normalize features across all graphs using the global mean and std.
+
+    Args:
+        graphs (List[Data]): List of PyG graphs with node features.
+        mean (torch.Tensor, optional): If given, use this mean to normalize.
+        std (torch.Tensor, optional): If given, use this std to normalize.
+
+    Returns:
+        Tuple containing:
+        - List[Data]: Normalized graphs
+        - torch.Tensor: Feature mean used
+        - torch.Tensor: Feature std used
+    """
+    if mean is None or std is None:
+        all_features = torch.cat([graph.x for graph in graphs], dim=0)
+        mean = all_features.mean(dim=0)
+        std = all_features.std(dim=0)
+        std[std == 0] = 1.0  # Prevent divide-by-zero
+
+    # Normalize each graph
+    for graph in graphs:
+        graph.x = (graph.x - mean) / std
+
+    return graphs, mean, std
+
+
+def train_model(train_dataloader, test_dataloader, signal_dataloader, model, loss_fn, optimizer, epochs, batch_size, scheduler=None):
     """
     Trains the model across multiple epochs and tracks performance on validation and signal sets.
 
@@ -108,20 +173,37 @@ def train_model(train_dataloader, test_dataloader, signal_dataloader, model, los
         val_loss = []
         signal_loss = []
 
-        # Run training step
-        train_loop(train_dataloader, model, loss_fn, optimizer)
+        current_lr = optimizer.param_groups[0]['lr']
+        print(f"Learning Rate: {current_lr:.6f}")
 
-        # Evaluate on validation and signal
+        # Run training step
+        # train_loop(train_dataloader, model, loss_fn, optimizer)
+
+        # # Evaluate on validation and signal
+        # val_loss.extend(eval_loop(test_dataloader, model, loss_fn, test=True, signal=False))
+        # train_loss.extend(eval_loop(train_dataloader, model, loss_fn, test=False, signal=False))
+        # signal_loss.extend(eval_loop(signal_dataloader, model, loss_fn, test=False, signal=True))
+        # Run training and capture true training loss
+        mean_train_loss = train_loop(train_dataloader, model, loss_fn, optimizer)
+
+        # Evaluate on validation and signal sets
         val_loss.extend(eval_loop(test_dataloader, model, loss_fn, test=True, signal=False))
-        train_loss.extend(eval_loop(train_dataloader, model, loss_fn, test=False, signal=False))
         signal_loss.extend(eval_loop(signal_dataloader, model, loss_fn, test=False, signal=True))
 
         # Append epoch results
-        model.train_hist.append(np.nanmean(train_loss))
+        # model.train_hist.append(np.nanmean(train_loss))
+        # model.val_hist.append(np.nanmean(val_loss))
+        # model.signal_hist.append(np.nanmean(signal_loss))
+        
+        model.train_hist.append(mean_train_loss)
         model.val_hist.append(np.nanmean(val_loss))
         model.signal_hist.append(np.nanmean(signal_loss))
 
-        print("train loss ", np.nanmean(train_loss))
+
+        if scheduler is not None:
+            scheduler.step()
+
+        print("train loss ", mean_train_loss)
         print("test loss ", np.nanmean(val_loss))
         print("signal loss", np.nanmean(signal_loss))
 
@@ -130,4 +212,5 @@ def train_model(train_dataloader, test_dataloader, signal_dataloader, model, los
     model.background_train_loss = train_loss
     model.signal_loss = signal_loss
 
-    return train_loss, val_loss, eval_loop(signal_dataloader, model, loss_fn, test=False, signal=True)
+    #return train_loss, val_loss, eval_loop(signal_dataloader, model, loss_fn, test=False, signal=True)
+    return model.train_hist, model.val_hist, model.signal_hist

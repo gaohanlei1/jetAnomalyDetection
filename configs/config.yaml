@@ -2,37 +2,31 @@
 
 # Debugging
 dbg:
-  measure_perf: false
+  measure_perf: true
   # 10: DEBUG; 20: INFO; 30: WARNING; 40: ERROR
   logging_level: 20
+  only_one_progress_bar: true
 
 # Paths
 data:
-  events_per_file: 1000
+  # jet_type
   background: qcd
   signal: wjet
   
-  # before preprocessing, the raw data could come from different locations for different jet types
-  # remote data
   #raw_qcd: /isilon/export/home/mstamenk/jet-anomaly-summer25/downloads/jekrupa/v2_2/2017/QCD/QCD_Pt_1000to1400_TuneCP5_13TeV_pythia8/QCD_Pt_1000to1400/211109_133059/0000/
   #raw_wjet: /isilon/export/home/mstamenk/jet-anomaly-summer25/downloads/jekrupa/v2_2/2017/WJetsToQQ/WJetsToQQ_HT-400to600_TuneCP5_13TeV-madgraphMLM-pythia8/WJetsToQQ_HT-400to600/211108_171900/0000/
   # local/symlinked data
   raw_qcd: data/raw/qcd/
   raw_wjet: data/raw/wjet/
   # after preprocessing, move the raw data file into a subfolder?
-  move_to_used: true
-  used_raw_data_dir: used/
+  move_to_used: false
   
-  # after preprocessing, all the data should be in <dir>/<jet_type>, e.g. data/preprocessed/qcd/
-  preprocessed_data_dir: data/preprocessed/
-  processed_data_dir: data/processed/
-  
-  # rule of thumb: WJet HT range should be around double that of QCD Pt range
-  qcd_label:  QCD_Pt_1000-1400
-  wjet_label: WJet_HT_400-600
+  preprocessed_qcd: data/preprocessed/qcd
+  preprocessed_wjet: data/preprocessed/wjet
+  processed_data_dir: data/processed/scaledby_QCD_PT-170to300_2/
 
-  train_file: datatype1small.pkl
-  test_file: datatype2small.pkl
+  train_file: QCD_PT-170to300_13p6TeV_scaled.pkl
+  test_file: WJetsToQQ_HT-400to600_scaled.pkl
 
 # Model Hyperparameters
 model:
@@ -45,7 +39,7 @@ model:
 training:
   initial_lr: 0.000005
   epochs: 10
-  device: cuda  # Options: 'cuda' or 'cpu'
+  device: cpu  # Options: 'cuda' or 'cpu'
 
 # Other
 misc:

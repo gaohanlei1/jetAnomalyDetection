@@ -1,35 +1,39 @@
 import pandas as pd
 import argparse
-import helpers
 import os
+import sys
+
+# Add parent directory to import local project modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from helpers import helpers_main
 
 def print_info(path, printcols, printall):
     print(f"{path=}")
-    df = helpers.to_df(path)
-    helpers.df_info(df, printcols)
+    df = helpers_main.to_df(path)
+    helpers_main.df_info(df, printcols)
     if printall: print(df)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog="Pickled DataFrame Analyser",
-        description="outputs info about the pickled DataFrame\ne.g. 'python3.9 helpers/check_pkl_len.py --path data/preprocessed/qcd/data1.pkl'"
+        description="outputs info about the pickled DataFrame\ne.g. 'python3.9 helpers_main/check_pkl_len.py --path data/preprocessed/qcd/data1.pkl'"
     )
     parser.add_argument(
-        "--path", type=str, required=True,
+        "--path", "-p", type=str, required=True,
         help=".pkl file or folder path; if folder, loops over all files"
     )
     parser.add_argument(
-        "--print", default=False, action=argparse.BooleanOptionalAction,
+        "--print", "-r", default=False, action=argparse.BooleanOptionalAction,
         help="print all rows"
     )
     parser.add_argument(
-        "--printcols", default=False, action=argparse.BooleanOptionalAction,
+        "--printcols", "-c", default=False, action=argparse.BooleanOptionalAction,
         help="print columns"
     )
 
     args = parser.parse_args()
     if os.path.isfile(args.path):
-        print_info(args)
+        print_info(args.path, args.printcols, args.print)
     else:
         # print(f"Printing info of dfs in {args.path}")
         for file in os.listdir(args.path):
