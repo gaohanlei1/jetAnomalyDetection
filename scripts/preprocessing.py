@@ -122,7 +122,7 @@ class Preprocessor:
             lowerpt = str(lowerpt) if lowerpt else ''
             upperpt = str(upperpt) if upperpt else ''
             subfolder_path = os.path.join(config["data"]["preprocessed_" + self.jet_type], helpers_main.get_trimmed_name(filepath) + f"_Pt{lowerpt}to{upperpt}")
-            join_dfs.concat_pkls(subfolder_path)
+            join_dfs.concat_pkls(subfolder_path, output_name=f"concat_{helpers_main.get_trimmed_name(filepath)}_{self.lowerpt}-{self.upperpt}_{helpers_main.curr_time()}")
             logging.info(f"Concatenated into {subfolder_path}; you can delete the non-concat files!")
         
 

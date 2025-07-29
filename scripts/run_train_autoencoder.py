@@ -64,7 +64,7 @@ train_graphs, mean, std = normalize_graph_features(train_graphs)
 test_graphs, _, _ = normalize_graph_features(test_graphs, mean=mean, std=std)
 signal_graphs, _, _ = normalize_graph_features(signal_graphs, mean=mean, std=std)
 
-os.makedirs("/home/anagaman/jet-anomaly-summer25/jetAnomalyDetection/plots/test-plots/features", exist_ok=True)
+os.makedirs("plots/test-plots/features", exist_ok=True)
 all_features = torch.cat([graph.x for graph in train_graphs], dim=0)
 
 # Compute mean and std per feature dimension
@@ -88,11 +88,11 @@ for i in range(num_features):
     plt.grid(True)
     plt.tight_layout()
     safe_name = feature_names[i].replace('/', '_') if i < len(feature_names) else str(i)
-    plt.savefig(f"/home/anagaman/jet-anomaly-summer25/jetAnomalyDetection/plots/test-plots/features/feature_{i+1}_{safe_name}.png")
+    plt.savefig(f"plots/test-plots/features/feature_{i+1}_{safe_name}.png")
     plt.close()
 
 # Ensure output directory exists
-save_dir = '/home/anagaman/jet-anomaly-summer25/jetAnomalyDetection/plots/test-plots/'
+save_dir = 'plots/test-plots/'
 os.makedirs(save_dir, exist_ok=True)
 
 def run_autoencoder_training(train_graphs, test_graphs, signal_graphs, smallest_dim, num_reduced_edges, batch_size, epochs, initial_lr):

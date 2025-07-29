@@ -19,9 +19,10 @@ def concat_pkls(folder_path, filter_str=None, output_name=None):
             and os.path.splitext(name)[1] == ".pkl"
             and (filter_str is None or filter_str in name)
     ]
-    if not dfs: raise Exception(f"No files in directory {folder_path}!")
+    dfs = [df for df in dfs if not df.empty]
+    if not dfs: raise Exception(f"No non-empty pickled dataframes in {folder_path=}!")
+    
     columns = dfs[0].columns.tolist()
-
     # sanity check
     for df in dfs:
         next_columns = df.columns.tolist()
@@ -31,6 +32,7 @@ def concat_pkls(folder_path, filter_str=None, output_name=None):
     concatted = pd.concat(dfs)
 
     if not output_name: output_name = f"concat_{'' if filter_str is None else filter_str}_{helpers_main.curr_time()}.pkl"
+    if not output_name.endswith(".pkl"): output_name += ".pkl"
     output_path = os.path.join(folder_path, output_name)
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     concatted.to_pickle(output_path)

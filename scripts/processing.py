@@ -128,7 +128,7 @@ class DataProcessor:
         # .copy()
         logging.info(f"Done! {helpers_main.time_taken()}")
 
-        logging.info(f"{type(self.wjet_scaled_vals)=}\n{self.wjet_scaled_vals=}\n{self.qcd_scaled_vals=}")
+        # logging.info(f"{type(self.wjet_scaled_vals)=}\n{self.wjet_scaled_vals=}\n{self.qcd_scaled_vals=}")
 
     def visualize_data(self):
         # Plot raw and scaled distributions for selected variable(s)

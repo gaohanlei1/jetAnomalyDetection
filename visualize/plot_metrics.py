@@ -15,7 +15,7 @@ from sklearn.metrics import roc_curve, auc
 import pandas as pd
 
 
-def plot_loss(train_loss, val_loss, save_path='/home/anagaman/jet-anomaly-summer25/jetAnomalyDetection/plots/test-plots/loss.png'):
+def plot_loss(train_loss, val_loss, save_path='plots/test-plots/loss.png'):
     """
     Plot training and validation loss curves over epochs.
 
