@@ -116,3 +116,22 @@
 **Questions:**
 
 - Why does preprocessing output the ratio of fatjet to pfcs pt?
+
+
+
+
+
+
+
+
+
+
+
+now
+
+- figure out how preproc matches fatjets with fatjetpfcands
+    - inject some printing into preproceventsslice
+        - does it broadcast?
+    - with this, we can figure out how to add the metadata
+    - each fatjet should have its pt recorded, alongside... pfcands? what other fields?
+    - add to documentation in readme!

@@ -73,3 +73,7 @@ def get_trimmed_name(filename):
 
 def get_extension(filename):
     return os.path.splitext(os.path.basename(filename))[1].replace("/","").replace("\\","")
+
+
+def strnone_to_str(strnone):
+    return '' if strnone is None else str(strnone)

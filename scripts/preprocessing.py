@@ -50,7 +50,7 @@ class Preprocessor:
         self.subfolder = args.subfolder
         
     def setup_log(self):
-        self.session_name = f"preproc_{self.type}_pt{self.lowerpt if self.lowerpt else ''}-{self.upperpt if self.upperpt else ''}_{helpers_main.curr_time()}"
+        self.session_name = f"preproc_{self.type}_pt{helpers_main.strnone_to_str(metadata['lowerpt'])}-{helpers_main.strnone_to_str(metadata['upperpt'])}_{helpers_main.curr_time()}"
         helpers_main.log_config(f"logs/{self.session_name}.log")
         logging.info("Set up logger!")
         return self.session_name
@@ -119,9 +119,7 @@ class Preprocessor:
             move_to_used(filepath)
 
         if self.subfolder:
-            lowerpt = str(lowerpt) if lowerpt else ''
-            upperpt = str(upperpt) if upperpt else ''
-            subfolder_path = os.path.join(config["data"]["preprocessed_" + self.jet_type], helpers_main.get_trimmed_name(filepath) + f"_Pt{lowerpt}to{upperpt}")
+            subfolder_path = os.path.join(config["data"]["preprocessed_" + self.jet_type], helpers_main.get_trimmed_name(filepath) + f"_Pt{helpers_main.strnone_to_str(metadata['lowerpt'])}to{helpers_main.strnone_to_str(metadata['upperpt'])}")
             join_dfs.concat_pkls(subfolder_path, output_name=f"concat_{helpers_main.get_trimmed_name(filepath)}_{self.lowerpt}-{self.upperpt}_{helpers_main.curr_time()}")
             logging.info(f"Concatenated into {subfolder_path}; you can delete the non-concat files!")
         
@@ -172,11 +170,16 @@ def get_fatjets(events, lowerpt=None, upperpt=None):
     return fatjets, pfcs
 
 def process_event_root(events, lowerpt=None, upperpt=None):
+    # processes on a per-jet basis, NOT per-event! hence the flattening
     fatjets, pfcs = get_fatjets(events, lowerpt, upperpt)
     
     if isinstance(fatjets, int):
         return -1, -1
     pfcands = events.PFCands
+
+    if len(fatjets["pt"]) > 0 and len(fatjets["pt"][0]) != 1:
+        logging.warning(f"!!!\n{len(len(fatjets["pt"][0])=)}, {fatjets["pt"]=}\n")
+        # raise Exception("FatJet wrong shape!")
 
     eta = ak.to_numpy(ak.flatten(pfcands["phi"] - fatjets["phi"])[pfcs])
     phi = ak.to_numpy(ak.flatten(pfcands["eta"] - fatjets["eta"])[pfcs])
@@ -184,13 +187,24 @@ def process_event_root(events, lowerpt=None, upperpt=None):
     # TODO: old ratio based on whether it is qcd or wjet ->x     this is not model agnostic !!!
       # check that current pt scheme is correct
 
-    properties = [pt, eta, phi]
-    property_names = ["pt", "eta", "phi"]
+    # logging.info(f"{len(fatjets['pt'])=}, {fatjets['pt']=}")
+    # logging.info(f"{eta.shape=}, {phi.shape=}, {pt.shape=}")
+    # logging.info(f"{pfcands['phi']=}\n{pfcands['eta']=}\n{pfcands['pt']=}")
+    # logging.info(f"{fatjets['phi']=}\n{fatjets['eta']=}\n{fatjets['pt']=}")
+    # logging.info(f"{pfcs=}\n")
+    # if len(pfcands['phi']) > 0: logging.info(ak.to_numpy(pfcands['phi'][0]))
+
+    fj_phi = fatjets["phi"][0][0]
+    fj_eta = fatjets["eta"][0][0]
+    fj_pt  = fatjets["pt"][0][0]
+
+    # if you want, add pfcs_phi/eta/pt to the saved data too
+    properties = [pt, eta, phi, fj_phi, fj_eta, fj_pt]
+    property_names = ["pt", "eta", "phi", "fj_phi", "fj_eta", "fj_pt"]
 
     # add all other fields
-    fields = pfcands.fields
-    for field in fields: 
-        if field not in ("pt", "eta", "phi"):
+    for field in pfcands.fields:
+        if field not in property_names:
             # logging.debug(f"Added {field=} to property_names")
             properties.append(ak.to_numpy(pfcands[field]).flatten()[pfcs])
             property_names.append(field)
@@ -247,12 +261,10 @@ def preproc_events_slice(metadata):
 def save_df(data_dict, metadata):
     logging.info(f"Received new df, saving!")
     basename = helpers_main.get_trimmed_name(metadata["filepath"])
-    lowerpt = str(lowerpt) if lowerpt else ''
-    upperpt = str(upperpt) if upperpt else ''
     output_file_path = os.path.join(
         config["data"]["preprocessed_" + metadata["jet_type"]],
         basename if metadata["subfolder"] else "",
-        f"{basename}_Pt{lowerpt}-{upperpt}_{os.getpid()}_{helpers_main.curr_time()}.pkl"
+        f"{basename}_Pt{helpers_main.strnone_to_str(metadata['lowerpt'])}-{helpers_main.strnone_to_str(metadata['upperpt'])}_{os.getpid()}_{helpers_main.curr_time()}.pkl"
     )
     os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
     pd.DataFrame.from_dict(data_dict).to_pickle(output_file_path)

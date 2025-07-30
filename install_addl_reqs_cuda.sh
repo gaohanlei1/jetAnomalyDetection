@@ -1,6 +1,5 @@
 #!/bin/bash
 
-######## matches my local jetvenv
 python3.9 -m pip install --ignore-installed torch-geometric==2.6.1
 # --no-deps, coz some of these try to install numpy==1.25.0, which is incompatible w/ other dependencies??
 python3.9 -m pip install --ignore-installed torch-scatter --no-deps -f https://data.pyg.org/whl/torch-2.2.1+cu118.html
