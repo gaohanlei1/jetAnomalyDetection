@@ -76,8 +76,6 @@
 
 - Fixed preprocessing bug that was making everything 10x slower; finally preprocessing files within 200-300 range   
 
-
-**NOW:**
 - Summing ALL the QCD data files, and THEN taking the 200-300 GeV Pt slice from both QCD and WJet (WWto4Q)
     - point is more data + to see if the autoencoder can learn even when the Pt ranges are so similar
     - tool to do this! lol
@@ -86,7 +84,19 @@
         - doesn't seem to be easily possible to use the preprocessed data directly
             - coz it saves ratio of fj to pfcs! what's that about?
             - preproc needs to be done again for each range; not very helpful
-        - currently preprocessing all the QCD data separately
+        - preprocessing all the QCD data separately
+
+- figure out how preproc matches fatjets with fatjetpfcands
+    - inject some printing into preproceventsslice
+        - does it broadcast?
+    - with this, we can figure out how to add the metadata
+    - each fatjet should have its pt recorded, alongside... pfcands? what other fields?
+
+**NOW:**
+
+- Can add more metadata than currently added (fj_phi etc)
+    - and make sure this remains in processing, too!!
+    - add to documentation in readme! e.g. how to graph the fatjet pt ranges from preproc data
 
 - After merging w/ main, start properly merging Arjun's changes into the repo on a new branch
     - familiarise w/ the visualisations and other tools, update if needed (e.g. graphing other properties)
@@ -113,9 +123,6 @@
 - Plot PFCands! since we may be using those for training at some point (instead of the ratio of fatjet to pfcs pt)
 
 
-**Questions:**
-
-- Why does preprocessing output the ratio of fatjet to pfcs pt?
 
 
 
@@ -123,15 +130,3 @@
 
 
 
-
-
-
-
-now
-
-- figure out how preproc matches fatjets with fatjetpfcands
-    - inject some printing into preproceventsslice
-        - does it broadcast?
-    - with this, we can figure out how to add the metadata
-    - each fatjet should have its pt recorded, alongside... pfcands? what other fields?
-    - add to documentation in readme!

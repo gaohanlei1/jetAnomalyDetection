@@ -12,6 +12,9 @@ This script:
 import sys
 import os
 
+# Add the parent directory to Python's path to allow local imports
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import torch
 import pandas as pd
 import numpy as np
@@ -26,8 +29,6 @@ import matplotlib.pyplot as plt
 from torch.optim.lr_scheduler import StepLR
 from typing import List, Tuple
 
-# Add the parent directory to Python's path to allow local imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import constants as c
 from helpers import helpers_main
 from helpers import join_dfs

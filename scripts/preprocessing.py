@@ -277,7 +277,7 @@ def save_df(data_dict, metadata):
         metadata["save_path"],
         f"{basename}_Pt{helpers_main.strnone_to_str(metadata['lowerpt'])}-{helpers_main.strnone_to_str(metadata['upperpt'])}_{os.getpid()}_{helpers_main.curr_time()}.pkl"
     )
-    os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
+    helpers_main.create_missing_dir(output_file_path)
     pd.DataFrame.from_dict(data_dict).to_pickle(output_file_path)
     logging.info(f"Preprocessed into {output_file_path}.")
 

@@ -65,6 +65,7 @@ def plot_distributions(
 
     plt.legend(loc="upper right")
     fig_name = f"plots/distributions/hists_{prop_name}_{filename}_{len(data_list)}_{helpers_main.curr_time()}.png"
+    helpers_main.create_missing_dir(fig_name)
     plt.savefig(fig_name)
     logging.info(f"Saved into '{fig_name}'")
     plt.clf()
