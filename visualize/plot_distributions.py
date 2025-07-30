@@ -132,7 +132,7 @@ def load_events(root_path):
 def corresponding_preproc(raw_file_name, proc_files):
     '''Gets the preprocessed data file corresponding to this raw data file'''
     for file in proc_files:
-        if helpers_main.get_trimmed_name(raw_file_name) in file: return file 
+        if helpers_main.trim_name(raw_file_name) in file: return file 
     logging.warning(f"{raw_file_name=} not found within processed files - skipping!")
 
 if __name__ == "__main__":
@@ -180,7 +180,7 @@ if __name__ == "__main__":
             else:
                 raise Exception("Wrong filetype")
         
-        plot_distributions(pts, "Pt", label_list=[helpers_main.get_trimmed_name(args.path1), helpers_main.get_trimmed_name(args.path2)])
+        plot_distributions(pts, "Pt", label_list=[helpers_main.trim_name(args.path1), helpers_main.trim_name(args.path2)])
     else:
         files = [args.path1] if os.path.isfile(args.path1) else [
             os.path.join(args.path1, file) for file in os.listdir(args.path1)
@@ -195,7 +195,7 @@ if __name__ == "__main__":
 
                 logging.info(f"Now plotting {file=}!") #, with {preproc_file=}!")
 
-                filename = helpers_main.get_trimmed_name(file)
+                filename = helpers_main.trim_name(file)
                 root_pt = get_pt_from_root(file)
                 
                 ev = load_events(file)
@@ -241,7 +241,7 @@ if __name__ == "__main__":
 
                 logging.info(f"Now plotting {file=}!") #, with {preproc_file=}!")
 
-                filename = helpers_main.get_trimmed_name(file)
+                filename = helpers_main.trim_name(file)
                 pkl = pd.read_pickle(file)
                 if args.prop not in pkl.columns.tolist():
                     logging.warning(f"Skipping no-{args.prop} {file=}")

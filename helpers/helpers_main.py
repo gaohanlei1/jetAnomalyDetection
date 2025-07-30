@@ -68,7 +68,7 @@ def df_info(df, printcols):
     print(f"{df.shape=}\n")
     if printcols: print(f"{df.columns=}")
 
-def get_trimmed_name(filename):
+def trim_name(filename):
     return os.path.splitext(os.path.basename(filename))[0].replace("/","").replace("\\","")
 
 def get_extension(filename):

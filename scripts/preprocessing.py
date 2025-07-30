@@ -83,6 +83,16 @@ class Preprocessor:
     def load_root(self, filepath):
         logging.info(f"Now preprocessing {filepath}")
 
+        save_path = config["data"]["preprocessed_" + self.jet_type]
+        if self.subfolder:
+            save_path = os.path.join(
+                save_path,
+                helpers_main.trim_name(filepath)
+                + f"_Pt{helpers_main.strnone_to_str(self.lowerpt)}to{helpers_main.strnone_to_str(self.upperpt)}"
+            )
+            os.makedirs(save_path, exist_ok=True)
+        logging.info(f"{save_path=}")
+
         # - So, I'll be doing sth very stupid here: loading the same file multiple times
         # - coz pickle can't pickle coffea events for whatever reason
         # if EVENT_LIMIT: events = events[:EVENT_LIMIT]
@@ -104,7 +114,7 @@ class Preprocessor:
                     "filepath" : filepath,
                     "pid_list"  : pid_list,
                     "pid_lock"  : pid_lock,
-                    "subfolder" : self.subfolder,
+                    "save_path" : save_path,
                     "lowerpt"   : self.lowerpt,
                     "upperpt"   : self.upperpt
                 }
@@ -119,9 +129,11 @@ class Preprocessor:
             move_to_used(filepath)
 
         if self.subfolder:
-            subfolder_path = os.path.join(config["data"]["preprocessed_" + self.jet_type], helpers_main.get_trimmed_name(filepath) + f"_Pt{helpers_main.strnone_to_str(self.lowerpt)}to{helpers_main.strnone_to_str(self.upperpt)}")
-            join_dfs.concat_pkls(subfolder_path, output_name=f"concat_{helpers_main.get_trimmed_name(filepath)}_{self.lowerpt}-{self.upperpt}_{helpers_main.curr_time()}")
-            logging.info(f"Concatenated into {subfolder_path}; you can delete the non-concat files!")
+            join_dfs.concat_pkls(
+                save_path,
+                output_name=f"concat_{helpers_main.trim_name(filepath)}_{self.lowerpt}-{self.upperpt}_{helpers_main.curr_time()}"
+            )
+            logging.info(f"Concatenated into {save_path}; you can delete the non-concat files!")
         
 
 def get_fatjets(events, lowerpt=None, upperpt=None): 
@@ -260,10 +272,9 @@ def preproc_events_slice(metadata):
 
 def save_df(data_dict, metadata):
     logging.info(f"Received new df, saving!")
-    basename = helpers_main.get_trimmed_name(metadata["filepath"])
+    basename = helpers_main.trim_name(metadata["filepath"])
     output_file_path = os.path.join(
-        config["data"]["preprocessed_" + metadata["jet_type"]],
-        basename if metadata["subfolder"] else "",
+        metadata["save_path"],
         f"{basename}_Pt{helpers_main.strnone_to_str(metadata['lowerpt'])}-{helpers_main.strnone_to_str(metadata['upperpt'])}_{os.getpid()}_{helpers_main.curr_time()}.pkl"
     )
     os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
@@ -275,7 +286,6 @@ def main(preproc):
 
     for file in files:
         preproc.load_root(file)
-    
     
 
 

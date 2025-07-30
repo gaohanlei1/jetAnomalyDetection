@@ -23,4 +23,5 @@ INCR = 0.025 *2
 BINS = int(abs(ETA_MIN - ETA_MAX)/INCR)
 
 # for graph structure 
-CLOSEST_NEIGHBORS = 10 
+CLOSEST_NEIGHBORS = 10
+GRAPH_METHODS = ("eta_phi", "all_features", "fully_connected", "mass_knn")

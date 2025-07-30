@@ -89,7 +89,7 @@ def make_graph(data: dict,
                 clean_data[name] = values[valid_mask]
             else:
                 raise ValueError(f"Missing node feature: {name}")
-
+        
         x = torch.tensor(np.column_stack([clean_data[name] for name in node_feature_names]), dtype=torch.float).to(device)
         k = min(nearest_neighbors, x.shape[0] - 1)
 
