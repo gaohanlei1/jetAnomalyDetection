@@ -50,7 +50,7 @@ class Preprocessor:
         self.subfolder = args.subfolder
         
     def setup_log(self):
-        self.session_name = f"preproc_{self.type}_pt{helpers_main.strnone_to_str(metadata['lowerpt'])}-{helpers_main.strnone_to_str(metadata['upperpt'])}_{helpers_main.curr_time()}"
+        self.session_name = f"preproc_{self.type}_pt{helpers_main.strnone_to_str(self.lowerpt)}-{helpers_main.strnone_to_str(self.upperpt)}_{helpers_main.curr_time()}"
         helpers_main.log_config(f"logs/{self.session_name}.log")
         logging.info("Set up logger!")
         return self.session_name
@@ -119,7 +119,7 @@ class Preprocessor:
             move_to_used(filepath)
 
         if self.subfolder:
-            subfolder_path = os.path.join(config["data"]["preprocessed_" + self.jet_type], helpers_main.get_trimmed_name(filepath) + f"_Pt{helpers_main.strnone_to_str(metadata['lowerpt'])}to{helpers_main.strnone_to_str(metadata['upperpt'])}")
+            subfolder_path = os.path.join(config["data"]["preprocessed_" + self.jet_type], helpers_main.get_trimmed_name(filepath) + f"_Pt{helpers_main.strnone_to_str(self.lowerpt)}to{helpers_main.strnone_to_str(self.upperpt)}")
             join_dfs.concat_pkls(subfolder_path, output_name=f"concat_{helpers_main.get_trimmed_name(filepath)}_{self.lowerpt}-{self.upperpt}_{helpers_main.curr_time()}")
             logging.info(f"Concatenated into {subfolder_path}; you can delete the non-concat files!")
         
@@ -177,8 +177,8 @@ def process_event_root(events, lowerpt=None, upperpt=None):
         return -1, -1
     pfcands = events.PFCands
 
-    if len(fatjets["pt"]) > 0 and len(fatjets["pt"][0]) != 1:
-        logging.warning(f"!!!\n{len(len(fatjets["pt"][0])=)}, {fatjets["pt"]=}\n")
+    if len(fatjets["pt"]) != 1:
+        logging.warning(f"!!!\n{len(fatjets['pt'][0])=}, {fatjets['pt']=}\n")
         # raise Exception("FatJet wrong shape!")
 
     eta = ak.to_numpy(ak.flatten(pfcands["phi"] - fatjets["phi"])[pfcs])
@@ -194,9 +194,9 @@ def process_event_root(events, lowerpt=None, upperpt=None):
     # logging.info(f"{pfcs=}\n")
     # if len(pfcands['phi']) > 0: logging.info(ak.to_numpy(pfcands['phi'][0]))
 
-    fj_phi = fatjets["phi"][0][0]
-    fj_eta = fatjets["eta"][0][0]
-    fj_pt  = fatjets["pt"][0][0]
+    fj_phi = fatjets["phi"][0]
+    fj_eta = fatjets["eta"][0]
+    fj_pt  = fatjets["pt"][0]
 
     # if you want, add pfcs_phi/eta/pt to the saved data too
     properties = [pt, eta, phi, fj_phi, fj_eta, fj_pt]
