@@ -34,56 +34,128 @@ from helpers import join_dfs
 config = helpers_main.load_config()
 import logging
 
-# File paths for training and signal data
-train_file = config['data']['processed_data_dir'] + config['data']['train_file']
-test_file  = config['data']['processed_data_dir'] + config['data']['test_file']
+# File paths for background and signal data
+bg_file = config['data']['processed_data_dir'] + config['data']['background_file']
+sg_file = config['data']['processed_data_dir'] + config['data']['signal_file']
 
 class TrainAutoencoder:
     # Packaged into a class for variable management
+    TRAIN_SPLIT = 0.8
+    FEATURE_PLOTS_PATH = "plots/test-plots/features"
+    TRAIN_PLOTS_PATH   = "plots/test-plots"
+    
     def __init__(self):
         args = parser.parse_args()
-        self.train_file, self.test_file = args.background, args.signal
+        self.bg_file, self.sg_file = args.background, args.signal
+        self.bg_name, self.sg_name = helpers_main.trim_name(self.bg_file), helpers_main.trim_name(self.sg_file)
         self.method = args.method
         self.knn = args.knn
         
-        self.session_name = f"logs/train_ae_{helpers_main.trim_name(self.train_file)}_{helpers_main.trim_name(self.test_file)}_{self.method}_{helpers_main.curr_time()}.log"
+        self.session_name = f"logs/train_ae_{self.bg_name}_{self.sg_name}_{self.method}_{helpers_main.curr_time()}.log"
         helpers_main.log_config(self.session_name)
     
     def load(self):
         # Load datasets from pickle files
-        self.train_data = pd.read_pickle(train_file)
-        self.test_data  = pd.read_pickle(test_file)
+        self.bg_data = pd.read_pickle(self.bg_file)
+        self.sg_data = pd.read_pickle(self.sg_file)
 
-        logging.info(f"Number of training events: {len(self.train_data)}")
-        logging.info(f"Number of test events: {len(self.test_data)}")
-        logging.info("\nSample background pt values:\n" + self.train_data['pt'].head())
-        logging.info("Sample signal pt values:\n" + self.test_data['pt'].head())
+        logging.info(f"Number of training events: {len(self.bg_data)}")
+        logging.info(f"Number of test events: {len(self.sg_data)}")
+        logging.info("\nSample background pt values:\n" + self.bg_data['pt'].head())
+        logging.info("Sample signal pt values:\n" + self.sg_data['pt'].head())
     
     def build_graphs(self):
         # Convert datasets to PyG graph objects
-        self.train_graphs = graph_data_loader(
-            self.train_data, data_label=0, nearest_neighbors=self.knn, device='cpu', method=self.method
+        self.bg_graphs = graph_data_loader(
+            self.bg_data, data_label=0, nearest_neighbors=self.knn, device='cpu', method=self.method
         )
-        self.test_graphs = graph_data_loader(
-            self.test_data, data_label=1, nearest_neighbors=self.knn, device='cpu', method=self.method
+        self.sg_graphs = graph_data_loader(
+            self.sg_data, data_label=1, nearest_neighbors=self.knn, device='cpu', method=self.method
         )
-
-        logging.info(f"Number of training graphs: {len(self.train_graphs)}")
-        logging.info(f"Number of test graphs: {len(self.test_graphs)}")
+        logging.info(f"Number of background graphs: {len(self.bg_graphs)}")
+        logging.info(f"Number of signal graphs: {len(self.sg_graphs)}")
 
         # Split background dataset into training and test portions
-        ########## CHANGE TRAIN/TEST NAMES ACROSS THE BOARD TO BG/SG!!!!
-        train_size = int(0.8 * len(datatype1_graphs))
-        train_graphs = datatype1_graphs[:train_size]
-        test_graphs = datatype1_graphs[train_size:]
-        signal_graphs = datatype2_graphs
+        train_size = int(self.TRAIN_SPLIT * len(self.bg_graphs))
+        self.bg_train_graphs = self.bg_graphs[:train_size]
+        self.bg_test_graphs  = self.bg_graphs[train_size:]
+        # self.sg_graphs = self.sg_graphs
 
         # Normalize features
-        train_graphs, mean, std = normalize_graph_features(train_graphs)
-        test_graphs, _, _ = normalize_graph_features(test_graphs, mean=mean, std=std)
-        signal_graphs, _, _ = normalize_graph_features(signal_graphs, mean=mean, std=std)
+        self.bg_train_graphs, self.bg_train_mean, self.bg_train_std = normalize_graph_features(
+            self.bg_train_graphs
+        )
+        self.bg_test_graphs, _, _ = normalize_graph_features(
+            self.bg_test_graphs, mean=self.bg_train_mean, std=self.bg_train_std
+        )
+        self.sg_graphs, _, _ = normalize_graph_features(
+            self.sg_graphs, mean=self.bg_train_mean, std=self.bg_train_std
+        )
 
-        
+    def compute_stats(self):
+        self.all_features = torch.cat([graph.x for graph in train_graphs], dim=0)
+        self.num_features = self.all_features.shape[1]
+        self.feature_names = config["misc"]["node_feature_names"]
+
+        # Compute mean and std per feature dimension
+        self.means = self.all_features.mean(dim=0)
+        self.stds  = self.all_features.std(dim=0)
+        logging.info("Feature Means:", self.means)
+        logging.info("Feature Stds:", self.stds)
+        logging.info("Number of features:", self.num_features)
+    
+    def plot_features(self):
+        # Plot each feature's distribution
+        os.makedirs(self.FEATURE_PLOTS_PATH, exist_ok=True)
+        for i in range(self.num_features):
+            plt.figure()
+            plt.hist(
+                self.all_features[:, i].cpu().numpy(), bins=50, density=True, color='skyblue', edgecolor='black'
+            )
+            plt.title(f"Feature {i}: {self.feature_names[i] if i < len(self.feature_names) else f'Feature {i}'}")
+            plt.xlabel("Value")
+            plt.ylabel("Count")
+            plt.grid(True)
+            plt.tight_layout()
+
+            safe_name = self.feature_names[i].replace('/', '_') if i < len(self.feature_names) else str(i)
+            plt.savefig(os.path.join(
+                self.FEATURE_PLOTS_PATH,
+                f"feature_{self.bg_name}_{self.sg_name}_{i+1}_{safe_name}_{helpers_main.curr_time()}.png"
+            ))
+            plt.clf()
+    
+    def train(self):
+        os.makedirs(self.TRAIN_PLOTS_PATH, exist_ok=True)
+
+        # Execute the training routine
+        self.model = run_autoencoder_training(
+            self.bg_train_graphs, self.bg_test_graphs, self.sg_graphs,
+            smallest_dim=config['model']['smallest_dim'],
+            num_reduced_edges=config['model']['num_reduced_edges'],
+            batch_size=config['model']['batch_size'],
+            epochs=config['training']['epochs'],
+            initial_lr=config['training']['initial_lr']
+        )
+
+    def plot_loss(self):
+        # Plot per-graph reconstruction loss distribution
+        plt.figure(figsize=(8, 5))
+        plt.hist(model.background_test_loss, bins=50, alpha=0.6, label='Background (QCD)', color='blue', density=True)
+        plt.hist(model.signal_loss, bins=50, alpha=0.6, label='Signal', color='red', density=True)
+        plt.xlabel("Per-Graph Reconstruction Loss")
+        plt.ylabel("Density")
+        plt.title("Reconstruction Loss Distribution")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+
+        # Save plot
+        plt.savefig(os.path.join(
+            self.TRAIN_PLOTS_PATH, f"loss_{self.bg_name}_{self.sg_name}_{helpers_main.curr_time()}.png"
+        ))
+        plt.show()
+        plt.clf()
 
 
 def run_autoencoder_training(train_graphs, test_graphs, signal_graphs, smallest_dim, num_reduced_edges, batch_size, epochs, initial_lr):
@@ -142,12 +214,12 @@ if __name__ == "__main__":
         description="trains the autoencoder model on processed data"
     )
     parser.add_argument(
-        "--background", "-b", type=str, default=train_file,
-        help="Path to processed .pkl background dataset (QCD). Defaults to train_file in config.yaml"
+        "--background", "-b", type=str, default=bg_file,
+        help="Path to processed .pkl background dataset (QCD). Defaults to background_file in config.yaml"
     )
     parser.add_argument(
-        "--signal", "-s", type=str, default=test_file,
-        help="Path to processed .pkl signal dataset (WJet). Defaults to test_file in config.yaml"
+        "--signal", "-s", type=str, default=sg_file,
+        help="Path to processed .pkl signal dataset (WJet). Defaults to signal_file in config.yaml"
     )
     parser.add_argument(
         "--method", "-m", choices=c.GRAPH_METHODS, default="mass_knn",
@@ -161,60 +233,7 @@ if __name__ == "__main__":
     train_ae = TrainAutoencoder()
     train_ae.load()
     train_ae.build_graphs()
-    
-
-    os.makedirs("plots/test-plots/features", exist_ok=True)
-    all_features = torch.cat([graph.x for graph in train_graphs], dim=0)
-
-    # Compute mean and std per feature dimension
-    means = all_features.mean(dim=0)
-    stds = all_features.std(dim=0)
-
-    logging.info("Feature Means:", means)
-    logging.info("Feature Stds:", stds)
-
-    num_features = all_features.shape[1]
-
-    # Plot each feature's distribution
-    feature_names = config['misc']['node_feature_names']
-
-    for i in range(num_features):
-        plt.figure()
-        plt.hist(all_features[:, i].cpu().numpy(), bins=50, density=True, color='skyblue', edgecolor='black')
-        plt.title(f"Feature {i}: {feature_names[i] if i < len(feature_names) else f'Feature {i}'}")
-        plt.xlabel("Value")
-        plt.ylabel("Count")
-        plt.grid(True)
-        plt.tight_layout()
-        safe_name = feature_names[i].replace('/', '_') if i < len(feature_names) else str(i)
-        plt.savefig(f"plots/test-plots/features/feature_{i+1}_{safe_name}.png")
-        plt.close()
-
-    # Ensure output directory exists
-    save_dir = 'plots/test-plots/'
-    os.makedirs(save_dir, exist_ok=True)
-
-    # Execute the training routine
-    model = run_autoencoder_training(
-        train_graphs, test_graphs, signal_graphs,
-        smallest_dim=config['model']['smallest_dim'],
-        num_reduced_edges=config['model']['num_reduced_edges'],
-        batch_size=config['model']['batch_size'],
-        epochs=config['training']['epochs'],
-        initial_lr=config['training']['initial_lr']
-    )
-
-    # Plot per-graph reconstruction loss distribution
-    plt.figure(figsize=(8, 5))
-    plt.hist(model.background_test_loss, bins=50, alpha=0.6, label='Background (QCD)', color='blue', density=True)
-    plt.hist(model.signal_loss, bins=50, alpha=0.6, label='Signal', color='red', density=True)
-    plt.xlabel("Per-Graph Reconstruction Loss")
-    plt.ylabel("Density")
-    plt.title("Reconstruction Loss Distribution")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-
-    # Save plot
-    plt.savefig(os.path.join(save_dir, "loss_distribution.png"))
-    plt.show()
+    train_ae.compute_stats()
+    train_ae.plot_features()
+    train_ae.train()
+    train_ae.plot_loss()
