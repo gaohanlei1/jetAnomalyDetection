@@ -92,11 +92,15 @@
     - with this, we can figure out how to add the metadata
     - each fatjet should have its pt recorded, alongside... pfcands? what other fields?
 
+- Fixed venv. again.
+    - again!! at least it works fr now from a fresh install.
+
 **NOW:**
+- Graphing processed fj_pt ranges to make sure slicing works
 
-- ...still need to fix venv. lol
+- changing all the cpu/cuda prompts to ACTUALLY use config.yaml
 
-- Can add more metadata than currently added (fj_phi etc)
+- Can add more metadata than currently added (e.g. pfcands)
     - and make sure this remains in processing, too!!
     - add to documentation in readme! e.g. how to graph the fatjet pt ranges from preproc data
 
@@ -105,24 +109,22 @@
     - familiarise w/ the model and what's been done so far
         - what features have been used to train? how have the edges been modified? what hasn't been tried?
         - what regions of parameters have been sweeped, and what haven't?
-
-- Merge w/ main again, and start streamlining/updating Arjun's code
     - save different useful plots permanently (analysing all the raw/processed data)
     
 - Look into ways to use Brux's GPU!
     - if successful, we can train for way more epochs hopefully
 
 - **Todos on Slack!!**
-    - using PFCands instead of FatJet?
-
+    - using PFCands instead of FatJet? can add to 
+    - Plot PFCands! since we may be using those for training
 
 **later maybe:**
+
 - Using the visualize() func in processing.py to visualise stuff like the zeroes after processing
     - what gets excluded when `not include_zeros`? how are scaled zeroes distributed?
     - also to visualise processed distributions in general across all fields
         - errors out at mass I think, coz of inf/nan errors! try to filter out and redo
 
-- Plot PFCands! since we may be using those for training at some point (instead of the ratio of fatjet to pfcs pt)
 
 
 

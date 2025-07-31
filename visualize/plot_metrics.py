@@ -14,6 +14,7 @@ import numpy as np
 from sklearn.metrics import roc_curve, auc
 import pandas as pd
 
+import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from helpers import helpers_main
 

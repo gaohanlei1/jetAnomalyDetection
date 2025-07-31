@@ -178,7 +178,8 @@ with open("configs/config.yaml", "r") as f:
 
 train_file = config['data']['processed_data_dir'] + config['data']['train_file']
 test_file = config['data']['processed_data_dir'] + config['data']['test_file']
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 
 def train_autoencoder_ray(config_ray):
     # === Load data ===

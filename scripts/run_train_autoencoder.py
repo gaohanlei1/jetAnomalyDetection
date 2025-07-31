@@ -37,8 +37,8 @@ config = helpers_main.load_config()
 import logging
 
 # File paths for background and signal data
-bg_file = config['data']['processed_data_dir'] + config['data']['background_file']
-sg_file = config['data']['processed_data_dir'] + config['data']['signal_file']
+bg_file = os.path.join(config['data']['processed_data_dir'], config['data']['background_file'])
+sg_file = os.path.join(config['data']['processed_data_dir'], config['data']['signal_file'])
 
 class TrainAutoencoder:
     # Packaged into a class for variable management
@@ -64,7 +64,7 @@ class TrainAutoencoder:
         logging.info(f"Number of training events: {len(self.bg_data)}")
         logging.info(f"Number of test events: {len(self.sg_data)}")
         logging.info(f"\nSample background pt values:\n{self.bg_data['pt'].head().to_string()}")
-        logging.info(f"Sample signal pt values:\n{self.sg_data['pt'].head()}")
+        logging.info(f"Sample signal pt values:\n{self.sg_data['pt'].head().to_string()}")
     
     def build_graphs(self):
         # Convert datasets to PyG graph objects
@@ -102,9 +102,9 @@ class TrainAutoencoder:
         # Compute mean and std per feature dimension
         self.means = self.all_features.mean(dim=0)
         self.stds  = self.all_features.std(dim=0)
-        logging.info("Feature Means:", self.means)
-        logging.info("Feature Stds:", self.stds)
-        logging.info("Number of features:", self.num_features)
+        logging.info(f"Feature Means: {self.means}")
+        logging.info(f"Feature Stds: {self.stds}")
+        logging.info(f"Number of features: {self.num_features}")
     
     def plot_features(self):
         # Plot each feature's distribution
@@ -144,8 +144,8 @@ class TrainAutoencoder:
     def plot_loss(self):
         # Plot per-graph reconstruction loss distribution
         plt.figure(figsize=(8, 5))
-        plt.hist(model.background_test_loss, bins=50, alpha=0.6, label='Background (QCD)', color='blue', density=True)
-        plt.hist(model.signal_loss, bins=50, alpha=0.6, label='Signal', color='red', density=True)
+        plt.hist(self.model.background_test_loss, bins=50, alpha=0.6, label='Background (QCD)', color='blue', density=True)
+        plt.hist(self.model.signal_loss, bins=50, alpha=0.6, label='Signal', color='red', density=True)
         plt.xlabel("Per-Graph Reconstruction Loss")
         plt.ylabel("Density")
         plt.title("Reconstruction Loss Distribution")
@@ -181,7 +181,8 @@ def run_autoencoder_training(
     Returns:
         model (JetGraphAutoencoder): Trained model.
     """
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cpu")
 
     model = JetGraphAutoencoder(
         num_features=train_graphs[0].x.shape[1],
