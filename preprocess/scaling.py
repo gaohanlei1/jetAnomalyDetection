@@ -15,6 +15,7 @@ import pandas as pd
 from typing import List, Tuple, Dict
 import math
 from tqdm import tqdm
+import logging
 
 def find_scalers(df: pd.DataFrame, df_label: str, cols: List[str]) -> Dict[str, np.ndarray]:
     """
@@ -31,7 +32,11 @@ def find_scalers(df: pd.DataFrame, df_label: str, cols: List[str]) -> Dict[str, 
     """
     scaler_dict = {}
     for col in cols:
-        if col[:3] != 'pdg':
+        logging.info(f"In find_scalers, {col=}")
+        if col.startswith("pdg") or col.startswith("fj_"):
+            # Skip scaling for PDG one-hot columns and fatjet metadata
+            scaler_dict[col] = [-1]
+        else:
             flattened_list = sorted(df[col].explode())
             # Keep only valid, non-zero, non-NaN entries
             indices = [i for i, item in tqdm(enumerate(flattened_list),
@@ -39,9 +44,7 @@ def find_scalers(df: pd.DataFrame, df_label: str, cols: List[str]) -> Dict[str, 
                        if item != 0.0 and not math.isnan(item)]
             percentiles = np.percentile(np.array(flattened_list)[indices].flatten(), [16, 84])
             scaler_dict[col] = percentiles
-        else:
-            # Skip scaling for PDG one-hot columns
-            scaler_dict[col] = [-1]
+
     return scaler_dict
 
 
@@ -67,15 +70,20 @@ def apply_scalers(df: pd.DataFrame, scaler_dict: Dict[str, np.ndarray]) -> Tuple
     for col in df.columns:
         if col not in scaler_dict: continue
 
-        print(f'Standardizing {col}')
+        logging.info(f'Standardizing {col}')
         flattened_list = df[col].explode()
         indices = [i for i, item in enumerate(flattened_list) if item != 0.0]
         org_data_dict[col] = flattened_list
 
         if col.startswith("pdg"):
             # For one-hot columns, preserve raw values
-            data_dict[col] = [item for sublist in df[col] for item in np.array(sublist).flatten()]
+            data_dict[col] = [
+                item for item in np.array(sublist).flatten()
+                for sublist in df[col]
+            ]
             scaled_zero[col] = np.nan
+        elif col.startswith("fj_"):
+            data_dict[col] = df[col]
         else:
             per_minus_36, per_plus_36 = scaler_dict[col]
             df[col] = df.apply(

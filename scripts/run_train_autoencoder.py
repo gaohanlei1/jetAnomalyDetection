@@ -182,7 +182,7 @@ def run_autoencoder_training(
         model (JetGraphAutoencoder): Trained model.
     """
     # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    device = torch.device("cpu")
+    device = torch.device(config["training"]["device"])
 
     model = JetGraphAutoencoder(
         num_features=train_graphs[0].x.shape[1],
@@ -211,7 +211,7 @@ def run_autoencoder_training(
     # Generate plots for analysis
     plot_anomaly_score(model.background_test_loss, model.signal_loss, background_label="", signal_label="")
     plot_roc_curve(model, "signal", "background", savepath=save_dir + 'roc.png', examples=False, loss_fn=torch.nn.MSELoss(reduction='mean'))
-    plot_loss(model.train_hist, model.val_hist, save_path='plots/test-plots/loss.png')
+    plot_loss(model.train_hist, model.val_hist, save_path=f"plots/test-plots/loss_{helpers_main.curr_time()}.png")
 
     return model
 

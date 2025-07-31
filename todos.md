@@ -95,10 +95,11 @@
 - Fixed venv. again.
     - again!! at least it works fr now from a fresh install.
 
+- changing all the cpu/cuda prompts to ACTUALLY use config.yaml
+
 **NOW:**
 - Graphing processed fj_pt ranges to make sure slicing works
 
-- changing all the cpu/cuda prompts to ACTUALLY use config.yaml
 
 - Can add more metadata than currently added (e.g. pfcands)
     - and make sure this remains in processing, too!!

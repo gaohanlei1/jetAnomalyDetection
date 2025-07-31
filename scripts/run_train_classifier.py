@@ -22,6 +22,7 @@ from torch_geometric.loader import DataLoader
 from models.classifier import JetGraphAutoencoderClassification
 from preprocess.make_graphs import graph_data_loader
 from sklearn.metrics import accuracy_score
+import logging
 
 # Load configuration settings from YAML file
 with open("configs/config.yaml", "r") as f:
@@ -62,8 +63,7 @@ def run_classifier_training(graphs, save_dir='checkpoints', smallest_dim=16, num
         accuracies (List[float]): Accuracy values per epoch.
     """
     # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    device = torch.device("cpu")
-    # print(f"Using device: {device}")
+    device = torch.device(config["training"]["device"])
 
     model = JetGraphAutoencoderClassification(
         num_features=graphs[0].x.shape[1],
@@ -103,7 +103,7 @@ def run_classifier_training(graphs, save_dir='checkpoints', smallest_dim=16, num
         accuracies.append(acc)
 
         torch.save(model.state_dict(), f"{save_dir}/classifier_epoch_{epoch+1}.pt")
-        print(f"Epoch {epoch+1}/{epochs} | Loss: {avg_loss:.4f}, Accuracy: {acc:.4f}")
+        logging.info(f"Epoch {epoch+1}/{epochs} | Loss: {avg_loss:.4f}, Accuracy: {acc:.4f}")
 
     # Save training metrics to CSV
     metrics_df = pd.DataFrame({

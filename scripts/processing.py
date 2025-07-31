@@ -42,7 +42,7 @@ class DataProcessor:
     VALID_PDG = [-11, 11, -13, 13, -211, 211]
     # NOTE: Modify this list to include other features as needed.
     # possible props: ['mass', 'puppiWeight', 'puppiWeightNoLep', 'trkChi2', 'vtxChi2', 'dz/dzErr', 'd0/d0Err', 'dR', 'within_bounds', 'log_pt']
-    PROPS = ["log_pt"]
+    PROPS_TO_PLOT = ["log_pt"]
     # disable when running over SSH or similar
     DISPLAY_PLOT = False
 
@@ -72,8 +72,11 @@ class DataProcessor:
             and (not self.filter or jet_label in file)
         ]
    
-        logging.info(f"Concatenating {jet_label}:" + helpers_main.time_taken())
-        combined = pd.concat(preproc_dfs, ignore_index=True)
+        combined = preproc_dfs[0]
+        if len(preproc_dfs) > 1:
+            logging.info(f"Concatenating {jet_label}:" + helpers_main.time_taken())
+            combined = pd.concat(preproc_dfs, ignore_index=True)
+
         logging.info(f"Combined {jet_label} data length: {len(combined)} {helpers_main.time_taken()}")
         return combined
 
@@ -88,9 +91,9 @@ class DataProcessor:
         # modified_df = modify_df(df_cpy, VALID_PDG)
 
         modified_data = modify_df(combined_data.copy(), self.VALID_PDG)
-        logging.info(f"Modified {jet_label} {helpers_main.time_taken()}")
+        # logging.info(f"Modified {jet_label} {helpers_main.time_taken()}")
         modified_data = modified_data.dropna()
-        logging.info(f"Dropped missing vals {helpers_main.time_taken()}")
+        # logging.info(f"Dropped missing vals {helpers_main.time_taken()}")
         return modified_data
 
     def load_modify(self):
@@ -133,7 +136,7 @@ class DataProcessor:
     def visualize_data(self):
         # Plot raw and scaled distributions for selected variable(s)
         logging.info("Plotting data:")
-        for prop in self.PROPS:
+        for prop in self.PROPS_TO_PLOT:
             fig, axes = plt.subplots(1, 2, figsize=(20, 5))
 
             # # Raw, with zeros

@@ -17,6 +17,7 @@ import pandas as pd
 import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from helpers import helpers_main
+import logging
 
 
 def plot_loss(train_loss, val_loss, save_path=f'plots/test-plots/loss_{helpers_main.curr_time()}.png'):
@@ -133,7 +134,7 @@ def plot_anomaly_score(test_scores, anomaly_scores, background_label, signal_lab
 #     plt.tight_layout()
 
 #     auc_score = auc(e_signal, e_background)
-#     print(f'AUC: {auc_score:.3f}')
+#     logging.info(f'AUC: {auc_score:.3f}')
 #     plt.savefig(savepath)
 #     plt.close()
 
@@ -179,4 +180,4 @@ def plot_roc_curve(model, signal_label, background_label, savepath, examples, lo
     plt.savefig(savepath)
     plt.close()
 
-    print(f"AUC: {auc_score:.3f}")
+    logging.info(f"AUC: {auc_score:.3f}")

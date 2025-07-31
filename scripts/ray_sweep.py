@@ -139,8 +139,8 @@
 # df = results.get_dataframe()
 # df.to_csv("sweeps/ray_results/autoencoder_ray_sweep.csv")
 
-# print("Best config (by val_loss):", results.get_best_result(metric="val_loss", mode="min").config)
-# print("Best config (by AUC):", results.get_best_result(metric="auc", mode="max").config)
+# logging.info("Best config (by val_loss):", results.get_best_result(metric="val_loss", mode="min").config)
+# logging.info("Best config (by AUC):", results.get_best_result(metric="auc", mode="max").config)
 
 """
 Ray Tune version of JetGraphAutoencoder hyperparameter search (AUC-optimized).
@@ -154,6 +154,7 @@ import yaml
 import torch
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_auc_score, roc_curve
+import logging
 
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
@@ -179,7 +180,7 @@ with open("configs/config.yaml", "r") as f:
 train_file = config['data']['processed_data_dir'] + config['data']['train_file']
 test_file = config['data']['processed_data_dir'] + config['data']['test_file']
 # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-device = torch.device("cpu")
+device = torch.device(config["training"]["device"])
 
 def train_autoencoder_ray(config_ray):
     # === Load data ===
@@ -292,5 +293,5 @@ results = tuner.fit()
 df = results.get_dataframe()
 df.to_csv("sweeps/ray_results/autoencoder_auc_sweep.csv")
 
-print("Best config (by AUC):", results.get_best_result(metric="auc", mode="max").config)
-print("Best config (by val_loss):", results.get_best_result(metric="val_loss", mode="min").config)
+logging.info("Best config (by AUC):", results.get_best_result(metric="auc", mode="max").config)
+logging.info("Best config (by val_loss):", results.get_best_result(metric="val_loss", mode="min").config)

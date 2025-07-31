@@ -13,7 +13,7 @@ from torch_geometric.loader import DataLoader
 from torch.optim.lr_scheduler import StepLR
 from torch_geometric.data import Data
 from typing import List, Tuple
-
+import logging
 
 def train_loop(dataloader, model, loss_fn, optimizer):
     """
@@ -167,14 +167,14 @@ def train_model(train_dataloader, test_dataloader, signal_dataloader, model, los
     model.signal_hist = []
 
     for epoch in range(epochs):
-        print(f"Epoch [{epoch+1}/{epochs}]")
+        logging.info(f"Epoch [{epoch+1}/{epochs}]")
 
         train_loss = []
         val_loss = []
         signal_loss = []
 
         current_lr = optimizer.param_groups[0]['lr']
-        print(f"Learning Rate: {current_lr:.6f}")
+        logging.info(f"Learning Rate: {current_lr:.6f}")
 
         # Run training step
         # train_loop(train_dataloader, model, loss_fn, optimizer)
@@ -203,9 +203,9 @@ def train_model(train_dataloader, test_dataloader, signal_dataloader, model, los
         if scheduler is not None:
             scheduler.step()
 
-        print("train loss ", mean_train_loss)
-        print("test loss ", np.nanmean(val_loss))
-        print("signal loss", np.nanmean(signal_loss))
+        logging.info("train loss ", mean_train_loss)
+        logging.info("test loss ", np.nanmean(val_loss))
+        logging.info("signal loss", np.nanmean(signal_loss))
 
     # Final assignment for later ROC/score plotting
     model.background_test_loss = val_loss

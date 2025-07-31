@@ -6,7 +6,7 @@ from torch_geometric.data import Data
 from torch_cluster import knn_graph
 from sklearn.neighbors import NearestNeighbors
 from tqdm import tqdm
-
+import logging
 
 def sanitize_features(pt, eta, phi, mass):
     """Clip or adjust physical features to avoid overflows or invalid values."""
@@ -139,6 +139,6 @@ def graph_data_loader(df: pd.DataFrame,
                                method=method)
             graphs.append(graph)
         except Exception as e:
-            print(f"Skipping event {i} due to error: {e}")
+            logging.info(f"Skipping event {i} due to error: {e}")
             continue
     return graphs

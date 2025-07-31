@@ -3,6 +3,7 @@ import numpy as np
 import os
 import yaml
 import pandas as pd
+import logging
 
 # Load YAML configuration for data and hyperparameters
 with open("configs/config.yaml", "r") as f:
@@ -12,8 +13,8 @@ with open("configs/config.yaml", "r") as f:
 train_file = config['data']['processed_data_dir'] + config['data']['train_file']
 test_file = config['data']['processed_data_dir'] + config['data']['test_file']
 
-print(train_file)
-print(test_file)
+logging.info(train_file)
+logging.info(test_file)
 # Load datasets from pickle files
 datatype1 = pd.read_pickle(train_file) # background
 datatype2 = pd.read_pickle(test_file) # signal
@@ -42,7 +43,7 @@ def extract_feature_values(dataset, feature):
                 # Scalar fallback (pure float/int)
                 cleaned.append(x)
         except Exception as e:
-            print(f"[!] Skipping index {i}: {e} — value: {x} (type={type(x)})")
+            logging.info(f"[!] Skipping index {i}: {e} — value: {x} (type={type(x)})")
 
     return np.array(cleaned)
 

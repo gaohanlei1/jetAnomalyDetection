@@ -24,6 +24,7 @@ from torch_geometric.loader import DataLoader
 from models.autoencoder import JetGraphAutoencoder
 from train.utils_training import train_loop, eval_loop
 from preprocess.make_graphs import graph_data_loader
+import logging
 
 # Add parent directory to Python path for module imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -42,7 +43,7 @@ datatype2 = pd.read_pickle(test_file)
 
 # Device configuration
 # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-device = torch.device("cpu")
+device = torch.device(config["training"]["device"])
 
 # Hyperparameter grids for sweeping
 learning_rates = [1e-5, 5e-5, 1e-4]
@@ -61,7 +62,7 @@ if not os.path.exists('sweeps'):
 
 # Iterate over all hyperparameter combinations
 for idx, (lr, wd, k_nn, s_dim) in enumerate(itertools.product(learning_rates, weight_decays, nearest_neighbors, smallest_dims)):
-    print(f"Training with lr={lr}, weight_decay={wd}, k_nn={k_nn}, smallest_dim={s_dim}")
+    logging.info(f"Training with lr={lr}, weight_decay={wd}, k_nn={k_nn}, smallest_dim={s_dim}")
 
     # Rebuild graphs with updated k-NN parameter
     graphs_train = graph_data_loader(datatype1, data_label=0, nearest_neighbors=k_nn)
