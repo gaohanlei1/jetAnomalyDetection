@@ -22,6 +22,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from helpers import helpers_main
 helpers_main.log_config(f"logs/proc_feature_{helpers_main.curr_time()}.log")
 
+METADATA_ROWS = ("within_bounds", "fj_pt", "fj_phi", "fj_eta")
+
 def calculate_d_over_dErr(row: pd.Series, label: str, valid_pdg: List[str]) -> np.ndarray:
     """
     Compute signed impact parameter significance: d / dErr, clipped and filtered.
@@ -91,7 +93,7 @@ def filter_row(row: pd.Series, indices: np.ndarray) -> pd.Series:
         pd.Series: Filtered row.
     """
     for col in row.index:
-        if col != 'within_bounds':
+        if col not in METADATA_ROWS:
             row[col] = np.array(row[col])[indices].flatten()
     return row
 

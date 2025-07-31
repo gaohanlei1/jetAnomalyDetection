@@ -14,8 +14,11 @@ import numpy as np
 from sklearn.metrics import roc_curve, auc
 import pandas as pd
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from helpers import helpers_main
 
-def plot_loss(train_loss, val_loss, save_path='plots/test-plots/loss.png'):
+
+def plot_loss(train_loss, val_loss, save_path=f'plots/test-plots/loss_{helpers_main.curr_time()}.png'):
     """
     Plot training and validation loss curves over epochs.
 
@@ -40,7 +43,7 @@ def plot_loss(train_loss, val_loss, save_path='plots/test-plots/loss.png'):
     plt.close()
 
 
-def plot_anomaly_score(test_scores, anomaly_scores, background_label, signal_label, save_path='plots/test-plots/anomaly_score.png'):
+def plot_anomaly_score(test_scores, anomaly_scores, background_label, signal_label, save_path=f"plots/test-plots/anomaly_score_{helpers_main.curr_time()}.png"):
     """
     Plot a histogram comparing the anomaly scores (MSE loss) for signal and background samples.
 

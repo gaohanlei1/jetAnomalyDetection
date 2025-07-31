@@ -65,25 +65,26 @@ def apply_scalers(df: pd.DataFrame, scaler_dict: Dict[str, np.ndarray]) -> Tuple
     scaled_zero = {}     # Value of 0.0 after scaling
 
     for col in df.columns:
-        if col in scaler_dict:
-            print(f'Standardizing {col}')
-            flattened_list = df[col].explode()
-            indices = [i for i, item in enumerate(flattened_list) if item != 0.0]
-            org_data_dict[col] = flattened_list
+        if col not in scaler_dict: continue
 
-            if not col.startswith("pdg"):
-                per_minus_36, per_plus_36 = scaler_dict[col]
-                df[col] = df.apply(
-                    lambda row: (((np.array(row[col]).reshape(-1, 1)) - per_minus_36) /
-                                 (per_plus_36 - per_minus_36) * 2 - 1).flatten(),
-                    axis=1
-                )
-                zero = (0.0 - per_minus_36) / (per_plus_36 - per_minus_36) * 2 - 1
-                scaled_zero[col] = zero
-                data_dict[col] = [item for sublist in df[col] for item in sublist]
-            else:
-                # For one-hot columns, preserve raw values
-                data_dict[col] = [item for sublist in df[col] for item in np.array(sublist).flatten()]
-                scaled_zero[col] = np.nan
+        print(f'Standardizing {col}')
+        flattened_list = df[col].explode()
+        indices = [i for i, item in enumerate(flattened_list) if item != 0.0]
+        org_data_dict[col] = flattened_list
+
+        if col.startswith("pdg"):
+            # For one-hot columns, preserve raw values
+            data_dict[col] = [item for sublist in df[col] for item in np.array(sublist).flatten()]
+            scaled_zero[col] = np.nan
+        else:
+            per_minus_36, per_plus_36 = scaler_dict[col]
+            df[col] = df.apply(
+                lambda row: (((np.array(row[col]).reshape(-1, 1)) - per_minus_36) /
+                                (per_plus_36 - per_minus_36) * 2 - 1).flatten(),
+                axis=1
+            )
+            zero = (0.0 - per_minus_36) / (per_plus_36 - per_minus_36) * 2 - 1
+            scaled_zero[col] = zero
+            data_dict[col] = [item for sublist in df[col] for item in sublist]            
 
     return df, data_dict, org_data_dict, scaled_zero
