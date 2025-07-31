@@ -19,6 +19,7 @@ import torch
 import pandas as pd
 import numpy as np
 import yaml
+import argparse
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import Data
 from models.autoencoder import JetGraphAutoencoder
@@ -62,8 +63,8 @@ class TrainAutoencoder:
 
         logging.info(f"Number of training events: {len(self.bg_data)}")
         logging.info(f"Number of test events: {len(self.sg_data)}")
-        logging.info("\nSample background pt values:\n" + self.bg_data['pt'].head())
-        logging.info("Sample signal pt values:\n" + self.sg_data['pt'].head())
+        logging.info(f"\nSample background pt values:\n{self.bg_data['pt'].head()}")
+        logging.info(f"Sample signal pt values:\n{self.sg_data['pt'].head()}")
     
     def build_graphs(self):
         # Convert datasets to PyG graph objects
@@ -94,7 +95,7 @@ class TrainAutoencoder:
         )
 
     def compute_stats(self):
-        self.all_features = torch.cat([graph.x for graph in train_graphs], dim=0)
+        self.all_features = torch.cat([graph.x for graph in self.bg_train_graphs], dim=0)
         self.num_features = self.all_features.shape[1]
         self.feature_names = config["misc"]["node_feature_names"]
 

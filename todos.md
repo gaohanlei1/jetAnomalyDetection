@@ -94,6 +94,8 @@
 
 **NOW:**
 
+- ...still need to fix venv. lol
+
 - Can add more metadata than currently added (fj_phi etc)
     - and make sure this remains in processing, too!!
     - add to documentation in readme! e.g. how to graph the fatjet pt ranges from preproc data
