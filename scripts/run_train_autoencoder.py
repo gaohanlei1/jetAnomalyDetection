@@ -63,7 +63,7 @@ class TrainAutoencoder:
 
         logging.info(f"Number of training events: {len(self.bg_data)}")
         logging.info(f"Number of test events: {len(self.sg_data)}")
-        logging.info(f"\nSample background pt values:\n{self.bg_data['pt'].head()}")
+        logging.info(f"\nSample background pt values:\n{self.bg_data['pt'].head().to_string()}")
         logging.info(f"Sample signal pt values:\n{self.sg_data['pt'].head()}")
     
     def build_graphs(self):
@@ -137,7 +137,8 @@ class TrainAutoencoder:
             num_reduced_edges=config['model']['num_reduced_edges'],
             batch_size=config['model']['batch_size'],
             epochs=config['training']['epochs'],
-            initial_lr=config['training']['initial_lr']
+            initial_lr=config['training']['initial_lr'],
+            save_dir=self.TRAIN_PLOTS_PATH
         )
 
     def plot_loss(self):
@@ -160,7 +161,10 @@ class TrainAutoencoder:
         plt.clf()
 
 
-def run_autoencoder_training(train_graphs, test_graphs, signal_graphs, smallest_dim, num_reduced_edges, batch_size, epochs, initial_lr):
+def run_autoencoder_training(
+    train_graphs, test_graphs, signal_graphs, smallest_dim,
+    num_reduced_edges, batch_size, epochs, initial_lr, save_dir="plots/test-plots"
+):
     """
     Trains the JetGraphAutoencoder and evaluates it on background and signal graphs.
 
