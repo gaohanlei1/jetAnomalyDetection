@@ -4,6 +4,11 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 
+# Add the parent directory to Python's path to allow local imports
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from helpers import helpers_main
+config = helpers_main.load_config()
+
 # Load the sweep results with AUC included
 df = pd.read_csv('sweeps/autoencoder_param_sweep.csv')
 
@@ -25,8 +30,8 @@ plt.title(f"AUC Heatmap (weight_decay={fixed_wd}, k={fixed_k})")
 plt.xlabel("Learning Rate")
 plt.ylabel("Latent Dimension (smallest_dim)")
 plt.tight_layout()
-plt.savefig("sweeps/auc_heatmap.png")
-plt.show()
+plt.savefig(f"sweeps/auc_heatmap_{helpers_main.curr_time()}.png")
+if config["dbg"]["show_plots"]: plt.show()
 
 # --------- 3D SCATTER PLOT (using AUC) ---------
 # Convert to log scale for better spread
@@ -52,5 +57,5 @@ ax.set_zlabel('Latent Dim (smallest_dim)')
 ax.set_title('3D Scatter Plot of Hyperparameters vs AUC')
 fig.colorbar(sc, label='AUC Score')
 plt.tight_layout()
-plt.savefig("sweeps/auc_3d_plot.png")
-plt.show()
+plt.savefig(f"sweeps/auc_3d_plot_{helpers_main.curr_time()}.png")
+if config["dbg"]["show_plots"]: plt.show()

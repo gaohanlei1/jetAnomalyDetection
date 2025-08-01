@@ -6,6 +6,7 @@ dbg:
   # 10: DEBUG; 20: INFO; 30: WARNING; 40: ERROR
   logging_level: 20
   only_one_progress_bar: false
+  show_plots: false
 
 # Paths
 data:

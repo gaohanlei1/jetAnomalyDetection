@@ -170,7 +170,7 @@ class DataProcessor:
             )
 
             plt.tight_layout()
-            if self.DISPLAY_PLOT: plt.show()
+            if config["dbg"]["show_plots"]: plt.show()
             fig_path = f"plots/proc_distr_{prop}_{self.label_bg}+{self.label_sg}_{helpers_main.curr_time()}.png"
             plt.savefig(fig_path)
             logging.info(f"Saved figure into {fig_path}")

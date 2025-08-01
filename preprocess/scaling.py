@@ -68,9 +68,13 @@ def apply_scalers(df: pd.DataFrame, scaler_dict: Dict[str, np.ndarray]) -> Tuple
     scaled_zero = {}     # Value of 0.0 after scaling
 
     for col in df.columns:
-        if col not in scaler_dict: continue
+        if col.startswith("fj_"):
+            logging.info(f"Copying over {col=} as is")
+        elif col not in scaler_dict:
+            logging.info(f"Skipping {col=} as it doesn't exist in the scaler\n{scaler_dict.columns.tolist()=}")
+            continue
 
-        logging.info(f'Standardizing {col}')
+        logging.info(f'Standardising {col}')
         flattened_list = df[col].explode()
         indices = [i for i, item in enumerate(flattened_list) if item != 0.0]
         org_data_dict[col] = flattened_list
@@ -78,20 +82,19 @@ def apply_scalers(df: pd.DataFrame, scaler_dict: Dict[str, np.ndarray]) -> Tuple
         if col.startswith("pdg"):
             # For one-hot columns, preserve raw values
             data_dict[col] = [
-                item for item in np.array(sublist).flatten()
-                for sublist in df[col]
+                item for sublist in df[col]
+                for item in np.array(sublist).flatten()
             ]
             scaled_zero[col] = np.nan
         elif col.startswith("fj_"):
             data_dict[col] = df[col]
         else:
             per_minus_36, per_plus_36 = scaler_dict[col]
-            df[col] = df.apply(
-                lambda row: (((np.array(row[col]).reshape(-1, 1)) - per_minus_36) /
-                                (per_plus_36 - per_minus_36) * 2 - 1).flatten(),
-                axis=1
-            )
-            zero = (0.0 - per_minus_36) / (per_plus_36 - per_minus_36) * 2 - 1
+            denominator = per_plus_36 - per_minus_36 + 1e-6
+            df[col] = df.apply(lambda row: (
+                (((np.array(row[col]).reshape(-1, 1)) - per_minus_36) / denominator) * 2 - 1
+            ).flatten(), axis=1)
+            zero = ((0.0 - per_minus_36) / denominator) * 2 - 1
             scaled_zero[col] = zero
             data_dict[col] = [item for sublist in df[col] for item in sublist]            
 

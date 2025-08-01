@@ -25,15 +25,17 @@ python3.9 scripts/preprocessing.py -t signal
 # can use paths to singular files instead
 
 # optional
-# python3.9 helpers/print_df_info.py --path data/preprocessed/qcd/              # or `wjet/`
-# python3.9 helpers/join_dfs.py --filter 170to300 --path data/preprocessed/qcd/ # or `wjet/`
+python3.9 helpers/print_df_info.py --path data/preprocessed/qcd/              # or `wjet/`
+python3.9 helpers/join_dfs.py --filter 170to300 --path data/preprocessed/qcd/ # or `wjet/`
 
 # modify `configs/config.yaml to point to the preprocessed data folders
 python3.9 scripts/processing.py
 
-# TODO! sync w/ arjun's changes
+# visualisation e.g.
+python3.9 visualize/plot_distributions.py -q path/to/preprocessed.pkl -t preproc -p fj_pt
+
 ...
-python3.9 scripts/run_train_autoencoder.py
+python3.9 scripts/run_train_autoencoder.py -...
 ```
 
 **NOTE:** if you want to run the time-consuming scripts on Brux/LXPlus over SSH, prepend the command with `nohup`!\
@@ -93,18 +95,17 @@ e.g. `nohup python3.9 scripts/preprocessing.py -t background`\
     - NOTE: if you add `--filter`, then the program will use those labels to filter out preprocessed files
 
 
-### Training
+### Trai
 
-- TODO!!
-
-- Run `python3.9 scripts/run_train_autoencoder.py`??? After setting the train and test files?
+- Run `python3.9 scripts/run_train_autoencoder.py --help`
+    - or set the defaults in `config.yaml`
 
 ### Visualisation
 
 - `processing.py` saves plots of the processed data distributions (mainly their `log_pt`) into `plots/proc_distr_....png`
-    - If you enable DISPLAY_PLOT, then it'll try `plt.show`-ing these plots
+    - If you enable `show_plot` in `config.yaml`, then it'll try `plt.show`-ing these plots
 
-- TODO!!!!!!!
+- `visualize/plot_distributions.py` has a buncha options for plotting distributions, use `--help`
 
 ### Helpers
 

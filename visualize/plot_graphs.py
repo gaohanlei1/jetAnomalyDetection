@@ -10,6 +10,10 @@ import networkx as nx
 import matplotlib.pyplot as plt
 from torch_geometric.data import Data
 
+# Add the parent directory to Python's path to allow local imports
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from helpers import helpers_main
+config = helpers_main.load_config()
 
 def visualize_graph(data: Data, title: str, k: int = 16):
     """
@@ -48,5 +52,5 @@ def visualize_graph(data: Data, title: str, k: int = 16):
     plt.title(f'Graph Visualization: {title} (k={k})')
     plt.axis('off')
     plt.tight_layout()
-    plt.show()
+    if config["dbg"]["show_plots"]: plt.show()
     plt.clf()

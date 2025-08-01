@@ -2,6 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score
+import logging
 
 # Load existing sweep summary
 results_path = 'sweeps/autoencoder_param_sweep.csv'
@@ -23,7 +24,7 @@ for idx in range(len(results_df)):
         # Compute AUC
         auc = roc_auc_score(y_true, y_scores)
     except Exception as e:
-        print(f"[!] Skipping run {idx} due to error: {e}")
+        logging.info(f"[!] Skipping run {idx} due to error: {e}")
         auc = np.nan
 
     auc_scores.append(auc)
@@ -31,10 +32,10 @@ for idx in range(len(results_df)):
 # Add to DataFrame and save
 results_df['auc_score'] = auc_scores
 results_df.to_csv(results_path, index=False)
-print("AUC scores appended to autoencoder_param_sweep.csv")
+logging.info("AUC scores appended to autoencoder_param_sweep.csv")
 
 # Prints top 5 best runs by AUC score
 df_sorted = results_df.sort_values(by="auc_score", ascending=False)
-print("\nTop 5 runs by AUC score:")
-print(df_sorted[['auc_score', 'learning_rate', 'weight_decay', 'nearest_neighbors', 'smallest_dim']].head())
+logging.info("\nTop 5 runs by AUC score:")
+logging.info(df_sorted[['auc_score', 'learning_rate', 'weight_decay', 'nearest_neighbors', 'smallest_dim']].head().to_string())
 

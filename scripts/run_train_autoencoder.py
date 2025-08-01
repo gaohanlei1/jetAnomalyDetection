@@ -157,7 +157,7 @@ class TrainAutoencoder:
         plt.savefig(os.path.join(
             self.TRAIN_PLOTS_PATH, f"loss_{self.bg_name}_{self.sg_name}_{helpers_main.curr_time()}.png"
         ))
-        plt.show()
+        if config["dbg"]["show_plots"]: plt.show()
         plt.clf()
 
 
