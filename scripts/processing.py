@@ -51,6 +51,7 @@ class DataProcessor:
         self.data_bg, self.data_sg = cli_args.background, cli_args.signal
         self.label_bg,  self.label_sg  = cli_args.label_bg, cli_args.label_sg
         self.filter = cli_args.filter
+        self.lowerpt, self.upperpt = cli_args.lowerpt, cli_args.upperpt
 
         self.qcd_modified, self.wjet_modified = None, None
         self.qcd_scaled,  self.qcd_scaled_vals,  self.qcd_raw_vals,  self.zero1 = None, None, None, None
@@ -78,7 +79,23 @@ class DataProcessor:
             combined = pd.concat(preproc_dfs, ignore_index=True)
 
         logging.info(f"Combined {jet_label} data length: {len(combined)} {helpers_main.time_taken()}")
-        return combined
+
+        return self.mask_pt_bounds(combined)
+    
+    def mask_pt_bounds(self, data):
+        '''Mask out out-of-bounds fj_pts, if specified'''
+        if self.lowerpt == self.upperpt == None:
+            return data
+
+        if "fj_pt" not in data.columns:
+            raise Exception(f"The data has no fj_pt column, but {self.lowerpt=} and/or {self.upperpt=} were specified!")
+        
+        og_len = len(data)
+        if self.lowerpt is not None: data = data[data["fj_pt"] >= self.lowerpt]
+        if self.upperpt is not None: data = data[data["fj_pt"] <= self.upperpt]
+        logging.info(f"{og_len=}, length after applying pt bounds={len(data)}")
+
+        return data
 
     def feature_engineer(self, combined_data, jet_label):
         '''
@@ -255,6 +272,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--filter", "-f", required=False, default=False, action=argparse.BooleanOptionalAction,
         help="If provided, use the labels as FILTERS within the data folders. i.e. only files containing the label will be processed (to single out one type of jet)"
+    )
+    parser.add_argument(
+        "--upperpt", "-B", required=False,
+        help=f"upper bound on fatjet Pt? (make sure the preprocessed file has an fj_pt column!)"
+    )
+    parser.add_argument(
+        "--lowerpt", "-b", required=False,
+        help=f"lower bound on fatjet Pt? (make sure the preprocessed file has an fj_pt column!)"
     )
     args = parser.parse_args()
 

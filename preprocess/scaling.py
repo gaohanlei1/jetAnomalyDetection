@@ -71,7 +71,7 @@ def apply_scalers(df: pd.DataFrame, scaler_dict: Dict[str, np.ndarray]) -> Tuple
         if col.startswith("fj_"):
             logging.info(f"Copying over {col=} as is")
         elif col not in scaler_dict:
-            logging.info(f"Skipping {col=} as it doesn't exist in the scaler\n{scaler_dict.columns.tolist()=}")
+            logging.info(f"Skipping {col=}, not in scaler")
             continue
 
         logging.info(f'Standardising {col}')

@@ -42,8 +42,7 @@ Notes:
 class Preprocessor:
     DATA_FILE_EXT = ".root"
 
-    def __init__(self):
-        args = parser.parse_args()
+    def __init__(self, args):
         self.path = args.path
         self.type = args.type
         self.upperpt, self.lowerpt = args.upperpt, args.lowerpt
@@ -315,7 +314,7 @@ if __name__ == "__main__":
         help=f"lower bound on fatjet Pt?"
     )
 
-    preproc = Preprocessor()
+    preproc = Preprocessor(parser.parse_args())
     preproc.setup_log()
 
     if config["dbg"]["measure_perf"]:

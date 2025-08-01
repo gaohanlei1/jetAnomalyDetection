@@ -98,19 +98,18 @@
 - changing all the cpu/cuda prompts to ACTUALLY use config.yaml
 
 **NOW:**
-- Graphing processed fj_pt ranges to make sure slicing works
+- trying diff parameters
 
+- Graphing processed fj_pt ranges to make sure slicing works
 
 - Can add more metadata than currently added (e.g. pfcands)
     - and make sure this remains in processing, too!!
     - add to documentation in readme! e.g. how to graph the fatjet pt ranges from preproc data
 
-- After merging w/ main, start properly merging Arjun's changes into the repo on a new branch
-    - familiarise w/ the visualisations and other tools, update if needed (e.g. graphing other properties)
-    - familiarise w/ the model and what's been done so far
-        - what features have been used to train? how have the edges been modified? what hasn't been tried?
-        - what regions of parameters have been sweeped, and what haven't?
-    - save different useful plots permanently (analysing all the raw/processed data)
+- familiarise w/:
+    - the visualisations and other tools, update if needed (e.g. graphing other properties)
+    - the model and what's been done; what features have been used to train? what hasn't been tried?
+        - other parameters, pfcands
     
 - Look into ways to use Brux's GPU!
     - if successful, we can train for way more epochs hopefully
@@ -125,7 +124,7 @@
     - what gets excluded when `not include_zeros`? how are scaled zeroes distributed?
     - also to visualise processed distributions in general across all fields
         - errors out at mass I think, coz of inf/nan errors! try to filter out and redo
-
+    - save different useful plots permanently (analysing all the raw/processed data)
 
 
 
