@@ -40,6 +40,19 @@ import logging
 bg_file = os.path.join(config['data']['processed_data_dir'], config['data']['background_file'])
 sg_file = os.path.join(config['data']['processed_data_dir'], config['data']['signal_file'])
 
+# Only for WminsH, to remove leptonic jets
+def remove_low_pt_muons(row):
+    pdgId = row['pdgId']
+    pt = row['pt']
+    mask = (np.abs(pdgId) != 13) | (pt >= 0.4)
+    for col in row.index:
+        val = row[col]
+        # Apply mask only if val is indexable (e.g., np.ndarray or list)
+        if hasattr(val, "__getitem__") and not isinstance(val, str):
+            row[col] = val[mask]
+    return row
+
+
 class TrainAutoencoder:
     # Packaged into a class for variable management
     TRAIN_SPLIT = 0.8
@@ -55,24 +68,34 @@ class TrainAutoencoder:
         
         self.session_name = f"logs/train_ae_{self.bg_name}_{self.sg_name}_{self.method}_{helpers_main.curr_time()}.log"
         helpers_main.log_config(self.session_name)
-    
+
     def load(self):
         # Load datasets from pickle files
         self.bg_data = pd.read_pickle(self.bg_file)
         self.sg_data = pd.read_pickle(self.sg_file)
 
-        logging.info(f"Number of training events: {len(self.bg_data)}")
-        logging.info(f"Number of test events: {len(self.sg_data)}")
+        # Slice pT; modify bounds in constants
+        pt_max = c.PT_MAX
+        pt_min = c.PT_MIN
+
+        self.bg_data = self.bg_data[(self.bg_data["fj_pt"] > pt_min) & (self.bg_data["fj_pt"] < pt_max)]
+        # logging.info(f"Signal Data Columns: {self.sg_data.columns.tolist()}")
+
+        # Only for WminusH - This removes the leptonic jet
+        self.sg_data = self.sg_data.apply(remove_low_pt_muons, axis=1)
+
+        logging.info(f"Number of training events after slicing: {len(self.bg_data)}")
+        logging.info(f"Number of test events after removing leptonic jet: {len(self.sg_data)}")
         logging.info(f"\nSample background pt values:\n{self.bg_data['pt'].head().to_string()}")
         logging.info(f"Sample signal pt values:\n{self.sg_data['pt'].head().to_string()}")
     
     def build_graphs(self):
         # Convert datasets to PyG graph objects
         self.bg_graphs = graph_data_loader(
-            self.bg_data, data_label=0, nearest_neighbors=self.knn, device='cpu', method=self.method
+            self.bg_data, data_label=0, nearest_neighbors=self.knn, device='cpu', method=self.method, alpha=config['training']['alpha']
         )
         self.sg_graphs = graph_data_loader(
-            self.sg_data, data_label=1, nearest_neighbors=self.knn, device='cpu', method=self.method
+            self.sg_data, data_label=1, nearest_neighbors=self.knn, device='cpu', method=self.method, alpha=config['training']['alpha']
         )
         logging.info(f"Number of background graphs: {len(self.bg_graphs)}")
         logging.info(f"Number of signal graphs: {len(self.sg_graphs)}")
@@ -141,24 +164,24 @@ class TrainAutoencoder:
             save_dir=self.TRAIN_PLOTS_PATH
         )
 
-    def plot_loss(self):
-        # Plot per-graph reconstruction loss distribution
-        plt.figure(figsize=(8, 5))
-        plt.hist(self.model.background_test_loss, bins=50, alpha=0.6, label='Background (QCD)', color='blue', density=True)
-        plt.hist(self.model.signal_loss, bins=50, alpha=0.6, label='Signal', color='red', density=True)
-        plt.xlabel("Per-Graph Reconstruction Loss")
-        plt.ylabel("Density")
-        plt.title("Reconstruction Loss Distribution")
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
+    # def plot_loss(self):
+    #     # Plot per-graph reconstruction loss distribution
+    #     plt.figure(figsize=(8, 5))
+    #     plt.hist(self.model.background_test_loss, bins=50, alpha=0.6, label='Background (QCD)', color='blue', density=True)
+    #     plt.hist(self.model.signal_loss, bins=50, alpha=0.6, label='Signal', color='red', density=True)
+    #     plt.xlabel("Per-Graph Reconstruction Loss")
+    #     plt.ylabel("Density")
+    #     plt.title("Reconstruction Loss Distribution")
+    #     plt.legend()
+    #     plt.grid(True)
+    #     plt.tight_layout()
 
-        # Save plot
-        plt.savefig(os.path.join(
-            self.TRAIN_PLOTS_PATH, f"loss_{self.bg_name}_{self.sg_name}_{helpers_main.curr_time()}.png"
-        ))
-        if config["dbg"]["show_plots"]: plt.show()
-        plt.clf()
+    #     # Save plot
+    #     plt.savefig(os.path.join(
+    #         self.TRAIN_PLOTS_PATH, f"loss_{self.bg_name}_{self.sg_name}_{helpers_main.curr_time()}.png"
+    #     ))
+    #     if config["dbg"]["show_plots"]: plt.show()
+    #     plt.clf()
 
 
 def run_autoencoder_training(
@@ -191,7 +214,7 @@ def run_autoencoder_training(
     ).to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=initial_lr, weight_decay=1e-4)
-    scheduler = StepLR(optimizer, step_size=5, gamma=0.7)  # Decay LR by 50% every 10 epochs
+    scheduler = StepLR(optimizer, step_size=10, gamma=0.7)  # Decay LR by 30% every 10 epochs
 
     loss_fn = torch.nn.MSELoss()
 
@@ -210,8 +233,8 @@ def run_autoencoder_training(
 
     # Generate plots for analysis
     plot_anomaly_score(model.background_test_loss, model.signal_loss, background_label="", signal_label="")
-    plot_roc_curve(model, "signal", "background", savepath=save_dir + 'roc.png', examples=False, loss_fn=torch.nn.MSELoss(reduction='mean'))
-    plot_loss(model.train_hist, model.val_hist, save_path=f"plots/test-plots/loss_{helpers_main.curr_time()}.png")
+    plot_roc_curve(model, "signal", "background", savepath="plots/test-plots/roc_hybrid3.png", examples=False, loss_fn=torch.nn.MSELoss(reduction='mean'))
+    plot_loss(model.train_hist, model.val_hist, save_path=f"plots/test-plots/loss_hybrid3.png")
 
     return model
 
@@ -229,8 +252,8 @@ if __name__ == "__main__":
         help="Path to processed .pkl signal dataset (WJet). Defaults to signal_file in config.yaml"
     )
     parser.add_argument(
-        "--method", "-m", choices=c.GRAPH_METHODS, default="mass_knn",
-        help=f"Method for building graph edges. Default: mass_knn"
+        "--method", "-m", choices=c.GRAPH_METHODS, default="eta_phi",
+        help=f"Method for building graph edges. Default: eta_phi"
     )
     parser.add_argument(
         "--knn", "-n", type=int, default=config["misc"]["k_nearest_neighbors"],
@@ -243,4 +266,4 @@ if __name__ == "__main__":
     train_ae.compute_stats()
     train_ae.plot_features()
     train_ae.train()
-    train_ae.plot_loss()
+    # train_ae.plot_loss()

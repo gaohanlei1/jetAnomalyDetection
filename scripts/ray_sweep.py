@@ -177,8 +177,11 @@ random.seed(42)
 with open("configs/config.yaml", "r") as f:
     config = yaml.safe_load(f)
 
-train_file = config['data']['processed_data_dir'] + config['data']['train_file']
-test_file = config['data']['processed_data_dir'] + config['data']['test_file']
+BASE_DIR = "/home/anagaman/jet-anomaly-summer25/jetAnomalyDetection_updated/jetAnomalyDetection"
+
+train_file = os.path.join(BASE_DIR, config['data']['processed_data_dir'], config['data']['background_file'])
+test_file = os.path.join(BASE_DIR, ['data']['processed_data_dir'], config['data']['signal_file'])
+
 # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 device = torch.device(config["training"]["device"])
 
@@ -187,8 +190,18 @@ def train_autoencoder_ray(config_ray):
     datatype1 = pd.read_pickle(train_file)
     datatype2 = pd.read_pickle(test_file)
 
-    graphs_train = graph_data_loader(datatype1, data_label=0, nearest_neighbors=config_ray['nearest_neighbors'])
-    graphs_test = graph_data_loader(datatype2, data_label=1, nearest_neighbors=config_ray['nearest_neighbors'])
+    graphs_train = graph_data_loader(
+        datatype1, 
+        data_label=0, 
+        nearest_neighbors=config_ray['nearest_neighbors'],
+        method=hybrid_knn,
+        alpha=config_ray['alpha'])
+
+    graphs_test = graph_data_loader(
+        datatype2, 
+        data_label=1, 
+        nearest_neighbors=config_ray['nearest_neighbors'],
+        alpha=config_ray['alpha'])
 
     train_size = int(0.8 * len(graphs_train))
     train_graphs = graphs_train[:train_size]
@@ -255,14 +268,23 @@ def train_autoencoder_ray(config_ray):
         })
 
 # === Define search space ===
+# search_space = {
+#     'lr': tune.grid_search(config['sweep']['lr']),
+#     'weight_decay': tune.grid_search(config['sweep']['weight_decay']),
+#     'nearest_neighbors': tune.grid_search(config['sweep']['k_nearest_neighbors']),
+#     'smallest_dim': tune.grid_search(config['sweep']['smallest_dim']),
+#     'batch_size': tune.grid_search([64]) if isinstance(config['model']['batch_size'], int)
+#                   else tune.grid_search(config['model']['batch_size']),
+#     'epochs': 20  # allow ASHA to stop early
+# }
 search_space = {
-    'lr': tune.grid_search(config['sweep']['lr']),
-    'weight_decay': tune.grid_search(config['sweep']['weight_decay']),
-    'nearest_neighbors': tune.grid_search(config['sweep']['k_nearest_neighbors']),
-    'smallest_dim': tune.grid_search(config['sweep']['smallest_dim']),
-    'batch_size': tune.grid_search([64]) if isinstance(config['model']['batch_size'], int)
-                  else tune.grid_search(config['model']['batch_size']),
-    'epochs': 20  # allow ASHA to stop early
+    'lr': 0.0005,
+    'weight_decay': 1e-04,
+    'nearest_neighbors': [8, 16, 32],
+    'smallest_dim': 8,
+    'batch_size': 64,
+    'epochs': 20,
+    'alpha': [0, 0.25, 0.5, 0.75, 1]
 }
 
 scheduler = ASHAScheduler(
@@ -283,7 +305,7 @@ tuner = Tuner(
     ),
     run_config=RunConfig(
         name="autoencoder_auc_sweep",
-        storage_path="sweeps/ray_results",
+        storage_path="/home/anagaman/jet-anomaly-summer25/jetAnomalyDetection_updated/jetAnomalyDetection/sweeps/ray_results",
     )
 )
 

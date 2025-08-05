@@ -20,7 +20,7 @@ from helpers import helpers_main
 import logging
 
 
-def plot_loss(train_loss, val_loss, save_path=f'plots/test-plots/loss_{helpers_main.curr_time()}.png'):
+def plot_loss(train_loss, val_loss, save_path=f'plots/test-plots/loss_hybrid3.png'):
     """
     Plot training and validation loss curves over epochs.
 
@@ -45,7 +45,7 @@ def plot_loss(train_loss, val_loss, save_path=f'plots/test-plots/loss_{helpers_m
     plt.close()
 
 
-def plot_anomaly_score(test_scores, anomaly_scores, background_label, signal_label, save_path=f"plots/test-plots/anomaly_score_{helpers_main.curr_time()}.png"):
+def plot_anomaly_score(test_scores, anomaly_scores, background_label, signal_label, save_path=f"plots/test-plots/anomaly_score_hybrid3.png"):
     """
     Plot a histogram comparing the anomaly scores (MSE loss) for signal and background samples.
 

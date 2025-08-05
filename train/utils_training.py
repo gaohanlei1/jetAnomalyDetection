@@ -203,9 +203,9 @@ def train_model(train_dataloader, test_dataloader, signal_dataloader, model, los
         if scheduler is not None:
             scheduler.step()
 
-        logging.info("train loss ", mean_train_loss)
-        logging.info("test loss ", np.nanmean(val_loss))
-        logging.info("signal loss", np.nanmean(signal_loss))
+        logging.info(f"train loss: {mean_train_loss}")
+        logging.info(f"test loss: {np.nanmean(val_loss)}")
+        logging.info(f"signal loss: {np.nanmean(signal_loss)}")
 
     # Final assignment for later ROC/score plotting
     model.background_test_loss = val_loss

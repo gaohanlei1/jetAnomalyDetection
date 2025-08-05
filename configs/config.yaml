@@ -22,27 +22,28 @@ data:
   # after preprocessing, move the raw data file into a subfolder?
   move_to_used: true
   
-  preprocessed_qcd: data/preprocessed/qcd
+  preprocessed_qcd: data/preprocessed/qcd/qcd_with_metadata
   preprocessed_wjet: data/preprocessed/wjet
-  processed_data_dir: data/processed/scaledby_QCD_PT-170to300_2/
+  processed_data_dir: data/processed/scaledby_QCD_PT-80to470/scaledby_QCD/
 
-  background_file: QCD_PT-170to300_13p6TeV_scaled.pkl
-  signal_file: WJetsToQQ_HT-400to600_scaled.pkl
+  background_file: QCD_scaled.pkl
+  signal_file: WJet_scaled.pkl
 
 # Model Hyperparameters
 model:
   num_features: 5
-  smallest_dim: 16
+  smallest_dim: 4
   num_reduced_edges: 16
   batch_size: 64
 
 # Training Settings
 training:
-  initial_lr: 0.000005
-  epochs: 10
+  initial_lr: 0.00005
+  epochs: 50
   device: cpu  # Options: 'cuda' or 'cpu'
+  alpha: 0.3
 
 # Other
 misc:
-  k_nearest_neighbors: 16
+  k_nearest_neighbors: 32
   node_feature_names: ['pt', 'eta', 'phi', 'd0/d0Err', 'dz/dzErr']

@@ -24,4 +24,6 @@ BINS = int(abs(ETA_MIN - ETA_MAX)/INCR)
 
 # for graph structure 
 CLOSEST_NEIGHBORS = 10
-GRAPH_METHODS = ("eta_phi", "all_features", "fully_connected", "mass_knn")
+GRAPH_METHODS = ("eta_phi", "all_features", "fully_connected", "mass_knn", "hybrid_knn")
+PT_MAX = 400
+PT_MIN = 200

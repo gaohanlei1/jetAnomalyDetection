@@ -48,13 +48,53 @@ def build_mass_knn_edges(pt, eta, phi, mass, k, device='cpu'):
     edge_index = torch.tensor(edge_index_np, dtype=torch.long).to(device)
     return edge_index
 
+def build_hybrid_knn_edges_vectorized(pt, eta, phi, mass, k, alpha=0.5, device='cpu'):
+    """Vectorized: Build kNN edges using hybrid of ΔR and 1/invariant mass."""
+
+    # 4-momentum components
+    px = pt * np.cos(phi)
+    py = pt * np.sin(phi)
+    pz = pt * np.sinh(eta)
+    E = np.sqrt(px**2 + py**2 + pz**2 + mass**2)
+
+    # ΔR
+    eta_diff = eta[:, None] - eta[None, :]
+    phi_diff = np.abs(phi[:, None] - phi[None, :])
+    phi_diff = np.where(phi_diff > np.pi, 2 * np.pi - phi_diff, phi_diff)
+    delta_r = np.sqrt(eta_diff**2 + phi_diff**2)
+
+    # Invariant mass pairwise distance (vectorized)
+    E_sum = E[:, None] + E[None, :]
+    px_sum = px[:, None] + px[None, :]
+    py_sum = py[:, None] + py[None, :]
+    pz_sum = pz[:, None] + pz[None, :]
+    mass_sq = E_sum**2 - (px_sum**2 + py_sum**2 + pz_sum**2)
+    m = np.sqrt(np.clip(mass_sq, a_min=0, a_max=None))
+    inv_mass_dist = 1.0 / (m + 1e-6)
+
+    # Normalize distances
+    norm_dR = (delta_r - delta_r.min()) / (delta_r.max() - delta_r.min() + 1e-6)
+    norm_mass = (inv_mass_dist - inv_mass_dist.min()) / (inv_mass_dist.max() - inv_mass_dist.min() + 1e-6)
+
+    # Hybrid metric
+    hybrid_dist = alpha * norm_dR + (1 - alpha) * norm_mass
+
+    # kNN graph from hybrid distance
+    nbrs = NearestNeighbors(n_neighbors=k + 1, metric='precomputed')
+    nbrs.fit(hybrid_dist)
+    knn_graph_matrix = nbrs.kneighbors_graph(hybrid_dist, mode='connectivity')
+    edge_index_np = np.array(knn_graph_matrix.nonzero())
+    edge_index = torch.tensor(edge_index_np, dtype=torch.long).to(device)
+
+    return edge_index
 
 def make_graph(data: dict,
                data_label: int,
                node_feature_names=['pt', 'eta', 'phi', 'd0/d0Err', 'dz/dzErr'],
                nearest_neighbors=16,
                device='cpu',
-               method='eta_phi') -> Data:
+               method='eta_phi',
+               alpha: float = 0.5) -> Data:
     """
     Build a graph from particle features using specified edge method.
     """
@@ -108,6 +148,9 @@ def make_graph(data: dict,
 
         elif method == 'mass_knn':
             edge_index = build_mass_knn_edges(pt, eta, phi, mass, k, device=device)
+        
+        elif method == 'hybrid_knn':
+            edge_index = build_hybrid_knn_edges_vectorized(pt, eta, phi, mass, k, alpha=alpha, device=device)
 
         else:
             raise ValueError(f"Unknown method: {method}")
@@ -123,7 +166,8 @@ def graph_data_loader(df: pd.DataFrame,
                       nearest_neighbors: int = 16,
                       device: str = 'cpu',
                       method: str = 'eta_phi',
-                      node_feature_names=['pt', 'eta', 'phi', 'd0/d0Err', 'dz/dzErr']) -> List[Data]:
+                      node_feature_names=['pt', 'eta', 'phi', 'd0/d0Err', 'dz/dzErr'],
+                      alpha: float = 0.5) -> List[Data]:
     """
     Convert a dataframe of events into a list of PyTorch Geometric Data objects (graphs).
     """
@@ -136,7 +180,8 @@ def graph_data_loader(df: pd.DataFrame,
                                node_feature_names=node_feature_names,
                                nearest_neighbors=nearest_neighbors,
                                device=device,
-                               method=method)
+                               method=method,
+                               alpha=alpha)
             graphs.append(graph)
         except Exception as e:
             logging.info(f"Skipping event {i} due to error: {e}")

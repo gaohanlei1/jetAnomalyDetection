@@ -274,11 +274,11 @@ if __name__ == "__main__":
         help="If provided, use the labels as FILTERS within the data folders. i.e. only files containing the label will be processed (to single out one type of jet)"
     )
     parser.add_argument(
-        "--upperpt", "-B", required=False,
+        "--upperpt", required=False,
         help=f"upper bound on fatjet Pt? (make sure the preprocessed file has an fj_pt column!)"
     )
     parser.add_argument(
-        "--lowerpt", "-b", required=False,
+        "--lowerpt", required=False,
         help=f"lower bound on fatjet Pt? (make sure the preprocessed file has an fj_pt column!)"
     )
     args = parser.parse_args()
