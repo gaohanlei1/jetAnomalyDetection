@@ -14,6 +14,9 @@ from torch.optim.lr_scheduler import StepLR
 from torch_geometric.data import Data
 from typing import List, Tuple
 
+import os 
+import sys
+
 # Add parent directory to import local project modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from helpers import helpers_main

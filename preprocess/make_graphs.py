@@ -8,6 +8,9 @@ from sklearn.neighbors import NearestNeighbors
 from tqdm import tqdm
 import logging
 
+import os
+import sys
+
 # Add parent directory to import local project modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from helpers import helpers_main
