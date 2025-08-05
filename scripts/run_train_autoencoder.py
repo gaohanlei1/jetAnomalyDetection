@@ -92,10 +92,10 @@ class TrainAutoencoder:
     def build_graphs(self):
         # Convert datasets to PyG graph objects
         self.bg_graphs = graph_data_loader(
-            self.bg_data, data_label=0, nearest_neighbors=self.knn, device='cpu', method=self.method, alpha=config['training']['alpha']
+            self.bg_data, data_label=0, nearest_neighbors=self.knn, device='cuda', method=self.method, alpha=config['training']['alpha']
         )
         self.sg_graphs = graph_data_loader(
-            self.sg_data, data_label=1, nearest_neighbors=self.knn, device='cpu', method=self.method, alpha=config['training']['alpha']
+            self.sg_data, data_label=1, nearest_neighbors=self.knn, device='cuda', method=self.method, alpha=config['training']['alpha']
         )
         logging.info(f"Number of background graphs: {len(self.bg_graphs)}")
         logging.info(f"Number of signal graphs: {len(self.sg_graphs)}")

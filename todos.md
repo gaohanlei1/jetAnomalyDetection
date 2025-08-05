@@ -97,12 +97,25 @@
 
 - changing all the cpu/cuda prompts to ACTUALLY use config.yaml
 
-**NOW:**
-- trying diff parameters
-
 - Graphing processed fj_pt ranges to make sure slicing works
 
-- Can add more metadata than currently added (e.g. pfcands)
+
+**NOW:**
+
+- training step: weight the fj_pt ranges to flatten pt distribution so that the network doesnt learn the pt
+    - may improve performance
+    - higher jet pts have more pfcands, but second order
+    - variable transformation to flatten distributions
+
+- hep repository see how to mount brux, to use oscar gpu
+    - /HEP/export/home/mstamenk/jet-anomaly-summer25/btv-nano
+
+- particle tagging metadata during preproc (marko)
+
+
+- trying diff parameters
+
+- Can add more metadata than currently added
     - and make sure this remains in processing, too!!
     - add to documentation in readme! e.g. how to graph the fatjet pt ranges from preproc data
 

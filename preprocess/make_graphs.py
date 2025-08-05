@@ -17,7 +17,7 @@ def sanitize_features(pt, eta, phi, mass):
     return pt, eta, phi, mass
 
 
-def build_mass_knn_edges(pt, eta, phi, mass, k, device='cpu'):
+def build_mass_knn_edges(pt, eta, phi, mass, k, device='cuda'):
     """Build kNN edge index using 1 / invariant mass as a distance."""
     # Compute 4-momenta
     px = pt * np.cos(phi)
@@ -48,7 +48,7 @@ def build_mass_knn_edges(pt, eta, phi, mass, k, device='cpu'):
     edge_index = torch.tensor(edge_index_np, dtype=torch.long).to(device)
     return edge_index
 
-def build_hybrid_knn_edges_vectorized(pt, eta, phi, mass, k, alpha=0.5, device='cpu'):
+def build_hybrid_knn_edges_vectorized(pt, eta, phi, mass, k, alpha=0.5, device='cuda'):
     """Vectorized: Build kNN edges using hybrid of ΔR and 1/invariant mass."""
 
     # 4-momentum components
@@ -92,7 +92,7 @@ def make_graph(data: dict,
                data_label: int,
                node_feature_names=['pt', 'eta', 'phi', 'd0/d0Err', 'dz/dzErr'],
                nearest_neighbors=16,
-               device='cpu',
+               device='cuda',
                method='eta_phi',
                alpha: float = 0.5) -> Data:
     """
@@ -164,7 +164,7 @@ def make_graph(data: dict,
 def graph_data_loader(df: pd.DataFrame,
                       data_label: int,
                       nearest_neighbors: int = 16,
-                      device: str = 'cpu',
+                      device: str = 'cuda',
                       method: str = 'eta_phi',
                       node_feature_names=['pt', 'eta', 'phi', 'd0/d0Err', 'dz/dzErr'],
                       alpha: float = 0.5) -> List[Data]:
