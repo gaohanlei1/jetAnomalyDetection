@@ -182,7 +182,6 @@ BASE_DIR = "/home/anagaman/jet-anomaly-summer25/jetAnomalyDetection_updated/jetA
 train_file = os.path.join(BASE_DIR, config['data']['processed_data_dir'], config['data']['background_file'])
 test_file = os.path.join(BASE_DIR, ['data']['processed_data_dir'], config['data']['signal_file'])
 
-# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 device = torch.device(config["training"]["device"])
 
 def train_autoencoder_ray(config_ray):

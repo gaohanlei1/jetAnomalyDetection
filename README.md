@@ -29,19 +29,14 @@ python3.9 helpers/print_df_info.py --path data/preprocessed/qcd/              # 
 python3.9 helpers/join_dfs.py --filter 170to300 --path data/preprocessed/qcd/ # or `wjet/`
 
 # modify `configs/config.yaml to point to the preprocessed data folders
-python3.9 scripts/processing.py
+python3.9 scripts/processing.py -b path/to/processed/qcd.pkl -s path/to/processed/wjet.pkl -B "qcd file label" -S "wjet file label"
 
 # visualisation e.g.
-python3.9 visualize/plot_distributions.py -q path/to/preprocessed.pkl -t preproc -p fj_pt
+python3.9 visualize/plot_distributions.py -q path/to/pre-or-processed.pkl -t preproc -p fj_pt
 
 ...
 python3.9 scripts/run_train_autoencoder.py -...
 ```
-
-**NOTE:** if you want to run the time-consuming scripts on Brux/LXPlus over SSH, prepend the command with `nohup`!\
-With this, you can close the SSH connection and the script will keep running - the terminal output just goes to `nohup.out` in the current dir.\
-e.g. `nohup python3.9 scripts/preprocessing.py -t background`\
-(Remember to check terminal output often with `cat nohup.out` to check for errors; e.g. because of no virtual environment)
 
 ## Overview
 
@@ -53,6 +48,27 @@ e.g. `nohup python3.9 scripts/preprocessing.py -t background`\
 
 - Parameter sweeps are performed via: TODO! Sync w/ Arjun
 
+### NOTE: Training on Brown resources
+You'll likely have the data downloaded onto Brux/Oscar, so it'd make sense to run from those.\
+You *could* run from Brux directly on the login node, but everything's way faster on Oscar with the right resource settings.\
+(e.g. the training scripts are configured to use CUDA whenever possible)\
+\
+To setup an Oscar account, follow the steps here: https://docs.ccv.brown.edu/oscar/\
+The steps to submit GPU jobs are listed here: https://docs.ccv.brown.edu/oscar/gpu-computing/submit-gpu\
+\
+**TL;DR:** once you setup your Oscar account, use sth like PuTTY/your native terminal to SSH into Oscar.\
+If your files are stored on Brux/HEP, run `cd /HEP/export/home/<account_name>/<path/to/jetAnomalyDetection>/` to locate your Brux files.\
+(You could copy these over to your Oscar directory, if you get permission/SSH key issues with Git.)\
+To run your training scripts directly from the terminal and see their output, run `interact -q gpu -g 1` to start an interactive session w/ 1 GPU.\
+Don't forget to change `device` to `"cuda"` in `config.yaml`, and run the training script.\
+To submit a batch job... just check the link above, pls.\
+\
+If running on Brux/some other cluster w/o a way to submit jobs like on Oscar, prepend your command with `nohup`.\
+This starts the script in the background and writes terminal output to `nohup.out` in the current directory.\
+This means you can close the SSH connection and it'll still keep running.\
+Just make sure to check the output every now and then with `cat nohup.out`, to see if there's been any errors.\
+e.g. `nohup python3.9 scripts/preprocessing.py -t background`
+
 ### First time
 
 - Run `source setup_venv.sh` to setup the venv and download all requirements.
@@ -61,6 +77,8 @@ e.g. `nohup python3.9 scripts/preprocessing.py -t background`\
 - Run `source start_venv.sh` anytime to start the venv, and `deactivate` to terminate it
 
 - Modify `configs/config.yaml` to customise data locations, hyperparameters, etc.
+
+- For any script, run `python3.9 <path/to/script.py> -h` to check what command-line parameters are used
 
 ### Preprocessing
 
@@ -89,16 +107,18 @@ e.g. `nohup python3.9 scripts/preprocessing.py -t background`\
     - The WJet's HT range should be around double the QCD Pt range!
     - You'll likely have a folder of multiple `.pkl` files for each jet; these files will be joined during processing
 
-- Run `python3.9 scripts/processing.py --background <path/to/qcd/preprocessed/> --signal <path/to/wjet/preprocessed>`
+- Run `python3.9 scripts/processing.py -b <path/to/preprocessed/qcd.pkl> -s <path/to/wjet/preprocessed>`
     - This will process the preprocessed `.pkl` files in the specified paths (defaults are set in `config.yaml`)
     - You can also add labels for each jet using `--label_bg` and `--label_sg`
+    - and upper/lower pt bounds using `--upperpt` and `--lowerpt`, if you preprocessed the data with the new script
     - NOTE: if you add `--filter`, then the program will use those labels to filter out preprocessed files
 
 
-### Trai
+### Training
 
-- Run `python3.9 scripts/run_train_autoencoder.py --help`
+- Run `python3.9 scripts/run_train_autoencoder.py -b <path/to/processed/qcd.pkl> -s <path/to/processed/wjet.pkl>`
     - or set the defaults in `config.yaml`
+    - Can configure the KNN neighbours, graph construction method, etc.
 
 ### Visualisation
 

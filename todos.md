@@ -99,8 +99,11 @@
 
 - Graphing processed fj_pt ranges to make sure slicing works
 
+- Look into ways to use Brux's GPU!
 
 **NOW:**
+
+- Adding documentation to note how to use Oscar
 
 - training step: weight the fj_pt ranges to flatten pt distribution so that the network doesnt learn the pt
     - may improve performance
@@ -124,7 +127,6 @@
     - the model and what's been done; what features have been used to train? what hasn't been tried?
         - other parameters, pfcands
     
-- Look into ways to use Brux's GPU!
     - if successful, we can train for way more epochs hopefully
 
 - **Todos on Slack!!**

@@ -42,7 +42,6 @@ datatype1 = pd.read_pickle(train_file)
 datatype2 = pd.read_pickle(test_file)
 
 # Device configuration
-# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 device = torch.device(config["training"]["device"])
 
 # Hyperparameter grids for sweeping

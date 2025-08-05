@@ -34,6 +34,7 @@ import constants as c
 from helpers import helpers_main
 from helpers import join_dfs
 config = helpers_main.load_config()
+
 import logging
 
 # File paths for background and signal data
@@ -78,7 +79,8 @@ class TrainAutoencoder:
         pt_max = c.PT_MAX
         pt_min = c.PT_MIN
 
-        self.bg_data = self.bg_data[(self.bg_data["fj_pt"] > pt_min) & (self.bg_data["fj_pt"] < pt_max)]
+        if "fj_pt" in self.bg_data:
+            self.bg_data = self.bg_data[(self.bg_data["fj_pt"] > pt_min) & (self.bg_data["fj_pt"] < pt_max)]
         # logging.info(f"Signal Data Columns: {self.sg_data.columns.tolist()}")
 
         # Only for WminusH - This removes the leptonic jet
@@ -92,10 +94,10 @@ class TrainAutoencoder:
     def build_graphs(self):
         # Convert datasets to PyG graph objects
         self.bg_graphs = graph_data_loader(
-            self.bg_data, data_label=0, nearest_neighbors=self.knn, device='cuda', method=self.method, alpha=config['training']['alpha']
+            self.bg_data, data_label=0, nearest_neighbors=self.knn, device=config["training"]["device"], method=self.method, alpha=config['training']['alpha']
         )
         self.sg_graphs = graph_data_loader(
-            self.sg_data, data_label=1, nearest_neighbors=self.knn, device='cuda', method=self.method, alpha=config['training']['alpha']
+            self.sg_data, data_label=1, nearest_neighbors=self.knn, device=config["training"]["device"], method=self.method, alpha=config['training']['alpha']
         )
         logging.info(f"Number of background graphs: {len(self.bg_graphs)}")
         logging.info(f"Number of signal graphs: {len(self.sg_graphs)}")
@@ -204,7 +206,6 @@ def run_autoencoder_training(
     Returns:
         model (JetGraphAutoencoder): Trained model.
     """
-    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     device = torch.device(config["training"]["device"])
 
     model = JetGraphAutoencoder(

@@ -62,7 +62,6 @@ def run_classifier_training(graphs, save_dir='checkpoints', smallest_dim=16, num
         losses (List[float]): Loss values per epoch.
         accuracies (List[float]): Accuracy values per epoch.
     """
-    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     device = torch.device(config["training"]["device"])
 
     model = JetGraphAutoencoderClassification(
