@@ -46,10 +46,12 @@ python3.9 scripts/run_train_autoencoder.py -...
 
 - and, once we have the proper distributions, train the classifier (old) or autoencoder (currently developing).
 
-- Parameter sweeps are performed via: TODO! Sync w/ Arjun
+- Parameter sweeps are performed via: `scripts/*_sweep.py`
+
+- (NOTE: everything runs on Linux; use WSL if locally on Windows)
 
 ### NOTE: Training on Brown resources
-You'll likely have the data downloaded onto Brux/Oscar, so it'd make sense to run from those.\
+You'll likely have the data downloaded onto Brux/Oscar, so run from those.\
 You *could* run from Brux directly on the login node, but everything's way faster on Oscar with the right resource settings.\
 (e.g. the training scripts are configured to use CUDA whenever possible)\
 \
@@ -100,6 +102,9 @@ e.g. `nohup python3.9 scripts/preprocessing.py -t background`
     - ^ with different labels, e.g. "QCD170to300", "QCD1400to1800",
         - then add `-s` to save each file's outputs to a subfolder
         - NOTE: this will also automatically concatenate all the files in the subfolder into `concat_....pkl`, so you should delete the files in subfolders other than the `concat_....pkl` one
+
+- You can use `--upperpt` and `--lowerpt` to set fatjet pt bounds for the data
+    - e.g. if you want to train the model on the same pt ranges, so the model can't just learn the pt
 
 ### Processing
 
