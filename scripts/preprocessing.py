@@ -63,18 +63,14 @@ class Preprocessor:
             self.path = self.folder_path
 
         if not os.path.exists(self.path):
+            old = self.path
             # if it's a filename within default folder, use that
             self.path = os.path.join(self.folder_path, self.path)
             if not os.path.exists(self.path):
-                raise Exception(f"Invalid path: {self.path=}\n{self.jet_type=}")
+                raise Exception(f"Invalid path: {old}\n{self.path=}\n{self.jet_type=}")
 
         # by now, guaranteed to be full file/folder paths
-        files = [self.path] if os.path.isfile(self.path) else [
-            os.path.join(self.path, file)
-            for file in os.listdir(self.path)
-            if os.path.isfile(os.path.join(self.path, file))
-            and os.path.splitext(file)[1] == self.DATA_FILE_EXT
-        ]
+        files = helpers_main.get_files(self.path, extension=self.DATA_FILE_EXT)
 
         logging.info(f"Loaded {len(files)} file(s)!")
         return files
@@ -208,6 +204,7 @@ def process_event_root(events, lowerpt=None, upperpt=None):
     properties = [pt, eta, phi]
     property_names = ["pt", "eta", "phi"]
 
+    logging.warning(f"{fatjets.fields=}")
     # add more "raw fields" to preserve through constants.RAW_FATJET_PROPERTIES!
     for new_prop in c.RAW_FATJET_PROPERTIES:
         properties.append(fatjets[new_prop][0])

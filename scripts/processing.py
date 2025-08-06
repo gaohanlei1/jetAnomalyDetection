@@ -63,15 +63,13 @@ class DataProcessor:
         Loads and joins all the preprocessed .pkl files in the given directory.
         '''
         helpers_main.secs_since_last_ping()
-        preproc_paths = [data_path] if os.path.isfile(data_path) else [
-            os.path.join(data_path, file) for file in os.listdir(data_path)
-        ]
+        preproc_paths = helpers_main.get_files(
+            data_path, extension=".pkl",
+            filter_name=jet_label if self.filter else None
+        )
         preproc_dfs = [
             pd.read_pickle(file)            #.head(100)
             for file in tqdm(preproc_paths, desc=f"Loading {jet_label} files")
-            if os.path.isfile(file)
-            and os.path.splitext(file)[1] == ".pkl"
-            and (not self.filter or jet_label in file)
         ]
    
         combined = preproc_dfs[0]

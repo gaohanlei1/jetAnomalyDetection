@@ -84,3 +84,13 @@ def create_missing_dir(filepath):
 def get_device():
     device = "cuda" if config["training"]["device"] == "cuda" and cuda.is_available() else "cpu"
     logging.info(f"Using {device=}")
+
+def get_files(path, extension=None, filter_name=None):
+    '''Returns the given path if it's a filepath; otherwise, returns all files in that directory'''
+    files = [path] if os.path.isfile(path) else [
+        os.path.join(path, file) for file in os.listdir(path)
+        if os.path.isfile(os.path.join(path, file))
+    ]
+    if extension: files = [f for f in files if get_extension(f) == extension]
+    if filter_name: files = [f for file in files if filter_name in f]
+    return files

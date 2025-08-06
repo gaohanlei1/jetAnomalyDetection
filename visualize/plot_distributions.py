@@ -195,30 +195,22 @@ if __name__ == "__main__":
         
         plot_distributions(pts, "Pt", label_list=[helpers_main.trim_name(args.path1), helpers_main.trim_name(args.path2)])
     else:
-        files = [args.path1] if os.path.isfile(args.path1) else [
-            os.path.join(args.path1, file) for file in os.listdir(args.path1)
-            if os.path.isfile(os.path.join(args.path1, file))
-        ]
-
         if args.type in ("raw", "raw_fjlen"):
+            files = helpers_main.get_files(args.path1, extension=".root")
             for file in files:
-                if helpers_main.get_extension(file) != ".root":
-                    logging.warning(f"Skipping non-root {file=}")
-                    continue
-
                 logging.info(f"Now plotting {file=}!") #, with {preproc_file=}!")
 
                 filename = helpers_main.trim_name(file)
-                root_prop = get_prop_from_root(file, branch="FatJet_" + args.prop)
+                # root_prop = get_prop_from_root(file, branch="FatJet_" + args.prop)
                 ev = load_events(file)
 
                 if args.type == "raw":
                     evs_raw_prop = ak.flatten(ev.FatJet)[args.prop].to_numpy()
                     plot_distributions(
-                        [root_prop, evs_raw_prop], args.prop,
-                        label_list=[filename + "_uproot", filename + "_coffea"],
+                        # [root_prop, evs_raw_prop], args.prop,
+                        # label_list=[filename + "_uproot", filename + "_coffea"],
+                        [evs_raw_prop], args.prop, label_list=[filename + "_coffea"],
                         bin_range=[args.lower, args.upper]
-                        # [evs_raw_prop], args.prop, label_list=[filename + "_coffea"]
                     )
                 
                 elif args.type == "raw_fjlen":
@@ -252,15 +244,12 @@ if __name__ == "__main__":
                 
 
         elif args.type in ("preproc", "proc"):
+            files = helpers_main.get_files(args.path1, extension=".pkl")
             for file in files:
-                if helpers_main.get_extension(file) != ".pkl":
-                    logging.warning(f"Skipping non-pkl {file=}")
-                    continue
-
                 logging.info(f"Now plotting {file=}!") #, with {preproc_file=}!")
-
                 filename = helpers_main.trim_name(file)
                 pkl = pd.read_pickle(file)
+                
                 if args.prop not in pkl.columns.tolist():
                     logging.warning(f"Skipping no-{args.prop} {file=}")
                     continue

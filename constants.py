@@ -31,8 +31,9 @@ PT_MIN = 200
 # for preproc/proc data/names
 RAW_FATJET_PROPERTIES = [
     "phi", "eta", "pt", "mass", "msoftdrop",
-    "particleNetMD_QCD", "particleNetMD_Xbb", "particleNetMD_Xcc", "particleNetMD_Xqq",
-    "particleNet_QCD", "particleNet_mass"
+    "particleNetWithMass_QCD", "particleNetWithMass_Xbb",
+    "particleNetWithMass_Xcc", "particleNetWithMass_Xqq",
+    "particleNet_QCD", "particleNet_massCorr"
 ]
 # to distinguish from the processed columns
 RAW_FATJET_PROPERTIES_PREFIX = "rawfj_"
