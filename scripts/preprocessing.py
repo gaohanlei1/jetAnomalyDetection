@@ -13,8 +13,8 @@ import logging
 NOTE!
 I'm suppressing like 50 warnings that come up everytime I run the program,
 which all complain about duplicate branches in the .root files used to load events.
-Coffea only takes the first instance of each duplicate branch
-- dunno if this is an issue?
+Coffea only takes the first instance of each duplicate branch.
+Shouldn't be an issue unless you start using said branches, maybe.
 '''
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="coffea")
@@ -185,7 +185,7 @@ def process_event_root(events, lowerpt=None, upperpt=None):
     pfcands = events.PFCands
 
     if len(fatjets["pt"]) != 1:
-        logging.warning(f"!!!\n{len(fatjets['pt'][0])=}, {fatjets['pt']=}\n")
+        logging.warning(f"Fatjets array size isn't 1*events!\n{len(fatjets['pt'][0])=}, {fatjets['pt']=}\n")
         # raise Exception("FatJet wrong shape!")
 
     eta = ak.to_numpy(ak.flatten(pfcands["phi"] - fatjets["phi"])[pfcs])
@@ -204,7 +204,6 @@ def process_event_root(events, lowerpt=None, upperpt=None):
     properties = [pt, eta, phi]
     property_names = ["pt", "eta", "phi"]
 
-    logging.warning(f"{fatjets.fields=}")
     # add more "raw fields" to preserve through constants.RAW_FATJET_PROPERTIES!
     for new_prop in c.RAW_FATJET_PROPERTIES:
         properties.append(fatjets[new_prop][0])
