@@ -232,6 +232,7 @@ def run_autoencoder_training(
         scheduler=scheduler
     )
 
+    helpers_main.create_missing_dir("plots/test-plots/foo.bar")
     # Generate plots for analysis
     plot_anomaly_score(model.background_test_loss, model.signal_loss, background_label="", signal_label="")
     plot_roc_curve(model, "signal", "background", savepath="plots/test-plots/roc_hybrid3.png", examples=False, loss_fn=torch.nn.MSELoss(reduction='mean'))

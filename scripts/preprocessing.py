@@ -91,7 +91,7 @@ class Preprocessor:
         # - So, I'll be doing sth very stupid here: loading the same file multiple times
         # - coz pickle can't pickle coffea events for whatever reason
         # if EVENT_LIMIT: events = events[:EVENT_LIMIT]
-        num_events = len(NanoEventsFactory.from_root(filepath, schemaclass = PFNanoAODSchema).events())
+        num_events = 1000 #len(NanoEventsFactory.from_root(filepath, schemaclass = PFNanoAODSchema).events())
         logging.info(f"{num_events} events in total, splitting into {CPUS} chunks.")
         start_i = np.linspace(0, num_events, endpoint=False, dtype=int, num=CPUS)
         end_i   = np.append(start_i[1:], num_events)
@@ -118,17 +118,30 @@ class Preprocessor:
 
             # each invocation of the function will receive an ELT of the iterator, not a slice
             # the chunk is just loosely defined as the range over which to pick elts for each cpu
-            pool.map(preproc_events_slice, shared_datas)
+            results = pool.map(preproc_events_slice, shared_datas)
+
+            logging.info(f"All done! Converting {len(results)=} dicts to dataframes and concatenating...")
+            results = pd.concat([pd.DataFrame.from_dict(data_dict) for data_dict in results])
+            logging.info(f"Concatenated {len(results)=} fatjets! Saving...")
+
+            basename = helpers_main.trim_name(filepath)
+            output_file_path = os.path.join(
+                save_path,
+                f"{basename}_Pt{helpers_main.strnone_to_str(self.lowerpt)}-{helpers_main.strnone_to_str(self.upperpt)}_{os.getpid()}_{helpers_main.curr_time()}.pkl"
+            )
+            helpers_main.create_missing_dir(output_file_path)
+            results.to_pickle(output_file_path)
+            logging.info(f"Preprocessed into {output_file_path}.")
 
         if config["data"]["move_to_used"]:
             move_to_used(filepath)
 
-        if self.subfolder:
-            join_dfs.concat_pkls(
-                save_path,
-                output_name=f"concat_{helpers_main.trim_name(filepath)}_{self.lowerpt}-{self.upperpt}_{helpers_main.curr_time()}"
-            )
-            logging.info(f"Concatenated into {save_path}; you can delete the non-concat files!")
+        # if self.subfolder:
+        #     join_dfs.concat_pkls(
+        #         save_path,
+        #         output_name=f"concat_{helpers_main.trim_name(filepath)}_{self.lowerpt}-{self.upperpt}_{helpers_main.curr_time()}"
+        #     )
+        #     logging.info(f"Concatenated into {save_path}; you can delete the non-concat files!")
         
 
 def get_fatjets(events, lowerpt=None, upperpt=None): 
@@ -263,7 +276,8 @@ def preproc_events_slice(metadata):
         # if curr_i != 0 and curr_i % 20 == 0: break
     
     logging.info(f"#{pid_posn} ({pid}):  Preprocessed last few events, from {metadata['start']} to {metadata['end']}!")
-    save_df(data, metadata)
+    # save_df(data, metadata)
+    return data
 
 def save_df(data_dict, metadata):
     logging.info(f"Received new df, saving!")

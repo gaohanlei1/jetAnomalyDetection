@@ -212,6 +212,7 @@ class DataProcessor:
 def pickle_dict(folder_path, dickle_pickle, filename):
     # Pickle a DataFrame or dict
     filepath = os.path.join(folder_path, filename)
+    helpers_main.create_missing_dir(filepath)
     if isinstance(dickle_pickle, dict): dickle_pickle = pd.DataFrame.from_dict(dickle_pickle)
     dickle_pickle.to_pickle(filepath)
     logging.info(f"Saved into {filepath}!")

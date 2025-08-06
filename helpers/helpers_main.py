@@ -15,6 +15,7 @@ config = load_config()
 LAST_PING = None
 
 def log_config(filename):
+    create_missing_dir(filename)
     logging.basicConfig(
         # filename = filename,
         handlers = [
