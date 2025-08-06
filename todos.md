@@ -107,6 +107,12 @@
     - /HEP/export/home/<account>
 
 **NOW:**
+
+- test alphasweep!
+
+- modify `scaling.py` etc. to automatically add additional metadata columns during processing
+    - currently, it either ignores them or errors out w/ em, coz it expects only lists as elements for each column
+
 - training step: weight the fj_pt ranges to flatten pt distribution so that the network doesnt learn the pt
     - may improve performance
     - higher jet pts have more pfcands, but second order
@@ -143,6 +149,3 @@
     - also to visualise processed distributions in general across all fields
         - errors out at mass I think, coz of inf/nan errors! try to filter out and redo
     - save different useful plots permanently (analysing all the raw/processed data)
-
-- modify `scaling.py` etc. to automatically add additional metadata columns during processing
-    - currently, it either ignores them or errors out w/ em, coz it expects only lists as elements for each column

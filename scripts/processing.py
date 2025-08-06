@@ -23,6 +23,7 @@ import argparse
 
 # Add parent directory to import local project modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import constants as c
 from helpers import helpers_main
 config = helpers_main.load_config()
 
@@ -274,12 +275,12 @@ if __name__ == "__main__":
         help="If provided, use the labels as FILTERS within the data folders. i.e. only files containing the label will be processed (to single out one type of jet)"
     )
     parser.add_argument(
-        "--upperpt", required=False,
-        help=f"upper bound on fatjet Pt? (make sure the preprocessed file has an fj_pt column!)"
+        "--upperpt", type=float, default=None,
+        help=f"upper bound on fatjet Pt? (make sure the preprocessed file has a raw fatjet pt column!)"
     )
     parser.add_argument(
-        "--lowerpt", required=False,
-        help=f"lower bound on fatjet Pt? (make sure the preprocessed file has an fj_pt column!)"
+        "--lowerpt", type=float, default=None,
+        help=f"lower bound on fatjet Pt? (make sure the preprocessed file has an raw fatjet pt column!)"
     )
     args = parser.parse_args()
 

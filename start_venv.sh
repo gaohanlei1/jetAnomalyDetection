@@ -1,5 +1,8 @@
 #!/bin/bash
 source .venv/bin/activate
 
-# add scripts to path, to run them easier + add py=.venv/bin/python3.9 to PATH
-export PATH=scripts:$PATH
+# add py=.venv/bin/python3.9 to PATH to run scripts easier!
+cd .venv/bin
+ln -sf python3.9 py
+export PATH=./:$PATH
+cd ../..

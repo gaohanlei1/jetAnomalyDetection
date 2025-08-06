@@ -12,8 +12,10 @@ This script:
 import sys
 import os
 
-# Add the parent directory to Python's path to allow local imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add parent directory to import local project modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import constants as c
+from helpers import helpers_main
 
 import torch
 import pandas as pd
@@ -30,8 +32,6 @@ import matplotlib.pyplot as plt
 from torch.optim.lr_scheduler import StepLR
 from typing import List, Tuple
 
-import constants as c
-from helpers import helpers_main
 from helpers import join_dfs
 config = helpers_main.load_config()
 
@@ -40,6 +40,7 @@ import logging
 # File paths for background and signal data
 bg_file = os.path.join(config['data']['processed_data_dir'], config['data']['background_file'])
 sg_file = os.path.join(config['data']['processed_data_dir'], config['data']['signal_file'])
+DEVICE = helpers_main.get_device()
 
 # Only for WminsH, to remove leptonic jets
 def remove_low_pt_muons(row):
@@ -94,10 +95,10 @@ class TrainAutoencoder:
     def build_graphs(self):
         # Convert datasets to PyG graph objects
         self.bg_graphs = graph_data_loader(
-            self.bg_data, data_label=0, nearest_neighbors=self.knn, device=config["training"]["device"], method=self.method, alpha=config['training']['alpha']
+            self.bg_data, data_label=0, nearest_neighbors=self.knn, device=DEVICE, method=self.method, alpha=config['training']['alpha']
         )
         self.sg_graphs = graph_data_loader(
-            self.sg_data, data_label=1, nearest_neighbors=self.knn, device=config["training"]["device"], method=self.method, alpha=config['training']['alpha']
+            self.sg_data, data_label=1, nearest_neighbors=self.knn, device=DEVICE, method=self.method, alpha=config['training']['alpha']
         )
         logging.info(f"Number of background graphs: {len(self.bg_graphs)}")
         logging.info(f"Number of signal graphs: {len(self.sg_graphs)}")
@@ -206,13 +207,12 @@ def run_autoencoder_training(
     Returns:
         model (JetGraphAutoencoder): Trained model.
     """
-    device = torch.device(config["training"]["device"])
 
     model = JetGraphAutoencoder(
         num_features=train_graphs[0].x.shape[1],
         smallest_dim=smallest_dim,
         num_reduced_edges=num_reduced_edges
-    ).to(device)
+    ).to(DEVICE)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=initial_lr, weight_decay=1e-4)
     scheduler = StepLR(optimizer, step_size=10, gamma=0.7)  # Decay LR by 30% every 10 epochs

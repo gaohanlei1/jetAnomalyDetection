@@ -5,6 +5,7 @@ import logging
 import sys
 import os
 from time import time
+from torch import cuda
 
 def load_config():
     with open("configs/config.yaml", "r") as f:
@@ -79,3 +80,7 @@ def strnone_to_str(strnone):
 
 def create_missing_dir(filepath):
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+def get_device():
+    device = "cuda" if config["training"]["device"] == "cuda" and cuda.is_available() else "cpu"
+    logging.info(f"Using {device=}")

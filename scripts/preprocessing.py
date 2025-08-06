@@ -147,8 +147,8 @@ def get_fatjets(events, lowerpt=None, upperpt=None):
     muons = events.Muon
     muons = fatjets.nearest(muons[muons.pt > c.MUON_PT_LOWER_BOUND])
 
-    lowerpt = float(lowerpt) if lowerpt else float(c.FATJET_PT_LOWER_BOUND)
-    upperpt = float(upperpt) if upperpt else float(1e10)
+    lowerpt = lowerpt if lowerpt else float(c.FATJET_PT_LOWER_BOUND)
+    upperpt = upperpt if upperpt else float(1e10)
 
     mask = (
         (ak.fill_none(fatjets.delta_r(electrons) > c.ELECTRON_R_LOWER_BOUND, True)) &
@@ -205,14 +205,14 @@ def process_event_root(events, lowerpt=None, upperpt=None):
     # logging.info(f"{pfcs=}\n")
     # if len(pfcands['phi']) > 0: logging.info(ak.to_numpy(pfcands['phi'][0]))
 
-    fj_phi = fatjets["phi"][0]
-    fj_eta = fatjets["eta"][0]
-    fj_pt  = fatjets["pt"][0]
+    properties = [pt, eta, phi]
+    property_names = ["pt", "eta", "phi"]
 
-    # if you want, add pfcs_phi/eta/pt to the saved data too
-    properties = [pt, eta, phi, fj_phi, fj_eta, fj_pt]
-    property_names = ["pt", "eta", "phi", "fj_phi", "fj_eta", "fj_pt"]
-
+    # add more "raw fields" to preserve through constants.RAW_FATJET_PROPERTIES!
+    for new_prop in c.RAW_FATJET_PROPERTIES:
+        properties.append(fatjets[new_prop][0])
+        property_names.append(c.RAW_FATJET_PROPERTIES_PREFIX + new_prop)
+        
     # add all other fields
     for field in pfcands.fields:
         if field not in property_names:
@@ -298,7 +298,7 @@ if __name__ == "__main__":
         help="Path to single .root file to preprocess, or name of single file within the data folder, or path to folder containing multiple .root files with the same type/label (e.g. QCD170to300). Default: uses the path in configs/config.yaml"
     )
     parser.add_argument(
-        "--type", "--data_type", "-t", choices=["background", "signal"], required=True,
+        "--type", "--data_type", "-t", choices=["background", "signal"], default="background",
         help=f"'background' ({config['data']['background']}) or 'signal' ({config['data']['signal']})"
     )
     parser.add_argument(
@@ -306,11 +306,11 @@ if __name__ == "__main__":
         help=f"If provided, save to subfolder within preprocessed directory. Also concatenates all .pkl files within that subfolder!\n(Make sure the subfolder name is unique)"
     )
     parser.add_argument(
-        "--upperpt", "-B", required=False,
+        "--upperpt", "-B", type=float, default=None,
         help=f"upper bound on fatjet Pt?"
     )
     parser.add_argument(
-        "--lowerpt", "-b", required=False,
+        "--lowerpt", "-b", type=float, default=None,
         help=f"lower bound on fatjet Pt?"
     )
 

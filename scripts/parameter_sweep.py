@@ -26,12 +26,11 @@ from train.utils_training import train_loop, eval_loop
 from preprocess.make_graphs import graph_data_loader
 import logging
 
-# Add parent directory to Python path for module imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-# Load experiment configuration
-with open("configs/config.yaml", "r") as f:
-    config = yaml.safe_load(f)
+# Add parent directory to import local project modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import constants as c
+from helpers import helpers_main
+config = helpers_main.load_config()
 
 # Dataset paths
 train_file = config['data']['processed_data_dir'] + config['data']['train_file']
@@ -42,7 +41,7 @@ datatype1 = pd.read_pickle(train_file)
 datatype2 = pd.read_pickle(test_file)
 
 # Device configuration
-device = torch.device(config["training"]["device"])
+device = helpers_main.get_device()
 
 # Hyperparameter grids for sweeping
 learning_rates = [1e-5, 5e-5, 1e-4]
