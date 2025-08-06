@@ -22,7 +22,7 @@ data:
   # after preprocessing, move the raw data file into a subfolder?
   move_to_used: true
   
-  preprocessed_qcd: data/preprocessed/qcd/qcd_with_metadata
+  preprocessed_qcd: data/preprocessed/qcd/qcd_with_metadata2
   preprocessed_wjet: data/preprocessed/wjet
   processed_data_dir: data/processed/scaledby_QCD_PT-80to470/scaledby_QCD/
 
@@ -41,7 +41,7 @@ training:
   initial_lr: 0.00005
   epochs: 50
   device: cpu  # Options: 'cuda' or 'cpu'
-  alpha: 0.3
+  alpha: 0.5
 
 # Other
 misc:

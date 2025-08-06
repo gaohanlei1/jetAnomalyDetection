@@ -178,6 +178,7 @@ def get_fatjets(events, lowerpt=None, upperpt=None):
         ):
             pfcs = [pfcand["pFCandsIdx"] for pfcand in events.FatJetPFCands[0] if pfcand["jetIdx"] == j]
 
+    
     return fatjets, pfcs
 
 def process_event_root(events, lowerpt=None, upperpt=None):
@@ -211,7 +212,10 @@ def process_event_root(events, lowerpt=None, upperpt=None):
 
     # if you want, add pfcs_phi/eta/pt to the saved data too
     properties = [pt, eta, phi, fj_phi, fj_eta, fj_pt]
-    property_names = ["pt", "eta", "phi", "fj_phi", "fj_eta", "fj_pt"]
+    property_names = [
+        "pt", "eta", 
+        "phi", "fj_phi", 
+        "fj_eta", "fj_pt",]
 
     # add all other fields
     for field in pfcands.fields:
@@ -219,6 +223,28 @@ def process_event_root(events, lowerpt=None, upperpt=None):
             # logging.debug(f"Added {field=} to property_names")
             properties.append(ak.to_numpy(pfcands[field]).flatten()[pfcs])
             property_names.append(field)
+
+    
+    softdrop_mass = fatjets.msoftdrop[0]
+    properties.append(np.array([softdrop_mass]))
+    property_names.append("fj_msoftdrop")
+
+    # --- ParticleNet Scores ---
+    pnet_keys = [
+    "particleNetWithMass_QCD",
+    "particleNet_XbbVsQCD",
+    "particleNet_XccVsQCD",
+    "particleNet_XqqVsQCD",
+    ]
+
+    for key in pnet_keys:
+        if key in fatjets.fields:
+            score = fatjets[key][0]
+            properties.append(np.array([score]))
+            property_names.append(f"fj_" + key)
+        else:
+            print(list(fatjets.fields))
+            logging.warning(f"FatJet missing expected field: {key}")
 
     return properties, property_names
 

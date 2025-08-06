@@ -40,7 +40,7 @@ import logging
 bg_file = os.path.join(config['data']['processed_data_dir'], config['data']['background_file'])
 sg_file = os.path.join(config['data']['processed_data_dir'], config['data']['signal_file'])
 
-# Only for WminsH, to remove leptonic jets
+# Only for WminsH, to remove leptonic jets 
 def remove_low_pt_muons(row):
     pdgId = row['pdgId']
     pt = row['pt']
@@ -82,7 +82,7 @@ class TrainAutoencoder:
         # logging.info(f"Signal Data Columns: {self.sg_data.columns.tolist()}")
 
         # Only for WminusH - This removes the leptonic jet
-        self.sg_data = self.sg_data.apply(remove_low_pt_muons, axis=1)
+        # self.sg_data = self.sg_data.apply(remove_low_pt_muons, axis=1)
 
         logging.info(f"Number of training events after slicing: {len(self.bg_data)}")
         logging.info(f"Number of test events after removing leptonic jet: {len(self.sg_data)}")
