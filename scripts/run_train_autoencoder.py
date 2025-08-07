@@ -42,7 +42,7 @@ bg_file = os.path.join(config['data']['processed_data_dir'], config['data']['bac
 sg_file = os.path.join(config['data']['processed_data_dir'], config['data']['signal_file'])
 DEVICE = helpers_main.get_device()
 
-# Only for WminsH, to remove leptonic jets
+# Only for WminsH, to remove leptonic jets 
 def remove_low_pt_muons(row):
     pdgId = row['pdgId']
     pt = row['pt']
