@@ -86,12 +86,13 @@ class DataProcessor:
         if self.lowerpt == self.upperpt == None:
             return data
 
-        if "fj_pt" not in data.columns:
-            raise Exception(f"The data has no fj_pt column, but {self.lowerpt=} and/or {self.upperpt=} were specified!")
+        rawfj_pt_col = c.RAW_FATJET_PROPERTIES_PREFIX + "pt"
+        if rawfj_pt_col not in data.columns:
+            raise Exception(f"The data has no '{rawfj_pt_col}' column, but {self.lowerpt=} and/or {self.upperpt=} were specified!")
         
         og_len = len(data)
-        if self.lowerpt is not None: data = data[data["fj_pt"] >= self.lowerpt]
-        if self.upperpt is not None: data = data[data["fj_pt"] <= self.upperpt]
+        if self.lowerpt is not None: data = data[data[rawfj_pt_col] >= self.lowerpt]
+        if self.upperpt is not None: data = data[data[rawfj_pt_col] <= self.upperpt]
         logging.info(f"{og_len=}, length after applying pt bounds={len(data)}")
 
         return data

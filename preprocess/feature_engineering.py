@@ -151,7 +151,7 @@ def modify_df(df: pd.DataFrame, pdg: List[str]) -> pd.DataFrame:
     logging.info(f"Found dR {helpers_main.time_taken()}")
 
     df['within_bounds'] = df.apply(within_bounds, axis=1)
-    logging.info(f"Found within_bounds {helpers_main.time_taken()}")
+    logging.info(f"Found within_bounds {helpers_main.time_taken()}, extracting jet-level metadata...")
 
     df['log_pt'] = df.apply(lambda row: np.log(np.array(row['pt'])), axis=1)
     logging.info(f"Found log_pt {helpers_main.time_taken()}, calculating one-hot lists...")

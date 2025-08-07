@@ -80,8 +80,9 @@ class TrainAutoencoder:
         pt_max = c.PT_MAX
         pt_min = c.PT_MIN
 
-        if "fj_pt" in self.bg_data:
-            self.bg_data = self.bg_data[(self.bg_data["fj_pt"] > pt_min) & (self.bg_data["fj_pt"] < pt_max)]
+        rawfj_pt_col = c.RAW_FATJET_PROPERTIES_PREFIX + "pt"
+        if rawfj_pt_col in self.bg_data:
+            self.bg_data = self.bg_data[(self.bg_data[rawfj_pt_col] > pt_min) & (self.bg_data[rawfj_pt_col] < pt_max)]
         # logging.info(f"Signal Data Columns: {self.sg_data.columns.tolist()}")
 
         # Only for WminusH - This removes the leptonic jet
