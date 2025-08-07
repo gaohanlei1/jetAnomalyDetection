@@ -2,11 +2,13 @@ import pandas as pd
 import os
 import sys
 import argparse
+import logging
 
 # Add parent directory to import local project modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from helpers import helpers_main
 import constants as c
+helpers_main.log_config(f"logs/concat_{helpers_main.curr_time()}.log")
 
 def concat_pkls(folder_path, filter_str=None, output_name=None, lowerpt=None, upperpt=None):
     '''
@@ -39,7 +41,7 @@ def concat_pkls(folder_path, filter_str=None, output_name=None, lowerpt=None, up
     
     logging.info("Now concatenating...")
     concatted = pd.concat(dfs)
-    logging.info(f"Done, {len(concatted=)}! {timer.time_taken()}")
+    logging.info(f"Done, {len(concatted)=}! {timer.time_taken()}")
 
     if not output_name: output_name = f"concat_{helpers_main.strnone_to_str(filter_str)}_{helpers_main.strnone_to_str(lowerpt)}-{helpers_main.strnone_to_str(upperpt)}_{helpers_main.curr_time()}.pkl"
     if not output_name.endswith(".pkl"): output_name += ".pkl"
