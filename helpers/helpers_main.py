@@ -5,7 +5,9 @@ import logging
 import sys
 import os
 from time import time
+
 from torch import cuda
+from pandas import read_pickle
 
 def load_config():
     with open("configs/config.yaml", "r") as f:
@@ -86,12 +88,16 @@ def get_device():
     device = "cuda" if config["training"]["device"] == "cuda" and cuda.is_available() else "cpu"
     logging.info(f"Using {device=}")
 
-def get_files(path, extension=None, filter_name=None):
-    '''Returns the given path if it's a filepath; otherwise, returns all files in that directory'''
+def get_files(path, extension=None, filter_name=None, pickled_df=False):
+    '''Returns the given path (with the given extension and/or filter phrase) if it's a filepath;
+    otherwise, returns all files in that directory'''
     files = [path] if os.path.isfile(path) else [
         os.path.join(path, file) for file in os.listdir(path)
         if os.path.isfile(os.path.join(path, file))
     ]
-    if extension: files = [f for f in files if get_extension(f) == extension]
+    
+    if extension:   files = [f for f in files if get_extension(f) == extension]
     if filter_name: files = [f for file in files if filter_name in f]
+    if pickled_df:  files = [read_pickle(f) for f in files]
+    
     return files

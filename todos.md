@@ -114,7 +114,7 @@
 
 - test alphasweep!
 
-- training step: weight the fj_pt ranges to flatten pt distribution so that the network doesnt learn the pt
+- training step: weight the rawfj_pt ranges to flatten pt distribution so that the network doesnt learn the pt
     - may improve performance
     - higher jet pts have more pfcands, but second order
     - variable transformation to flatten distributions

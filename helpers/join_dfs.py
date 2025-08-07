@@ -6,22 +6,23 @@ import argparse
 # Add parent directory to import local project modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from helpers import helpers_main
+import constants as c
 
-def concat_pkls(folder_path, filter_str=None, output_name=None):
+def concat_pkls(folder_path, filter_str=None, output_name=None, lowerpt=None, upperpt=None):
     '''
     Joins all the pickled pd.DataFrames in the folder into one, saves this, and returns it.
     Checks whether the columns are consistent across all files.
     '''
-    dfs = [
-        pd.read_pickle(os.path.join(folder_path, name))
-        for name in os.listdir(folder_path)
-        if os.path.isfile(os.path.join(folder_path, name))
-            and os.path.splitext(name)[1] == ".pkl"
-            and (filter_str is None or filter_str in name)
-    ]
+    dfs = helpers_main.get_files(folder_path, extension=".pkl", filter_name=filter_str, pickled_df=True)
+
+    # if filter_func: dfs = [df[filter_func(df)] for df in dfs]
+    rawfj_pt_col = c.RAW_FATJET_PROPERTIES_PREFIX + "pt"
+    if lowerpt: dfs = [df[df[rawfj_pt_col] > lowerpt] for df in dfs]
+    if upperpt: dfs = [df[df[rawfj_pt_col] < upperpt] for df in dfs]
+    
     dfs = [df for df in dfs if not df.empty]
     if not dfs:
-        logging.warning(f"No non-empty pickled dataframes in {folder_path=}!")
+        logging.warning(f"No non-empty pickled dataframes in {folder_path=}, after filtering!")
         return
     
     columns = dfs[0].columns.tolist()
@@ -33,12 +34,12 @@ def concat_pkls(folder_path, filter_str=None, output_name=None):
     
     concatted = pd.concat(dfs)
 
-    if not output_name: output_name = f"concat_{'' if filter_str is None else filter_str}_{helpers_main.curr_time()}.pkl"
+    if not output_name: output_name = f"concat_{helpers_main.strnone_to_str(filter_str)}_{helpers_main.strnone_to_str(lowerpt)}-{helpers_main.strnone_to_str(upperpt)}_{helpers_main.curr_time()}.pkl"
     if not output_name.endswith(".pkl"): output_name += ".pkl"
     output_path = os.path.join(folder_path, output_name)
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     concatted.to_pickle(output_path)
-    print(f"Concatenated {len(dfs)} files in {folder_path} with filter '{'' if not filter_str else filter_str}',\ninto {output_path=}")
+    print(f"Concatenated {len(dfs)} files in {folder_path} with filter '{'' if not filter_str else filter_str}', resulting in {len(concatted)=},\ninto {output_path=}")
     
     return concatted
 
@@ -60,6 +61,14 @@ if __name__ == "__main__":
         "--name", "-n", type=str, required=False,
         help='Name of output file; by default, named with the first filename and the current time'
     )
+    parser.add_argument(
+        "--lowerpt", "-b", type=float, required=False,
+        help="Lower bound on the rawfj_pt. Defaults to no bound"
+    )
+    parser.add_argument(
+        "--upperpt", "-B", type=float, required=False,
+        help="Upper bound on the rawfj_pt. Defaults to no bound"
+    )
     args = parser.parse_args()
     
-    concat_pkls(args.path, args.filter, args.name)
+    concat_pkls(args.path, args.filter, args.name, args.lowerpt, args.upperpt)
