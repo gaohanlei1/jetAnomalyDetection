@@ -46,7 +46,7 @@ class Preprocessor:
         self.path = args.path
         self.type = args.type
         self.upperpt, self.lowerpt = args.upperpt, args.lowerpt
-        self.subfolder = args.subfolder
+        self.savepath = args.savepath
         
     def setup_log(self):
         self.session_name = f"preproc_{self.type}_pt{helpers_main.strnone_to_str(self.lowerpt)}-{helpers_main.strnone_to_str(self.upperpt)}_{helpers_main.curr_time()}"
@@ -78,19 +78,11 @@ class Preprocessor:
     def load_root(self, filepath):
         logging.info(f"Now preprocessing {filepath}")
 
-        save_path = config["data"]["preprocessed_" + self.jet_type]
-        if self.subfolder:
-            save_path = os.path.join(
-                save_path,
-                helpers_main.trim_name(filepath)
-                + f"_Pt{helpers_main.strnone_to_str(self.lowerpt)}to{helpers_main.strnone_to_str(self.upperpt)}"
-            )
-            os.makedirs(save_path, exist_ok=True)
-        logging.info(f"{save_path=}")
+        if self.savepath is None: self.savepath = config["data"]["preprocessed_" + self.jet_type]
+        logging.info(f"{self.savepath=}")
 
         # - So, I'll be doing sth very stupid here: loading the same file multiple times
         # - coz pickle can't pickle coffea events for whatever reason
-        # if EVENT_LIMIT: events = events[:EVENT_LIMIT]
         num_events = len(NanoEventsFactory.from_root(filepath, schemaclass = PFNanoAODSchema).events())
         logging.info(f"{num_events} events in total, splitting into {CPUS} chunks.")
         start_i = np.linspace(0, num_events, endpoint=False, dtype=int, num=CPUS)
@@ -109,7 +101,7 @@ class Preprocessor:
                     "filepath" : filepath,
                     "pid_list"  : pid_list,
                     "pid_lock"  : pid_lock,
-                    "save_path" : save_path,
+                    "save_path" : self.savepath,
                     "lowerpt"   : self.lowerpt,
                     "upperpt"   : self.upperpt
                 }
@@ -126,7 +118,7 @@ class Preprocessor:
 
             basename = helpers_main.trim_name(filepath)
             output_file_path = os.path.join(
-                save_path,
+                self.savepath,
                 f"{basename}_Pt{helpers_main.strnone_to_str(self.lowerpt)}-{helpers_main.strnone_to_str(self.upperpt)}_{os.getpid()}_{helpers_main.curr_time()}.pkl"
             )
             helpers_main.create_missing_dir(output_file_path)
@@ -135,13 +127,6 @@ class Preprocessor:
 
         if config["data"]["move_to_used"]:
             move_to_used(filepath)
-
-        # if self.subfolder:
-        #     join_dfs.concat_pkls(
-        #         save_path,
-        #         output_name=f"concat_{helpers_main.trim_name(filepath)}_{self.lowerpt}-{self.upperpt}_{helpers_main.curr_time()}"
-        #     )
-        #     logging.info(f"Concatenated into {save_path}; you can delete the non-concat files!")
         
 
 def get_fatjets(events, lowerpt=None, upperpt=None): 
@@ -206,13 +191,6 @@ def process_event_root(events, lowerpt=None, upperpt=None):
     pt  = ak.to_numpy(ak.flatten(pfcands["pt"]/fatjets["pt"])[pfcs])
     # TODO: old ratio based on whether it is qcd or wjet ->x     this is not model agnostic !!!
       # check that current pt scheme is correct
-
-    # logging.info(f"{len(fatjets['pt'])=}, {fatjets['pt']=}")
-    # logging.info(f"{eta.shape=}, {phi.shape=}, {pt.shape=}")
-    # logging.info(f"{pfcands['phi']=}\n{pfcands['eta']=}\n{pfcands['pt']=}")
-    # logging.info(f"{fatjets['phi']=}\n{fatjets['eta']=}\n{fatjets['pt']=}")
-    # logging.info(f"{pfcs=}\n")
-    # if len(pfcands['phi']) > 0: logging.info(ak.to_numpy(pfcands['phi'][0]))
 
     properties = [pt, eta, phi]
     property_names = ["pt", "eta", "phi"]
@@ -279,16 +257,6 @@ def preproc_events_slice(metadata):
     # save_df(data, metadata)
     return data
 
-def save_df(data_dict, metadata):
-    logging.info(f"Received new df, saving!")
-    basename = helpers_main.trim_name(metadata["filepath"])
-    output_file_path = os.path.join(
-        metadata["save_path"],
-        f"{basename}_Pt{helpers_main.strnone_to_str(metadata['lowerpt'])}-{helpers_main.strnone_to_str(metadata['upperpt'])}_{os.getpid()}_{helpers_main.curr_time()}.pkl"
-    )
-    helpers_main.create_missing_dir(output_file_path)
-    pd.DataFrame.from_dict(data_dict).to_pickle(output_file_path)
-    logging.info(f"Preprocessed into {output_file_path}.")
 
 def main(preproc):
     files = preproc.get_files()
@@ -296,7 +264,6 @@ def main(preproc):
     for file in files:
         preproc.load_root(file)
     
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -308,12 +275,12 @@ if __name__ == "__main__":
         help="Path to single .root file to preprocess, or name of single file within the data folder, or path to folder containing multiple .root files with the same type/label (e.g. QCD170to300). Default: uses the path in configs/config.yaml"
     )
     parser.add_argument(
-        "--type", "--data_type", "-t", choices=["background", "signal"], default="background",
-        help=f"'background' ({config['data']['background']}) or 'signal' ({config['data']['signal']})"
+        "--savepath", "-s", "--save", type=str, required=False,
+        help="Path to preprocess into. Defaults to config"
     )
     parser.add_argument(
-        "--subfolder", "-s", required=False, default=False, action=argparse.BooleanOptionalAction,
-        help=f"If provided, save to subfolder within preprocessed directory. Also concatenates all .pkl files within that subfolder!\n(Make sure the subfolder name is unique)"
+        "--type", "--data_type", "-t", choices=["background", "signal"], default="background",
+        help=f"'background' ({config['data']['background']}) or 'signal' ({config['data']['signal']})"
     )
     parser.add_argument(
         "--upperpt", "-B", type=float, default=None,

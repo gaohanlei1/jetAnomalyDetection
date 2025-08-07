@@ -106,12 +106,13 @@
     - /HEP/export/home/mstamenk/jet-anomaly-summer25/btv-nano
     - /HEP/export/home/<account>
 
+- modify `scaling.py` etc. to automatically add additional metadata columns during processing
+
 **NOW:**
 
-- test alphasweep!
+- graph the data distributions for msoftdrop etc
 
-- modify `scaling.py` etc. to automatically add additional metadata columns during processing
-    - currently, it either ignores them or errors out w/ em, coz it expects only lists as elements for each column
+- test alphasweep!
 
 - training step: weight the fj_pt ranges to flatten pt distribution so that the network doesnt learn the pt
     - may improve performance
@@ -120,16 +121,12 @@
 
 - get the fatjet mass, and normalise with the particle mass to get dimensionless params
     - can look at distribution of the normalised mass
-    - repreprocess all the data!
-
+    - reprocess all the data! and take Pt slices again
 
 - particle tagging metadata during preproc (marko)
 
 - performing sweeps and trying different parameters
     - also different parameters for Oscar, to see what leads to the best performance (GPUs, CPUs, memory)
-
-- Can add more metadata than currently added
-    - add to documentation in readme! e.g. how to graph the fatjet pt ranges from preproc data
 
 - familiarise w/:
     - the visualisations and other tools, update if needed (e.g. graphing other properties)
@@ -144,8 +141,13 @@
 
 **less important:**
 
+- try changing preproc processes to consume sections of events instead of just the indices? to avoid loading multiple times
+
 - Using the visualize() func in processing.py to visualise stuff like the zeroes after processing
     - what gets excluded when `not include_zeros`? how are scaled zeroes distributed?
     - also to visualise processed distributions in general across all fields
         - errors out at mass I think, coz of inf/nan errors! try to filter out and redo
     - save different useful plots permanently (analysing all the raw/processed data)
+
+- Can add more metadata than currently added
+    - add to documentation in readme! e.g. how to graph the fatjet pt ranges from preproc data

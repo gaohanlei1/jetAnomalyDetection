@@ -85,7 +85,7 @@ class TrainAutoencoder:
         # logging.info(f"Signal Data Columns: {self.sg_data.columns.tolist()}")
 
         # Only for WminusH - This removes the leptonic jet
-        self.sg_data = self.sg_data.apply(remove_low_pt_muons, axis=1)
+        if "WminusH" in self.sg_file: self.sg_data = self.sg_data.apply(remove_low_pt_muons, axis=1)
 
         logging.info(f"Number of training events after slicing: {len(self.bg_data)}")
         logging.info(f"Number of test events after removing leptonic jet: {len(self.sg_data)}")
