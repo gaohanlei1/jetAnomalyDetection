@@ -33,7 +33,7 @@ def find_scalers(df: pd.DataFrame, df_label: str, cols: List[str]) -> Dict[str, 
     scaler_dict = {}
     for col in cols:
         logging.info(f"In find_scalers, {col=}")
-        if col.startswith("pdg") or col.startswith("fj_") or col.startswith("FatJet_particleNetMD"):
+        if col.startswith("pdg") or col.startswith("fj_") or "particleNet" in col:
             # Skip scaling for PDG one-hot columns and fatjet metadata
             scaler_dict[col] = [-1]
         else:

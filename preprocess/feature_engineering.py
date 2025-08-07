@@ -22,7 +22,11 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from helpers import helpers_main
 helpers_main.log_config(f"logs/proc_feature_{helpers_main.curr_time()}.log")
 
-METADATA_ROWS = ("within_bounds", "fj_pt", "fj_phi", "fj_eta")
+METADATA_ROWS = (
+    "within_bounds", "fj_pt", "fj_phi", "fj_eta", 
+    "fj_msoftdrop", "fj_particleNetWithMass_QCD", 
+    "fj_particleNet_XbbVsQCD", "fj_particleNet_XccVsQCD", 
+    "fj_particleNet_XqqVsQCD")
 
 def calculate_d_over_dErr(row: pd.Series, label: str, valid_pdg: List[str]) -> np.ndarray:
     """

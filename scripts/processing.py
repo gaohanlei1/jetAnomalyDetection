@@ -129,6 +129,20 @@ class DataProcessor:
 
         # Select variables to scale (assumes first 17 are metadata or unscaled base features)
         variables_to_analyze = self.qcd_modified.columns[17:]
+        
+        additional_features = [
+            "fj_msoftdrop",
+            "fj_particleNetWithMass_QCD",
+            "fj_particleNet_XbbVsQCD",
+            "fj_particleNet_XccVsQCD",
+            "fj_particleNet_XqqVsQCD"
+        ]
+
+        variables_to_analyze = list(variables_to_analyze) + [
+            col for col in additional_features if col in self.qcd_modified.columns
+        ]
+
+        logging.info(f"Features selected for scaling or passthrough:\n{variables_to_analyze}")
 
         # Compute robust scaling values using QCD dataset
         scaler_dict = find_scalers(self.qcd_modified.copy(), self.label_bg, cols=variables_to_analyze)

@@ -243,7 +243,7 @@ def process_event_root(events, lowerpt=None, upperpt=None):
             properties.append(np.array([score]))
             property_names.append(f"fj_" + key)
         else:
-            print(list(fatjets.fields))
+            # print(list(fatjets.fields))
             logging.warning(f"FatJet missing expected field: {key}")
 
     return properties, property_names

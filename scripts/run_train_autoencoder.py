@@ -74,6 +74,8 @@ class TrainAutoencoder:
         self.bg_data = pd.read_pickle(self.bg_file)
         self.sg_data = pd.read_pickle(self.sg_file)
 
+        print(self.bg_data.columns.tolist())
+
         # Slice pT; modify bounds in constants
         pt_max = c.PT_MAX
         pt_min = c.PT_MIN

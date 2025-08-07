@@ -24,8 +24,7 @@ data:
   
   preprocessed_qcd: data/preprocessed/qcd/qcd_with_metadata2
   preprocessed_wjet: data/preprocessed/wjet
-  processed_data_dir: data/processed/scaledby_QCD_PT-80to470/scaledby_QCD/
-
+  processed_data_dir: data/processed/scaledby_QCD_PT-80to470/scaledby_QCD
   background_file: QCD_scaled.pkl
   signal_file: WJet_scaled.pkl
 
