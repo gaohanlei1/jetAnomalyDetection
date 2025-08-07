@@ -91,7 +91,7 @@ class Preprocessor:
         # - So, I'll be doing sth very stupid here: loading the same file multiple times
         # - coz pickle can't pickle coffea events for whatever reason
         # if EVENT_LIMIT: events = events[:EVENT_LIMIT]
-        num_events = 1000 #len(NanoEventsFactory.from_root(filepath, schemaclass = PFNanoAODSchema).events())
+        num_events = len(NanoEventsFactory.from_root(filepath, schemaclass = PFNanoAODSchema).events())
         logging.info(f"{num_events} events in total, splitting into {CPUS} chunks.")
         start_i = np.linspace(0, num_events, endpoint=False, dtype=int, num=CPUS)
         end_i   = np.append(start_i[1:], num_events)
