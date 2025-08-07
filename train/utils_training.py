@@ -178,7 +178,7 @@ def train_model(train_dataloader, test_dataloader, signal_dataloader, model, los
     model.signal_hist = []
 
     # start timer
-    helpers_main.secs_since_last_ping()
+    timer = helpers_main.LeTimer()
 
     for epoch in range(epochs):
         logging.info(f"\nEpoch [{epoch+1}/{epochs}]")
@@ -220,7 +220,7 @@ def train_model(train_dataloader, test_dataloader, signal_dataloader, model, los
         logging.info(f"train loss: {mean_train_loss}")
         logging.info(f"test loss: {np.nanmean(val_loss)}")
         logging.info(f"signal loss: {np.nanmean(signal_loss)}")
-        logging.info(f"(took {helpers_main.secs_since_last_ping()} seconds)")
+        logging.info(timer.time_taken())
 
     # Final assignment for later ROC/score plotting
     model.background_test_loss = val_loss

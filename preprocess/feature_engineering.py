@@ -139,31 +139,31 @@ def modify_df(df: pd.DataFrame, pdg: List[str]) -> pd.DataFrame:
     # the data is represented as a list of particles for each event, so len(df.pt) == len(df.pdgIg) == ...
     
     logging.info(f"Entered modify_df! {len(df)=}. Now calculating dz/dzErr...")
-    helpers_main.secs_since_last_ping()
+    timer = helpers_main.LeTimer()
     # takes some time
     df['dz/dzErr'] = df.apply(lambda row: calculate_d_over_dErr(row, label='dz', valid_pdg=pdg), axis=1)
-    logging.info(f"Found dz/dzErr {helpers_main.time_taken()}")
+    logging.info(f"Found dz/dzErr {timer.time_taken()}")
 
     df['d0/d0Err'] = df.apply(lambda row: calculate_d_over_dErr(row, label='d0', valid_pdg=pdg), axis=1)
-    logging.info(f"Found d0/d0Err {helpers_main.time_taken()}")
+    logging.info(f"Found d0/d0Err {timer.time_taken()}")
 
     df['dR'] = df.apply(calculate_dR, axis=1)
-    logging.info(f"Found dR {helpers_main.time_taken()}")
+    logging.info(f"Found dR {timer.time_taken()}")
 
     df['within_bounds'] = df.apply(within_bounds, axis=1)
-    logging.info(f"Found within_bounds {helpers_main.time_taken()}, extracting jet-level metadata...")
+    logging.info(f"Found within_bounds {timer.time_taken()}, extracting jet-level metadata...")
 
     df['log_pt'] = df.apply(lambda row: np.log(np.array(row['pt'])), axis=1)
-    logging.info(f"Found log_pt {helpers_main.time_taken()}, calculating one-hot lists...")
+    logging.info(f"Found log_pt {timer.time_taken()}, calculating one-hot lists...")
 
     # Compute one-hot encodings using full PDG set
     unique_pdg_ids = sorted(df['pdgId'].explode().unique().tolist())
     # TAKES THE MOST TIME!!!
     df = df.apply(lambda row: one_hot_encode_pdgId(row, unique_pdg_ids), axis=1)
-    logging.info(f"Found one-hot lists {helpers_main.time_taken()}, now filtering out-of-bounds particles...")
+    logging.info(f"Found one-hot lists {timer.time_taken()}, now filtering out-of-bounds particles...")
 
     # Filter out particles outside bounds
     df = df.apply(lambda row: filter_row(row, row['within_bounds']), axis=1)
-    logging.info(f"Done! {helpers_main.time_taken()}")
+    logging.info(f"Done! {timer.time_taken()}")
 
     return df

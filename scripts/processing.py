@@ -57,12 +57,13 @@ class DataProcessor:
         self.qcd_modified, self.wjet_modified = None, None
         self.qcd_scaled,  self.qcd_scaled_vals,  self.qcd_raw_vals,  self.zero1 = None, None, None, None
         self.wjet_scaled, self.wjet_scaled_vals, self.wjet_raw_vals, self.zero2 = None, None, None, None
+        self.timer = helpers_main.LeTimer()
     
     def load_concat_jet_data(self, data_path, jet_label):
         '''
         Loads and joins all the preprocessed .pkl files in the given directory.
         '''
-        helpers_main.secs_since_last_ping()
+        self.timer.ping()
         preproc_paths = helpers_main.get_files(
             data_path, extension=".pkl",
             filter_name=jet_label if self.filter else None
@@ -74,10 +75,10 @@ class DataProcessor:
    
         combined = preproc_dfs[0]
         if len(preproc_dfs) > 1:
-            logging.info(f"Concatenating {jet_label}:" + helpers_main.time_taken())
+            logging.info(f"Concatenating {jet_label}:" + self.timer.time_taken())
             combined = pd.concat(preproc_dfs, ignore_index=True)
 
-        logging.info(f"Combined {jet_label} data length: {len(combined)} {helpers_main.time_taken()}")
+        logging.info(f"Combined {jet_label} data length: {len(combined)} {self.self.timer.time_taken()}")
 
         return self.mask_pt_bounds(combined)
     
@@ -104,13 +105,13 @@ class DataProcessor:
         drop rows w/ invalid or missing entries
         '''
         # df_cpy = combined_data.copy()
-        # logging.info(f"Copied {jet_label} {helpers_main.time_taken()}")
+        # logging.info(f"Copied {jet_label} {self.timer.time_taken()}")
         # modified_df = modify_df(df_cpy, VALID_PDG)
 
         modified_data = modify_df(combined_data.copy(), self.VALID_PDG)
-        # logging.info(f"Modified {jet_label} {helpers_main.time_taken()}")
+        # logging.info(f"Modified {jet_label} {self.timer.time_taken()}")
         modified_data = modified_data.dropna()
-        # logging.info(f"Dropped missing vals {helpers_main.time_taken()}")
+        # logging.info(f"Dropped missing vals {self.timer.time_taken()}")
         return modified_data
 
     def load_modify(self):
@@ -135,18 +136,18 @@ class DataProcessor:
         # scaler_dict = find_scalers(self.qcd_modified, self.label_bg, cols=variables_to_analyze)
 
         # Apply scaling to both datasets using QCD-derived scalers
-        logging.info(f"Scalers found {helpers_main.time_taken()}, now applying to qcd:")
+        logging.info(f"Scalers found {self.timer.time_taken()}, now applying to qcd:")
         (
             self.qcd_scaled,  self.qcd_scaled_vals,  self.qcd_raw_vals,  self.zero1
         ) = apply_scalers(self.qcd_modified.copy(), scaler_dict)
         # .copy()
 
-        logging.info(f"{helpers_main.time_taken()} Now wjet:")
+        logging.info(f"{self.timer.time_taken()} Now wjet:")
         (
             self.wjet_scaled, self.wjet_scaled_vals, self.wjet_raw_vals, self.zero2
         ) = apply_scalers(self.wjet_modified.copy(), scaler_dict)
         # .copy()
-        logging.info(f"Done! {helpers_main.time_taken()}")
+        logging.info(f"Done! {self.timer.time_taken()}")
 
         # logging.info(f"{type(self.wjet_scaled_vals)=}\n{self.wjet_scaled_vals=}\n{self.qcd_scaled_vals=}")
 

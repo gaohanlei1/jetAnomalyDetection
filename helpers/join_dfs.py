@@ -13,7 +13,11 @@ def concat_pkls(folder_path, filter_str=None, output_name=None, lowerpt=None, up
     Joins all the pickled pd.DataFrames in the folder into one, saves this, and returns it.
     Checks whether the columns are consistent across all files.
     '''
+    timer = helpers_main.LeTimer()
+    logging.info(f"Getting files from {folder_path=}")
+    
     dfs = helpers_main.get_files(folder_path, extension=".pkl", filter_name=filter_str, pickled_df=True)
+    logging.info(f"Read {len(dfs)=} {timer.time_taken()}, now filtering...")
 
     # if filter_func: dfs = [df[filter_func(df)] for df in dfs]
     rawfj_pt_col = c.RAW_FATJET_PROPERTIES_PREFIX + "pt"
@@ -24,20 +28,25 @@ def concat_pkls(folder_path, filter_str=None, output_name=None, lowerpt=None, up
     if not dfs:
         logging.warning(f"No non-empty pickled dataframes in {folder_path=}, after filtering!")
         return
+    logging.info(f"Filtered, new {len(dfs)=} {timer.time_taken()}, now checking columns...")
     
     columns = dfs[0].columns.tolist()
     # sanity check
     for df in dfs:
         next_columns = df.columns.tolist()
         if next_columns != columns:
-            raise Exception(f"Columns are different:\n{columns=}\nvs\n{next_columns=}")
+            raise Exception(f"Columns are different:\n{columns=}\nvs\n{next_columns=}\nmismatched elts: {helpers_main.intersect_complement(columns, next_columns)}")
     
+    logging.info("Now concatenating...")
     concatted = pd.concat(dfs)
+    logging.info(f"Done, {len(concatted=)}! {timer.time_taken()}")
 
     if not output_name: output_name = f"concat_{helpers_main.strnone_to_str(filter_str)}_{helpers_main.strnone_to_str(lowerpt)}-{helpers_main.strnone_to_str(upperpt)}_{helpers_main.curr_time()}.pkl"
     if not output_name.endswith(".pkl"): output_name += ".pkl"
     output_path = os.path.join(folder_path, output_name)
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    logging.info(f"Now saving...")
     concatted.to_pickle(output_path)
     print(f"Concatenated {len(dfs)} files in {folder_path} with filter '{'' if not filter_str else filter_str}', resulting in {len(concatted)=},\ninto {output_path=}")
     
