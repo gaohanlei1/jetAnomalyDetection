@@ -19,27 +19,26 @@ def concat_pkls(folder_path, filter_str=None, output_name=None, lowerpt=None, up
     logging.info(f"Getting files from {folder_path=}")
     
     dfs = helpers_main.get_files(folder_path, extension=".pkl", filter_name=filter_str, pickled_df=True)
-    logging.info(f"Read {len(dfs)=} {timer.time_taken()}, now filtering...")
-
-    # if filter_func: dfs = [df[filter_func(df)] for df in dfs]
-    rawfj_pt_col = c.RAW_FATJET_PROPERTIES_PREFIX + "pt"
-    if lowerpt: dfs = [df[df[rawfj_pt_col] > lowerpt] for df in dfs]
-    if upperpt: dfs = [df[df[rawfj_pt_col] < upperpt] for df in dfs]
+    logging.info(f"Read {len(dfs)=} {timer.time_taken()}, now checking columns...")
     
     dfs = [df for df in dfs if not df.empty]
-    if not dfs:
-        logging.warning(f"No non-empty pickled dataframes in {folder_path=}, after filtering!")
-        return
-    logging.info(f"Filtered, new {len(dfs)=} {timer.time_taken()}, now checking columns...")
-    
     columns = dfs[0].columns.tolist()
     # sanity check
     for df in dfs:
         next_columns = df.columns.tolist()
         if next_columns != columns:
             raise Exception(f"Columns are different:\n{columns=}\nvs\n{next_columns=}\nmismatched elts: {helpers_main.intersect_complement(columns, next_columns)}")
+
+    logging.info(f"Removed empties, new {len(dfs)=}, now filtering...")
+    # if filter_func: dfs = [df[filter_func(df)] for df in dfs]
+    rawfj_pt_col = c.RAW_FATJET_PROPERTIES_PREFIX + "pt"
+    if lowerpt: dfs = [df[df[rawfj_pt_col] > lowerpt] for df in dfs]
+    if upperpt: dfs = [df[df[rawfj_pt_col] < upperpt] for df in dfs]
+    if not dfs:
+        logging.warning(f"No non-empty pickled dataframes in {folder_path=}, after filtering!")
+        return
     
-    logging.info("Now concatenating...")
+    logging.info(f"Filtered, new {len(dfs)=} {timer.time_taken()}, now concatenating...")
     concatted = pd.concat(dfs)
     logging.info(f"Done, {len(concatted)=}! {timer.time_taken()}")
 

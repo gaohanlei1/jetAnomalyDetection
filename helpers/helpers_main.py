@@ -96,7 +96,7 @@ def get_files(path, extension=None, filter_name=None, pickled_df=False):
     
     if extension:   files = [f for f in files if get_extension(f) == extension]
     if filter_name: files = [f for file in files if filter_name in f]
-    if pickled_df:  files = [read_pickle(f) for f in files]
+    if pickled_df:  files = [read_pickle(f) for f in files if os.path.getsize(f) > 0]
     
     return files
 
