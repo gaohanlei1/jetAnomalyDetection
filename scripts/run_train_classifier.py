@@ -12,8 +12,11 @@ This script:
 import sys
 import os
 
-# Add the parent directory to Python's path for local module imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add parent directory to import local project modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import constants as c
+from helpers import helpers_main
+config = helpers_main.load_config()
 
 import torch
 import pandas as pd
@@ -23,10 +26,6 @@ from models.classifier import JetGraphAutoencoderClassification
 from preprocess.make_graphs import graph_data_loader
 from sklearn.metrics import accuracy_score
 import logging
-
-# Load configuration settings from YAML file
-with open("configs/config.yaml", "r") as f:
-    config = yaml.safe_load(f)
 
 # File paths for training and test data
 train_file = config['data']['processed_data_dir'] + config['data']['train_file']
@@ -62,8 +61,7 @@ def run_classifier_training(graphs, save_dir='checkpoints', smallest_dim=16, num
         losses (List[float]): Loss values per epoch.
         accuracies (List[float]): Accuracy values per epoch.
     """
-    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    device = torch.device(config["training"]["device"])
+    device = helpers_main.get_device()
 
     model = JetGraphAutoencoderClassification(
         num_features=graphs[0].x.shape[1],

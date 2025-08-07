@@ -2,6 +2,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.io as pio
 import os
+import sys
 
 # Show plots in your default browser
 pio.renderers.default = 'browser'

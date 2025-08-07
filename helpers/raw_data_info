@@ -1,5 +1,6 @@
 {
-    "treenames" : [
+    "comment0" : "The first two lists are for the raw ROOT data only. The fields for the Coffea events are further below.",
+    "root_treenames" : [
         "tag",
         "Events",
         "LuminosityBlocks",
@@ -7,8 +8,8 @@
         "MetaData",
         "ParameterSets"
     ],
-    "comment1" : "same length of data for each of the branches? but some elts themselves are variable length lists",
-    "Events_branchnames" : [
+    "comment1" : "^^^same length of data for each of the branches? but some elts themselves are variable length lists",
+    "root_events_branchnames" : [
         "run",
         "luminosityBlock",
         "event",
@@ -1932,5 +1933,59 @@
         "HLT_Diphoton30_18_PVrealAND_R9Id_AND_IsoCaloId_AND_HE_R9Id_NoPixelVeto_Mass55",
         "HLTriggerFinalPath",
         "L1simulation_step"
+    ],
+    "comment3" : "NOTE: the below don't exactly match with the above (even after prepending with FatJet_). Lovely.",
+    "coffea_FatJet_fields_btvnano" : [
+        'jetId', 'nConstituents', 'subJetIdx1', 'subJetIdx2', 'electronIdx3SJ',
+        'muonIdx3SJ', 'area', 'btagDDBvLV2', 'btagDDCvBV2', 'btagDDCvLV2', 'btagDeepB',
+        'btagHbb', 'eta', 'mass', 'msoftdrop', 'n2b1', 'n3b1', 'particleNetWithMass_H4qvsQCD',
+        'particleNetWithMass_HbbvsQCD', 'particleNetWithMass_HccvsQCD', 'particleNetWithMass_QCD',
+        'particleNetWithMass_TvsQCD', 'particleNetWithMass_WvsQCD', 'particleNetWithMass_ZvsQCD',
+        'particleNet_QCD', 'particleNet_QCD0HF', 'particleNet_QCD1HF', 'particleNet_QCD2HF',
+        'particleNet_XbbVsQCD', 'particleNet_XccVsQCD', 'particleNet_XggVsQCD', 'particleNet_XqqVsQCD',
+        'particleNet_XteVsQCD', 'particleNet_XtmVsQCD', 'particleNet_XttVsQCD', 'particleNet_massCorr',
+        'phi', 'pt', 'rawFactor', 'tau1', 'tau2', 'tau3', 'tau4', 'lsf3', 'hadronFlavour',
+        'nBHadrons', 'nCHadrons', 'genJetAK8Idx', 'genJetAK8IdxG', 'subJetIdx1G', 'subJetIdx2G',
+        'electronIdx3SJG', 'muonIdx3SJG', 'subJetIdxG', 'pFCandsIdxG'
+    ],
+    "coffea_FatJet_fields_btv_important" : [
+        'eta', 
+        'mass', 
+        'msoftdrop', 
+        'particleNetWithMass_H4qvsQCD', 
+        'particleNetWithMass_HbbvsQCD', 
+        'particleNetWithMass_HccvsQCD', 
+        'particleNetWithMass_QCD', 
+        'particleNetWithMass_TvsQCD', 
+        'particleNetWithMass_WvsQCD', 
+        'particleNetWithMass_ZvsQCD', 
+        'particleNet_QCD', 
+        'particleNet_QCD0HF', 
+        'particleNet_QCD1HF', 
+        'particleNet_QCD2HF', 
+        'particleNet_XbbVsQCD', 
+        'particleNet_XccVsQCD', 
+        'particleNet_XggVsQCD', 
+        'particleNet_XqqVsQCD', 
+        'particleNet_XteVsQCD', 
+        'particleNet_XtmVsQCD', 
+        'particleNet_XttVsQCD', 
+        'particleNet_massCorr', 
+        'phi', 
+        'pt'
+    ],
+    "comment4" : "And for some reason, the old data has different fields?? I can't with this",
+    "coffea_FatJet_fields_old" : [
+        'area', 'btagCSVV2', 'btagDDBvLV2', 'btagDDCvBV2', 'btagDDCvLV2', 'btagDeepB',
+        'btagHbb', 'deepTagMD_H4qvsQCD', 'deepTagMD_HbbvsQCD', 'deepTagMD_TvsQCD', 'deepTagMD_WvsQCD',
+        'deepTagMD_ZHbbvsQCD', 'deepTagMD_ZHccvsQCD', 'deepTagMD_ZbbvsQCD', 'deepTagMD_ZvsQCD',
+        'deepTagMD_bbvsLight', 'deepTagMD_ccvsLight', 'deepTag_H', 'deepTag_QCD', 'deepTag_QCDothers',
+        'deepTag_TvsQCD', 'deepTag_WvsQCD', 'deepTag_ZvsQCD', 'eta', 'mass', 'msoftdrop', 'n2b1',
+        'n3b1', 'particleNetMD_QCD', 'particleNetMD_Xbb', 'particleNetMD_Xcc', 'particleNetMD_Xqq',
+        'particleNet_H4qvsQCD', 'particleNet_HbbvsQCD', 'particleNet_HccvsQCD', 'particleNet_QCD',
+        'particleNet_TvsQCD', 'particleNet_WvsQCD', 'particleNet_ZvsQCD', 'particleNet_mass',
+        'phi', 'pt', 'rawFactor', 'tau1', 'tau2', 'tau3', 'tau4', 'lsf3', 'jetId', 'subJetIdx1',
+        'subJetIdx2', 'electronIdx3SJ', 'muonIdx3SJ', 'nConstituents', 'DDX_tau1_flightDistance2dSig',
+        'DDX_tau1_trackEtaRel_0', 'DDX_tau1_trackEtaRel_1', 'DDX_tau1_trackEtaRel_2', 'DDX_tau1_trackSip3dSig_0', 'DDX_tau1_trackSip3dSig_1', 'DDX_tau1_vertexDeltaR', 'DDX_tau1_vertexEnergyRatio', 'DDX_tau1_vertexMass', 'DDX_tau2_flightDistance2dSig', 'DDX_tau2_trackEtaRel_0', 'DDX_tau2_trackEtaRel_1', 'DDX_tau2_trackEtaRel_3', 'DDX_tau2_trackSip3dSig_0', 'DDX_tau2_trackSip3dSig_1', 'DDX_tau2_vertexEnergyRatio', 'DDX_tau2_vertexMass', 'DDX_trackSip2dSigAboveBottom_0', 'DDX_trackSip2dSigAboveBottom_1', 'DDX_trackSip2dSigAboveCharm', 'DDX_trackSip3dSig_0', 'DDX_trackSip3dSig_1', 'DDX_trackSip3dSig_2', 'DDX_trackSip3dSig_3', 'DDX_z_ratio', 'Proba', 'btagDeepB_b', 'btagDeepB_bb', 'btagDeepL', 'DDX_jetNSecondaryVertices', 'DDX_jetNTracks', 'nBHadrons', 'nCHadrons', 'genJetAK8Idx', 'hadronFlavour', 'genJetAK8IdxG', 'subJetIdx1G', 'subJetIdx2G', 'electronIdx3SJG', 'muonIdx3SJG', 'subJetIdxG', 'pFCandsIdxG'
     ]
 }

@@ -23,6 +23,7 @@ import argparse
 
 # Add parent directory to import local project modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import constants as c
 from helpers import helpers_main
 config = helpers_main.load_config()
 
@@ -62,15 +63,13 @@ class DataProcessor:
         Loads and joins all the preprocessed .pkl files in the given directory.
         '''
         helpers_main.secs_since_last_ping()
-        preproc_paths = [data_path] if os.path.isfile(data_path) else [
-            os.path.join(data_path, file) for file in os.listdir(data_path)
-        ]
+        preproc_paths = helpers_main.get_files(
+            data_path, extension=".pkl",
+            filter_name=jet_label if self.filter else None
+        )
         preproc_dfs = [
             pd.read_pickle(file)            #.head(100)
             for file in tqdm(preproc_paths, desc=f"Loading {jet_label} files")
-            if os.path.isfile(file)
-            and os.path.splitext(file)[1] == ".pkl"
-            and (not self.filter or jet_label in file)
         ]
    
         combined = preproc_dfs[0]
@@ -87,12 +86,13 @@ class DataProcessor:
         if self.lowerpt == self.upperpt == None:
             return data
 
-        if "fj_pt" not in data.columns:
-            raise Exception(f"The data has no fj_pt column, but {self.lowerpt=} and/or {self.upperpt=} were specified!")
+        rawfj_pt_col = c.RAW_FATJET_PROPERTIES_PREFIX + "pt"
+        if rawfj_pt_col not in data.columns:
+            raise Exception(f"The data has no '{rawfj_pt_col}' column, but {self.lowerpt=} and/or {self.upperpt=} were specified!")
         
         og_len = len(data)
-        if self.lowerpt is not None: data = data[data["fj_pt"] >= self.lowerpt]
-        if self.upperpt is not None: data = data[data["fj_pt"] <= self.upperpt]
+        if self.lowerpt is not None: data = data[data[rawfj_pt_col] >= self.lowerpt]
+        if self.upperpt is not None: data = data[data[rawfj_pt_col] <= self.upperpt]
         logging.info(f"{og_len=}, length after applying pt bounds={len(data)}")
 
         return data
@@ -213,6 +213,7 @@ class DataProcessor:
 def pickle_dict(folder_path, dickle_pickle, filename):
     # Pickle a DataFrame or dict
     filepath = os.path.join(folder_path, filename)
+    helpers_main.create_missing_dir(filepath)
     if isinstance(dickle_pickle, dict): dickle_pickle = pd.DataFrame.from_dict(dickle_pickle)
     dickle_pickle.to_pickle(filepath)
     logging.info(f"Saved into {filepath}!")
@@ -274,12 +275,12 @@ if __name__ == "__main__":
         help="If provided, use the labels as FILTERS within the data folders. i.e. only files containing the label will be processed (to single out one type of jet)"
     )
     parser.add_argument(
-        "--upperpt", required=False,
-        help=f"upper bound on fatjet Pt? (make sure the preprocessed file has an fj_pt column!)"
+        "--upperpt", type=float, default=None,
+        help=f"upper bound on fatjet Pt? (make sure the preprocessed file has a raw fatjet pt column!)"
     )
     parser.add_argument(
-        "--lowerpt", required=False,
-        help=f"lower bound on fatjet Pt? (make sure the preprocessed file has an fj_pt column!)"
+        "--lowerpt", type=float, default=None,
+        help=f"lower bound on fatjet Pt? (make sure the preprocessed file has an raw fatjet pt column!)"
     )
     args = parser.parse_args()
 

@@ -19,7 +19,6 @@ dist/
 *.egg-info/
 
 # Logs and debug files
-logs/*
 *.log
 *.out
 *.prof

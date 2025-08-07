@@ -13,8 +13,8 @@ import logging
 NOTE!
 I'm suppressing like 50 warnings that come up everytime I run the program,
 which all complain about duplicate branches in the .root files used to load events.
-Coffea only takes the first instance of each duplicate branch
-- dunno if this is an issue?
+Coffea only takes the first instance of each duplicate branch.
+Shouldn't be an issue unless you start using said branches, maybe.
 '''
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="coffea")
@@ -46,7 +46,7 @@ class Preprocessor:
         self.path = args.path
         self.type = args.type
         self.upperpt, self.lowerpt = args.upperpt, args.lowerpt
-        self.subfolder = args.subfolder
+        self.savepath = args.savepath
         
     def setup_log(self):
         self.session_name = f"preproc_{self.type}_pt{helpers_main.strnone_to_str(self.lowerpt)}-{helpers_main.strnone_to_str(self.upperpt)}_{helpers_main.curr_time()}"
@@ -63,18 +63,14 @@ class Preprocessor:
             self.path = self.folder_path
 
         if not os.path.exists(self.path):
+            old = self.path
             # if it's a filename within default folder, use that
             self.path = os.path.join(self.folder_path, self.path)
             if not os.path.exists(self.path):
-                raise Exception(f"Invalid path: {self.path=}\n{self.jet_type=}")
+                raise Exception(f"Invalid path: {old}\n{self.path=}\n{self.jet_type=}")
 
         # by now, guaranteed to be full file/folder paths
-        files = [self.path] if os.path.isfile(self.path) else [
-            os.path.join(self.path, file)
-            for file in os.listdir(self.path)
-            if os.path.isfile(os.path.join(self.path, file))
-            and os.path.splitext(file)[1] == self.DATA_FILE_EXT
-        ]
+        files = helpers_main.get_files(self.path, extension=self.DATA_FILE_EXT)
 
         logging.info(f"Loaded {len(files)} file(s)!")
         return files
@@ -82,19 +78,11 @@ class Preprocessor:
     def load_root(self, filepath):
         logging.info(f"Now preprocessing {filepath}")
 
-        save_path = config["data"]["preprocessed_" + self.jet_type]
-        if self.subfolder:
-            save_path = os.path.join(
-                save_path,
-                helpers_main.trim_name(filepath)
-                + f"_Pt{helpers_main.strnone_to_str(self.lowerpt)}to{helpers_main.strnone_to_str(self.upperpt)}"
-            )
-            os.makedirs(save_path, exist_ok=True)
-        logging.info(f"{save_path=}")
+        if self.savepath is None: self.savepath = config["data"]["preprocessed_" + self.jet_type]
+        logging.info(f"{self.savepath=}")
 
         # - So, I'll be doing sth very stupid here: loading the same file multiple times
         # - coz pickle can't pickle coffea events for whatever reason
-        # if EVENT_LIMIT: events = events[:EVENT_LIMIT]
         num_events = len(NanoEventsFactory.from_root(filepath, schemaclass = PFNanoAODSchema).events())
         logging.info(f"{num_events} events in total, splitting into {CPUS} chunks.")
         start_i = np.linspace(0, num_events, endpoint=False, dtype=int, num=CPUS)
@@ -113,7 +101,7 @@ class Preprocessor:
                     "filepath" : filepath,
                     "pid_list"  : pid_list,
                     "pid_lock"  : pid_lock,
-                    "save_path" : save_path,
+                    "save_path" : self.savepath,
                     "lowerpt"   : self.lowerpt,
                     "upperpt"   : self.upperpt
                 }
@@ -122,17 +110,23 @@ class Preprocessor:
 
             # each invocation of the function will receive an ELT of the iterator, not a slice
             # the chunk is just loosely defined as the range over which to pick elts for each cpu
-            pool.map(preproc_events_slice, shared_datas)
+            results = pool.map(preproc_events_slice, shared_datas)
+
+            logging.info(f"All done! Converting {len(results)=} dicts to dataframes and concatenating...")
+            results = pd.concat([pd.DataFrame.from_dict(data_dict) for data_dict in results])
+            logging.info(f"Concatenated {len(results)=} fatjets! Saving...")
+
+            basename = helpers_main.trim_name(filepath)
+            output_file_path = os.path.join(
+                self.savepath,
+                f"{basename}_Pt{helpers_main.strnone_to_str(self.lowerpt)}-{helpers_main.strnone_to_str(self.upperpt)}_{os.getpid()}_{helpers_main.curr_time()}.pkl"
+            )
+            helpers_main.create_missing_dir(output_file_path)
+            results.to_pickle(output_file_path)
+            logging.info(f"Preprocessed into {output_file_path}.")
 
         if config["data"]["move_to_used"]:
             move_to_used(filepath)
-
-        if self.subfolder:
-            join_dfs.concat_pkls(
-                save_path,
-                output_name=f"concat_{helpers_main.trim_name(filepath)}_{self.lowerpt}-{self.upperpt}_{helpers_main.curr_time()}"
-            )
-            logging.info(f"Concatenated into {save_path}; you can delete the non-concat files!")
         
 
 def get_fatjets(events, lowerpt=None, upperpt=None): 
@@ -147,8 +141,8 @@ def get_fatjets(events, lowerpt=None, upperpt=None):
     muons = events.Muon
     muons = fatjets.nearest(muons[muons.pt > c.MUON_PT_LOWER_BOUND])
 
-    lowerpt = float(lowerpt) if lowerpt else float(c.FATJET_PT_LOWER_BOUND)
-    upperpt = float(upperpt) if upperpt else float(1e10)
+    lowerpt = lowerpt if lowerpt else float(c.FATJET_PT_LOWER_BOUND)
+    upperpt = upperpt if upperpt else float(1e10)
 
     mask = (
         (ak.fill_none(fatjets.delta_r(electrons) > c.ELECTRON_R_LOWER_BOUND, True)) &
@@ -190,7 +184,7 @@ def process_event_root(events, lowerpt=None, upperpt=None):
     pfcands = events.PFCands
 
     if len(fatjets["pt"]) != 1:
-        logging.warning(f"!!!\n{len(fatjets['pt'][0])=}, {fatjets['pt']=}\n")
+        logging.warning(f"Fatjets array size isn't 1*events!\n{len(fatjets['pt'][0])=}, {fatjets['pt']=}\n")
         # raise Exception("FatJet wrong shape!")
 
     eta = ak.to_numpy(ak.flatten(pfcands["phi"] - fatjets["phi"])[pfcs])
@@ -199,24 +193,14 @@ def process_event_root(events, lowerpt=None, upperpt=None):
     # TODO: old ratio based on whether it is qcd or wjet ->x     this is not model agnostic !!!
       # check that current pt scheme is correct
 
-    # logging.info(f"{len(fatjets['pt'])=}, {fatjets['pt']=}")
-    # logging.info(f"{eta.shape=}, {phi.shape=}, {pt.shape=}")
-    # logging.info(f"{pfcands['phi']=}\n{pfcands['eta']=}\n{pfcands['pt']=}")
-    # logging.info(f"{fatjets['phi']=}\n{fatjets['eta']=}\n{fatjets['pt']=}")
-    # logging.info(f"{pfcs=}\n")
-    # if len(pfcands['phi']) > 0: logging.info(ak.to_numpy(pfcands['phi'][0]))
+    properties = [pt, eta, phi]
+    property_names = ["pt", "eta", "phi"]
 
-    fj_phi = fatjets["phi"][0]
-    fj_eta = fatjets["eta"][0]
-    fj_pt  = fatjets["pt"][0]
-
-    # if you want, add pfcs_phi/eta/pt to the saved data too
-    properties = [pt, eta, phi, fj_phi, fj_eta, fj_pt]
-    property_names = [
-        "pt", "eta", 
-        "phi", "fj_phi", 
-        "fj_eta", "fj_pt",]
-
+    # add more "raw fields" to preserve through constants.RAW_FATJET_PROPERTIES!
+    for new_prop in c.RAW_FATJET_PROPERTIES:
+        properties.append(fatjets[new_prop][0])
+        property_names.append(c.RAW_FATJET_PROPERTIES_PREFIX + new_prop)
+        
     # add all other fields
     for field in pfcands.fields:
         if field not in property_names:
@@ -293,18 +277,9 @@ def preproc_events_slice(metadata):
         # if curr_i != 0 and curr_i % 20 == 0: break
     
     logging.info(f"#{pid_posn} ({pid}):  Preprocessed last few events, from {metadata['start']} to {metadata['end']}!")
-    save_df(data, metadata)
+    # save_df(data, metadata)
+    return data
 
-def save_df(data_dict, metadata):
-    logging.info(f"Received new df, saving!")
-    basename = helpers_main.trim_name(metadata["filepath"])
-    output_file_path = os.path.join(
-        metadata["save_path"],
-        f"{basename}_Pt{helpers_main.strnone_to_str(metadata['lowerpt'])}-{helpers_main.strnone_to_str(metadata['upperpt'])}_{os.getpid()}_{helpers_main.curr_time()}.pkl"
-    )
-    helpers_main.create_missing_dir(output_file_path)
-    pd.DataFrame.from_dict(data_dict).to_pickle(output_file_path)
-    logging.info(f"Preprocessed into {output_file_path}.")
 
 def main(preproc):
     files = preproc.get_files()
@@ -312,7 +287,6 @@ def main(preproc):
     for file in files:
         preproc.load_root(file)
     
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -324,19 +298,19 @@ if __name__ == "__main__":
         help="Path to single .root file to preprocess, or name of single file within the data folder, or path to folder containing multiple .root files with the same type/label (e.g. QCD170to300). Default: uses the path in configs/config.yaml"
     )
     parser.add_argument(
-        "--type", "--data_type", "-t", choices=["background", "signal"], required=True,
+        "--savepath", "-s", "--save", type=str, required=False,
+        help="Path to preprocess into. Defaults to config"
+    )
+    parser.add_argument(
+        "--type", "--data_type", "-t", choices=["background", "signal"], default="background",
         help=f"'background' ({config['data']['background']}) or 'signal' ({config['data']['signal']})"
     )
     parser.add_argument(
-        "--subfolder", "-s", required=False, default=False, action=argparse.BooleanOptionalAction,
-        help=f"If provided, save to subfolder within preprocessed directory. Also concatenates all .pkl files within that subfolder!\n(Make sure the subfolder name is unique)"
-    )
-    parser.add_argument(
-        "--upperpt", "-B", required=False,
+        "--upperpt", "-B", type=float, default=None,
         help=f"upper bound on fatjet Pt?"
     )
     parser.add_argument(
-        "--lowerpt", "-b", required=False,
+        "--lowerpt", "-b", type=float, default=None,
         help=f"lower bound on fatjet Pt?"
     )
 

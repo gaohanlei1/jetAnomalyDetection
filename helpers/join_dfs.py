@@ -20,7 +20,9 @@ def concat_pkls(folder_path, filter_str=None, output_name=None):
             and (filter_str is None or filter_str in name)
     ]
     dfs = [df for df in dfs if not df.empty]
-    if not dfs: raise Exception(f"No non-empty pickled dataframes in {folder_path=}!")
+    if not dfs:
+        logging.warning(f"No non-empty pickled dataframes in {folder_path=}!")
+        return
     
     columns = dfs[0].columns.tolist()
     # sanity check

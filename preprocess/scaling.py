@@ -17,6 +17,14 @@ import math
 from tqdm import tqdm
 import logging
 
+import sys
+import os
+
+# Add parent directory to import local project modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import constants as c
+from helpers import helpers_main
+
 def find_scalers(df: pd.DataFrame, df_label: str, cols: List[str]) -> Dict[str, np.ndarray]:
     """
     Compute scaling values (16th and 84th percentiles) for each feature column.
@@ -33,16 +41,20 @@ def find_scalers(df: pd.DataFrame, df_label: str, cols: List[str]) -> Dict[str, 
     scaler_dict = {}
     for col in cols:
         logging.info(f"In find_scalers, {col=}")
-        if col.startswith("pdg") or col.startswith("fj_") or col.startswith("FatJet_particleNetMD"):
+        if col.startswith("pdg") or col.startswith(c.RAW_FATJET_PROPERTIES_PREFIX) or col.startswith("FatJet_particleNetMD"):   # compatibility w/ Arjun's files
             # Skip scaling for PDG one-hot columns and fatjet metadata
             scaler_dict[col] = [-1]
         else:
             flattened_list = sorted(df[col].explode())
             # Keep only valid, non-zero, non-NaN entries
-            indices = [i for i, item in tqdm(enumerate(flattened_list),
-                                             desc=f"Finding scalers for {df_label} - {col}")
-                       if item != 0.0 and not math.isnan(item)]
-            percentiles = np.percentile(np.array(flattened_list)[indices].flatten(), [16, 84])
+            indices = [
+                i for i, item in tqdm(enumerate(flattened_list),
+                desc = f"Finding scalers for {df_label} - {col}")
+                if item != 0.0 and not math.isnan(item)
+            ]
+            percentiles = np.percentile(
+                np.array(flattened_list)[indices].flatten(), [16, 84]
+            )
             scaler_dict[col] = percentiles
 
     return scaler_dict
@@ -68,8 +80,8 @@ def apply_scalers(df: pd.DataFrame, scaler_dict: Dict[str, np.ndarray]) -> Tuple
     scaled_zero = {}     # Value of 0.0 after scaling
 
     for col in df.columns:
-        if col.startswith("fj_"):
-            logging.info(f"Copying over {col=} as is")
+        if col.startswith(c.RAW_FATJET_PROPERTIES_PREFIX):
+            logging.info(f"Preserving {col=}")
         elif col not in scaler_dict:
             logging.info(f"Skipping {col=}, not in scaler")
             continue
@@ -86,7 +98,7 @@ def apply_scalers(df: pd.DataFrame, scaler_dict: Dict[str, np.ndarray]) -> Tuple
                 for item in np.array(sublist).flatten()
             ]
             scaled_zero[col] = np.nan
-        elif col.startswith("fj_"):
+        elif col.startswith(c.RAW_FATJET_PROPERTIES_PREFIX):
             data_dict[col] = df[col]
         else:
             per_minus_36, per_plus_36 = scaler_dict[col]

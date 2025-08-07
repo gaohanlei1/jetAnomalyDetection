@@ -5,6 +5,7 @@ import logging
 import sys
 import os
 from time import time
+from torch import cuda
 
 def load_config():
     with open("configs/config.yaml", "r") as f:
@@ -14,6 +15,7 @@ config = load_config()
 LAST_PING = None
 
 def log_config(filename):
+    create_missing_dir(filename)
     logging.basicConfig(
         # filename = filename,
         handlers = [
@@ -79,3 +81,17 @@ def strnone_to_str(strnone):
 
 def create_missing_dir(filepath):
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+def get_device():
+    device = "cuda" if config["training"]["device"] == "cuda" and cuda.is_available() else "cpu"
+    logging.info(f"Using {device=}")
+
+def get_files(path, extension=None, filter_name=None):
+    '''Returns the given path if it's a filepath; otherwise, returns all files in that directory'''
+    files = [path] if os.path.isfile(path) else [
+        os.path.join(path, file) for file in os.listdir(path)
+        if os.path.isfile(os.path.join(path, file))
+    ]
+    if extension: files = [f for f in files if get_extension(f) == extension]
+    if filter_name: files = [f for file in files if filter_name in f]
+    return files

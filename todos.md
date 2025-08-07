@@ -97,28 +97,51 @@
 
 - changing all the cpu/cuda prompts to ACTUALLY use config.yaml
 
-**NOW:**
-- trying diff parameters
-
 - Graphing processed fj_pt ranges to make sure slicing works
 
-- Can add more metadata than currently added (e.g. pfcands)
-    - and make sure this remains in processing, too!!
-    - add to documentation in readme! e.g. how to graph the fatjet pt ranges from preproc data
+- Look into ways to use Brux's GPU!
+    - Added documentation to note how to use Oscar
+
+- How to mount brux on Oscar, to use oscar gpu
+    - /HEP/export/home/mstamenk/jet-anomaly-summer25/btv-nano
+    - /HEP/export/home/<account>
+
+- modify `scaling.py` etc. to automatically add additional metadata columns during processing
+
+**NOW:**
+
+- graph the data distributions for msoftdrop etc
+
+- test alphasweep!
+
+- training step: weight the fj_pt ranges to flatten pt distribution so that the network doesnt learn the pt
+    - may improve performance
+    - higher jet pts have more pfcands, but second order
+    - variable transformation to flatten distributions
+
+- get the fatjet mass, and normalise with the particle mass to get dimensionless params
+    - can look at distribution of the normalised mass
+    - reprocess all the data! and take Pt slices again
+
+- particle tagging metadata during preproc (marko)
+
+- performing sweeps and trying different parameters
+    - also different parameters for Oscar, to see what leads to the best performance (GPUs, CPUs, memory)
 
 - familiarise w/:
     - the visualisations and other tools, update if needed (e.g. graphing other properties)
     - the model and what's been done; what features have been used to train? what hasn't been tried?
         - other parameters, pfcands
-    
-- Look into ways to use Brux's GPU!
     - if successful, we can train for way more epochs hopefully
 
-- **Todos on Slack!!**
     - using PFCands instead of FatJet? can add to 
     - Plot PFCands! since we may be using those for training
 
-**later maybe:**
+
+
+**less important:**
+
+- try changing preproc processes to consume sections of events instead of just the indices? to avoid loading multiple times
 
 - Using the visualize() func in processing.py to visualise stuff like the zeroes after processing
     - what gets excluded when `not include_zeros`? how are scaled zeroes distributed?
@@ -126,11 +149,5 @@
         - errors out at mass I think, coz of inf/nan errors! try to filter out and redo
     - save different useful plots permanently (analysing all the raw/processed data)
 
-
-
-
-
-
-
-
-
+- Can add more metadata than currently added
+    - add to documentation in readme! e.g. how to graph the fatjet pt ranges from preproc data

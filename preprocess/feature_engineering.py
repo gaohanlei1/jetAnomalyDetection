@@ -15,14 +15,14 @@ import pandas as pd
 from typing import List
 import logging
 
-# Add parent directory to import local project modules
 import sys
 import os
+
+# Add parent directory to import local project modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import constants as c
 from helpers import helpers_main
 helpers_main.log_config(f"logs/proc_feature_{helpers_main.curr_time()}.log")
-
-METADATA_ROWS = ("within_bounds", "fj_pt", "fj_phi", "fj_eta")
 
 def calculate_d_over_dErr(row: pd.Series, label: str, valid_pdg: List[str]) -> np.ndarray:
     """
@@ -93,7 +93,7 @@ def filter_row(row: pd.Series, indices: np.ndarray) -> pd.Series:
         pd.Series: Filtered row.
     """
     for col in row.index:
-        if col not in METADATA_ROWS:
+        if not(col == "within_bounds" or col.startswith(c.RAW_FATJET_PROPERTIES_PREFIX)):
             row[col] = np.array(row[col])[indices].flatten()
     return row
 
