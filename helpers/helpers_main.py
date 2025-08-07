@@ -6,14 +6,17 @@ import sys
 import os
 from time import time
 
+from torch import cuda
+from pandas import read_pickle
+
 def load_config():
     with open("configs/config.yaml", "r") as f:
         return yaml.safe_load(f)
 
 config = load_config()
-LAST_PING = None
 
 def log_config(filename):
+    create_missing_dir(filename)
     logging.basicConfig(
         # filename = filename,
         handlers = [
@@ -40,24 +43,23 @@ def curr_time() -> str:
     # Returns current time to use as a timestamp for naming files
     return dt.now().strftime("%j-%H%M-%S")  # %f gives 6 digit microseconds
 
-def secs_since_last_ping() -> float:
-    '''
-    Returns seconds (to 4 d.p.) past since the last time this function was called,
-    or 0 if first time.
-    Saves state! Using globals... :(
-    '''
-    # yes, this would be better as a class;
-    # yes, I shouldn't care coz I'm already over-engineering this
-    global LAST_PING
-    curr_time = time()
-    if LAST_PING is None: LAST_PING = curr_time
-    elapsed = curr_time - LAST_PING
-    LAST_PING = curr_time
-    return round(elapsed, 4)
+class LeTimer:
+    def __init__(self):
+        self.last_ping = time()
 
-def time_taken() -> str:
-    '''Formats the time since last call to secs_since_last_ping()'''
-    return f" (took {secs_since_last_ping()} s)"
+    def ping(self):
+        # Updates the ping, and returns it
+        self.last_ping = time()
+        return self.last_ping
+
+    def secs_since_last_ping(self, dps=4) -> float:
+        old_last_ping = self.last_ping
+        elapsed = self.ping() - old_last_ping
+        return round(elapsed, dps)
+
+    def time_taken(self) -> str:
+        '''Formats secs_since_last_ping()'''
+        return f" (took {self.secs_since_last_ping()} s)"
 
 def to_df(file_path):
     # Returns the given pickled pandas DataFrame.
@@ -79,3 +81,26 @@ def strnone_to_str(strnone):
 
 def create_missing_dir(filepath):
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+def get_device():
+    device = "cuda" if config["training"]["device"] == "cuda" and cuda.is_available() else "cpu"
+    logging.info(f"Using {device=}")
+
+def get_files(path, extension=None, filter_name=None, pickled_df=False):
+    '''Returns the given path (with the given extension and/or filter phrase) if it's a filepath;
+    otherwise, returns all files in that directory'''
+    files = [path] if os.path.isfile(path) else [
+        os.path.join(path, file) for file in os.listdir(path)
+        if os.path.isfile(os.path.join(path, file))
+    ]
+    
+    if extension:   files = [f for f in files if get_extension(f) == extension]
+    if filter_name: files = [f for file in files if filter_name in f]
+    if pickled_df:  files = [read_pickle(f) for f in files if os.path.getsize(f) > 0]
+    
+    return files
+
+def intersect_complement(a: list, b: list) -> list:
+    # complement of the intersection of a and b
+    # the below is just english, python is fun
+    return [elt for elt in set(a+b) if elt not in a or elt not in b]

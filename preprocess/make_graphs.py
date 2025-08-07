@@ -8,6 +8,19 @@ from sklearn.neighbors import NearestNeighbors
 from tqdm import tqdm
 import logging
 
+import os
+import sys
+
+# Add parent directory to import local project modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import constants as c
+from helpers import helpers_main
+config = helpers_main.load_config()
+DEVICE = helpers_main.get_device()
+
+# import logging
+# helpers_main.log_config(f"logs/makegraphs_{helpers_main.curr_time()}.log")
+
 def sanitize_features(pt, eta, phi, mass):
     """Clip or adjust physical features to avoid overflows or invalid values."""
     pt = np.nan_to_num(pt, nan=0.0, posinf=0.0, neginf=0.0)
@@ -17,7 +30,7 @@ def sanitize_features(pt, eta, phi, mass):
     return pt, eta, phi, mass
 
 
-def build_mass_knn_edges(pt, eta, phi, mass, k, device='cpu'):
+def build_mass_knn_edges(pt, eta, phi, mass, k, device=DEVICE):
     """Build kNN edge index using 1 / invariant mass as a distance."""
     # Compute 4-momenta
     px = pt * np.cos(phi)
@@ -48,7 +61,7 @@ def build_mass_knn_edges(pt, eta, phi, mass, k, device='cpu'):
     edge_index = torch.tensor(edge_index_np, dtype=torch.long).to(device)
     return edge_index
 
-def build_hybrid_knn_edges_vectorized(pt, eta, phi, mass, k, alpha=0.5, device='cpu'):
+def build_hybrid_knn_edges_vectorized(pt, eta, phi, mass, k, alpha=0.5, device=DEVICE):
     """Vectorized: Build kNN edges using hybrid of ΔR and 1/invariant mass."""
 
     # 4-momentum components
@@ -92,7 +105,7 @@ def make_graph(data: dict,
                data_label: int,
                node_feature_names=['pt', 'eta', 'phi', 'd0/d0Err', 'dz/dzErr'],
                nearest_neighbors=16,
-               device='cpu',
+               device=DEVICE,
                method='eta_phi',
                alpha: float = 0.5) -> Data:
     """
@@ -164,7 +177,7 @@ def make_graph(data: dict,
 def graph_data_loader(df: pd.DataFrame,
                       data_label: int,
                       nearest_neighbors: int = 16,
-                      device: str = 'cpu',
+                      device: str = DEVICE,
                       method: str = 'eta_phi',
                       node_feature_names=['pt', 'eta', 'phi', 'd0/d0Err', 'dz/dzErr'],
                       alpha: float = 0.5) -> List[Data]:

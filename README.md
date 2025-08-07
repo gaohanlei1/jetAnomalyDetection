@@ -20,28 +20,23 @@ source setup_venv.sh
 source setup_data_symlinks.sh
 
 # modify `configs/config.yaml` if needed
-python3.9 scripts/preprocessing.py -t background
-python3.9 scripts/preprocessing.py -t signal
+py scripts/preprocessing.py -t background
+py scripts/preprocessing.py -t signal
 # can use paths to singular files instead
 
 # optional
-python3.9 helpers/print_df_info.py --path data/preprocessed/qcd/              # or `wjet/`
-python3.9 helpers/join_dfs.py --filter 170to300 --path data/preprocessed/qcd/ # or `wjet/`
+py helpers/print_df_info.py --path data/preprocessed/qcd/              # or `wjet/`
+py helpers/join_dfs.py --filter 170to300 --path data/preprocessed/qcd/ # or `wjet/`
 
 # modify `configs/config.yaml to point to the preprocessed data folders
-python3.9 scripts/processing.py
+py scripts/processing.py -b path/to/processed/qcd.pkl -s path/to/processed/wjet.pkl -B "qcd file label" -S "wjet file label"
 
 # visualisation e.g.
-python3.9 visualize/plot_distributions.py -q path/to/preprocessed.pkl -t preproc -p fj_pt
+py visualize/plot_distributions.py -q path/to/pre-or-processed.pkl -t preproc -p fj_pt
 
 ...
-python3.9 scripts/run_train_autoencoder.py -...
+py scripts/run_train_autoencoder.py -...
 ```
-
-**NOTE:** if you want to run the time-consuming scripts on Brux/LXPlus over SSH, prepend the command with `nohup`!\
-With this, you can close the SSH connection and the script will keep running - the terminal output just goes to `nohup.out` in the current dir.\
-e.g. `nohup python3.9 scripts/preprocessing.py -t background`\
-(Remember to check terminal output often with `cat nohup.out` to check for errors; e.g. because of no virtual environment)
 
 ## Overview
 
@@ -51,7 +46,30 @@ e.g. `nohup python3.9 scripts/preprocessing.py -t background`\
 
 - and, once we have the proper distributions, train the classifier (old) or autoencoder (currently developing).
 
-- Parameter sweeps are performed via: TODO! Sync w/ Arjun
+- Parameter sweeps are performed via: `scripts/*_sweep.py`
+
+- (NOTE: everything runs on Linux; use WSL if locally on Windows)
+
+### NOTE: Training on Brown resources
+You'll likely have the data downloaded onto Brux/Oscar, so run from those.\
+You *could* run from Brux directly on the login node, but everything's way faster on Oscar with the right resource settings.\
+(e.g. the training scripts are configured to use CUDA whenever possible)\
+\
+To setup an Oscar account, follow the steps here: https://docs.ccv.brown.edu/oscar/\
+The steps to submit GPU jobs are listed here: https://docs.ccv.brown.edu/oscar/gpu-computing/submit-gpu\
+\
+**TL;DR:** once you setup your Oscar account, use sth like PuTTY/your native terminal to SSH into Oscar.\
+If your files are stored on Brux/HEP, run `cd /HEP/export/home/<account_name>/<path/to/jetAnomalyDetection>/` to locate your Brux files.\
+(You could copy these over to your Oscar directory, if you get permission/SSH key issues with Git.)\
+To run your training scripts directly from the terminal and see their output, run `interact -q gpu -g 1` to start an interactive session w/ 1 GPU.\
+Don't forget to change `device` to `"cuda"` in `config.yaml`, and run the training script.\
+To submit a batch job... just check the link above, pls.\
+\
+If running on Brux/some other cluster w/o a way to submit jobs like on Oscar, prepend your command with `nohup`.\
+This starts the script in the background and writes terminal output to `nohup.out` in the current directory.\
+This means you can close the SSH connection and it'll still keep running.\
+Just make sure to check the output every now and then with `cat nohup.out`, to see if there's been any errors.\
+e.g. `nohup py scripts/preprocessing.py -t background`
 
 ### First time
 
@@ -62,9 +80,13 @@ e.g. `nohup python3.9 scripts/preprocessing.py -t background`\
 
 - Modify `configs/config.yaml` to customise data locations, hyperparameters, etc.
 
+- `py` symlinks to `.venv/bin/python3.9`, so you can just use that in the terminal
+
+- For any script, run `py <path/to/script.py> -h` to check what command-line parameters are used
+
 ### Preprocessing
 
-- If you only have a single file to preprocess, run `python3.9 scripts/preprocessing.py -p <filepath> -t [background/signal]`
+- If you only have a single file to preprocess, run `py scripts/preprocessing.py -p <filepath> -t [background/signal]`
     - You should also set `move_to_used` to `false` if this is in a directory you can't write to
     - Remember to add `nohup` if you want to leave it running over SSH!
 
@@ -75,7 +97,7 @@ e.g. `nohup python3.9 scripts/preprocessing.py -t background`\
     - Run `source setup_data_symlinks.sh` to create data symlinks/shortcuts into `./data/raw/`, to access the data easier
     - Now `move_to_used: true` in the config will work, moving `.root` files into a `./used/` subdirectory to keep track of which files have been preprocessed
 
-- Run `python3.9 scripts/preprocessing.py -t [background/signal]` to preprocess using the default raw data directory
+- Run `py scripts/preprocessing.py -t [background/signal]` to preprocess using the default raw data directory
     - The default directory defined in `config.yaml` is where `setup_data_symlinks.sh` saves the shortcuts to 
     - If you have multiple `.root` files with the same label, e.g. "170to300_1", "..._2", "..._3",
         - this will save everything into the same folder, assuming your data paths are set up correctly
@@ -83,22 +105,27 @@ e.g. `nohup python3.9 scripts/preprocessing.py -t background`\
         - then add `-s` to save each file's outputs to a subfolder
         - NOTE: this will also automatically concatenate all the files in the subfolder into `concat_....pkl`, so you should delete the files in subfolders other than the `concat_....pkl` one
 
+- You can use `--upperpt` and `--lowerpt` to set fatjet pt bounds for the data
+    - e.g. if you want to train the model on the same pt ranges, so the model can't just learn the pt
+
 ### Processing
 
 - NOTE: This processes a pair of QCD and WJet jets together, scaling using the QCD data
     - The WJet's HT range should be around double the QCD Pt range!
     - You'll likely have a folder of multiple `.pkl` files for each jet; these files will be joined during processing
 
-- Run `python3.9 scripts/processing.py --background <path/to/qcd/preprocessed/> --signal <path/to/wjet/preprocessed>`
+- Run `py scripts/processing.py -b <path/to/preprocessed/qcd.pkl> -s <path/to/wjet/preprocessed>`
     - This will process the preprocessed `.pkl` files in the specified paths (defaults are set in `config.yaml`)
     - You can also add labels for each jet using `--label_bg` and `--label_sg`
+    - and upper/lower pt bounds using `--upperpt` and `--lowerpt`, if you preprocessed the data with the new script
     - NOTE: if you add `--filter`, then the program will use those labels to filter out preprocessed files
 
 
-### Trai
+### Training
 
-- Run `python3.9 scripts/run_train_autoencoder.py --help`
+- Run `py scripts/run_train_autoencoder.py -b <path/to/processed/qcd.pkl> -s <path/to/processed/wjet.pkl>`
     - or set the defaults in `config.yaml`
+    - Can configure the KNN neighbours, graph construction method, etc.
 
 ### Visualisation
 
@@ -109,11 +136,11 @@ e.g. `nohup python3.9 scripts/preprocessing.py -t background`\
 
 ### Helpers
 
-- `python3.9 helpers/print_df_info.py --path <file_or_folder>` to inspect the size `(rows * columns)` of a `.pkl` DataFrame (or a folder of `.pkl` files)
+- `py helpers/print_df_info.py --path <file_or_folder>` to inspect the size `(rows * columns)` of a `.pkl` DataFrame (or a folder of `.pkl` files)
     - Use as a sanity check to make sure a data file contains actual data
     - Add `-c` to print the columns, and `-r` to try printing the entire DataFrame
 
-- `python3.9 helpers/join_dfs.py --path <folder> --filter <jet_label>` to join all the `.pkl` files in the folder containing the specified label
+- `py helpers/join_dfs.py --path <folder> --filter <jet_label>` to join all the `.pkl` files in the folder containing the specified label
     - e.g. to join all `QCD_Pt1800to2400_*.pkl` files
 
 - `raw_data_info` contains the treenames and branch names for the TTrees in the raw `.root` files, e.g. "Events" or "FatJet"

@@ -27,3 +27,13 @@ CLOSEST_NEIGHBORS = 10
 GRAPH_METHODS = ("eta_phi", "all_features", "fully_connected", "mass_knn", "hybrid_knn")
 PT_MAX = 400
 PT_MIN = 200
+
+# for preproc/proc data/names
+RAW_FATJET_PROPERTIES = [
+    "phi", "eta", "pt", "mass", "msoftdrop",
+    "particleNetWithMass_QCD", "particleNet_XbbVsQCD",
+    "particleNet_XccVsQCD", "particleNet_XqqVsQCD",
+    "particleNet_QCD", "particleNet_massCorr"
+]
+# to distinguish from the processed columns
+RAW_FATJET_PROPERTIES_PREFIX = "rawfj_"

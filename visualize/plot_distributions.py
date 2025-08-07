@@ -13,6 +13,7 @@ import math
 
 # Add parent directory to import local project modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import constants as c
 from helpers import helpers_main
 config = helpers_main.load_config()
 
@@ -32,7 +33,7 @@ To-dos:
 
 def plot_distributions(
     data_list, prop_name, long_label=None, filename=None, label_list=None,
-    bins=150, include_zeros=True, scaled_zero=0.0
+    bins=150, include_zeros=True, scaled_zero=0.0, bin_range=None
 ):
     '''Plots and saves multiple datasets as overlapping histograms'''
     if long_label is None: long_label = prop_name
@@ -46,7 +47,6 @@ def plot_distributions(
     plt.ylabel("Density")
     plt.title(f"Distribution of '{long_label}' for {num} datasets" + ("" if include_zeros else " (without scaled zeroes)"))
 
-    bin_range = (0, 1)
     for i in range(len(data_list)):
         data = [
             item for item in data_list[i]
@@ -57,9 +57,12 @@ def plot_distributions(
         logging.info(f"{i}-th dataset {label_list[i]}'s length: {len(data)}! Length before filtering NaNs and 0s: {len(data_list[i])}")
 
         if len(data) == 0:
-            logging.warning("No data!")
+            logging.warning("No data for this one!")
+            continue
         else:
-            bin_range = (np.min(data), np.max(data))
+            if bin_range is not None:
+                if bin_range[0] is None: bin_range[0] = np.min(data)
+                if bin_range[1] is None: bin_range[1] = np.max(data)
         
         plt.hist(data, bins=bins, range=bin_range, density=False, label=label_list[i], alpha=0.5)
 
@@ -76,8 +79,8 @@ def plot_pt(qcd_events, wjet_events):
 
     qcd_fj, qcd_pfc   = get_fatjets(qcd_events)
     wjet_fj, wjet_pfc = get_fatjets(wjet_events)
-    qcd_pt  = get_pt_from_fatjets(qcd_fj)
-    wjet_pt = get_pt_from_fatjets(wjet_fj)
+    qcd_pt  = get_prop_from_fatjets(qcd_fj)
+    wjet_pt = get_prop_from_fatjets(wjet_fj)
 
     # before any preproc
     plot_property_distribution(
@@ -102,16 +105,17 @@ def plot_pt(qcd_events, wjet_events):
     plt.savefig(f"plots/plotraw_coffea-pt_{len(qcd_events)}_{len(wjet_events)}_{helpers_main.curr_time()}.png")
 
 
-def get_pt_from_root(filename, branch="FatJet_pt", treename="Events"):
+def get_prop_from_root(filename, branch="pt", treename="Events"):
+    if branch == "pt": branch = "FatJet_pt"
     with uproot.open(filename) as file:
         return ak.flatten(file[treename][branch].array()).to_numpy()
 
 
-def get_pt_from_fatjets(fatjets):
+def get_prop_from_fatjets(fatjets, prop="pt"):
     logging.debug(f"{fatjets=}")
     if isinstance(fatjets, int): return np.array([0])
     # flattens out instances of multiple pts! can plot differences in this later
-    return fatjets["pt"].to_numpy().flatten()
+    return fatjets[prop].to_numpy().flatten()
 
 
 def load_events(root_path):
@@ -166,6 +170,14 @@ if __name__ == "__main__":
         "--prop", "-p", type=str, default="pt",
         help="the property to graph"
     )
+    parser.add_argument(
+        "--lower", "-l", type=float, default=None,
+        help="the lower limit for the x-axis"
+    )
+    parser.add_argument(
+        "--upper", "-u", type=float, default=None,
+        help="the upper limit for the y-axis"
+    )
 
     args = parser.parse_args()
 
@@ -174,7 +186,7 @@ if __name__ == "__main__":
         for filepath in (args.path1, args.path2):
             ext = helpers_main.get_extension(filepath)
             if ext == ".root":
-                pts.append(get_pt_from_root(filepath))
+                pts.append(get_prop_from_root(filepath))
                 # pts.append(ak.flatten(load_events(filepath).FatJet).pt.to_numpy())
             elif ext == ".pkl":
                 pts.append(pd.read_pickle(filepath)["pt"].explode().to_numpy())
@@ -183,27 +195,24 @@ if __name__ == "__main__":
         
         plot_distributions(pts, "Pt", label_list=[helpers_main.trim_name(args.path1), helpers_main.trim_name(args.path2)])
     else:
-        files = [args.path1] if os.path.isfile(args.path1) else [
-            os.path.join(args.path1, file) for file in os.listdir(args.path1)
-            if os.path.isfile(os.path.join(args.path1, file))
-        ]
-
         if args.type in ("raw", "raw_fjlen"):
+            files = helpers_main.get_files(args.path1, extension=".root")
             for file in files:
-                if helpers_main.get_extension(file) != ".root":
-                    logging.warning(f"Skipping non-root {file=}")
-                    continue
-
                 logging.info(f"Now plotting {file=}!") #, with {preproc_file=}!")
 
                 filename = helpers_main.trim_name(file)
-                root_pt = get_pt_from_root(file)
-                
+                # root_prop = get_prop_from_root(file, branch="FatJet_" + args.prop)
                 ev = load_events(file)
 
                 if args.type == "raw":
-                    evs_raw_pt = ak.flatten(ev.FatJet).pt.to_numpy()
-                    plot_distributions([root_pt, evs_raw_pt], "Pt", label_list=[filename + "_uproot", filename + "_events"])
+                    evs_raw_prop = ak.flatten(ev.FatJet)[args.prop].to_numpy()
+                    plot_distributions(
+                        # [root_prop, evs_raw_prop], args.prop,
+                        # label_list=[filename + "_uproot", filename + "_coffea"],
+                        [evs_raw_prop], args.prop, label_list=[filename + "_coffea"],
+                        bin_range=[args.lower, args.upper]
+                    )
+                
                 elif args.type == "raw_fjlen":
                     lens = np.array([len(fjs) for fjs in ev.FatJet])
                     len_arrs = []
@@ -235,15 +244,12 @@ if __name__ == "__main__":
                 
 
         elif args.type in ("preproc", "proc"):
+            files = helpers_main.get_files(args.path1, extension=".pkl")
             for file in files:
-                if helpers_main.get_extension(file) != ".pkl":
-                    logging.warning(f"Skipping non-pkl {file=}")
-                    continue
-
                 logging.info(f"Now plotting {file=}!") #, with {preproc_file=}!")
-
                 filename = helpers_main.trim_name(file)
                 pkl = pd.read_pickle(file)
+                
                 if args.prop not in pkl.columns.tolist():
                     logging.warning(f"Skipping no-{args.prop} {file=}")
                     continue

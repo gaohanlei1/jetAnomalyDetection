@@ -24,16 +24,16 @@ torch.manual_seed(42)
 np.random.seed(42)
 random.seed(42)
 
-# Load config for constants like data path, device, fixed hyperparams
-with open("configs/config.yaml", "r") as f:
-    config = yaml.safe_load(f)
+# Add parent directory to import local project modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import constants as c
+from helpers import helpers_main
+config = helpers_main.load_config()
 
-BASE_DIR = "/home/anagaman/jet-anomaly-summer25/jetAnomalyDetection_updated/jetAnomalyDetection"
+train_file = os.path.join(config['data']['processed_data_dir'], config['data']['background_file'])
+test_file = os.path.join(config['data']['processed_data_dir'], config['data']['signal_file'])
 
-train_file = os.path.join(BASE_DIR, config['data']['processed_data_dir'], config['data']['background_file'])
-test_file = os.path.join(BASE_DIR, config['data']['processed_data_dir'], config['data']['signal_file'])
-
-device = torch.device(config["training"]["device"])
+device = helpers_main.get_device()
 
 def train_autoencoder_alpha(config_ray):
     alpha = config_ray['alpha']

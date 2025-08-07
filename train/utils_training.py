@@ -13,7 +13,18 @@ from torch_geometric.loader import DataLoader
 from torch.optim.lr_scheduler import StepLR
 from torch_geometric.data import Data
 from typing import List, Tuple
+
+import os 
+import sys
+
+# Add parent directory to import local project modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import constants as c
+from helpers import helpers_main
+config = helpers_main.load_config()
+
 import logging
+helpers_main.log_config(f"logs/train_{helpers_main.curr_time()}.log")
 
 def train_loop(dataloader, model, loss_fn, optimizer):
     """
@@ -166,8 +177,11 @@ def train_model(train_dataloader, test_dataloader, signal_dataloader, model, los
     model.val_hist = []
     model.signal_hist = []
 
+    # start timer
+    timer = helpers_main.LeTimer()
+
     for epoch in range(epochs):
-        logging.info(f"Epoch [{epoch+1}/{epochs}]")
+        logging.info(f"\nEpoch [{epoch+1}/{epochs}]")
 
         train_loss = []
         val_loss = []
@@ -206,6 +220,7 @@ def train_model(train_dataloader, test_dataloader, signal_dataloader, model, los
         logging.info(f"train loss: {mean_train_loss}")
         logging.info(f"test loss: {np.nanmean(val_loss)}")
         logging.info(f"signal loss: {np.nanmean(signal_loss)}")
+        logging.info(timer.time_taken())
 
     # Final assignment for later ROC/score plotting
     model.background_test_loss = val_loss

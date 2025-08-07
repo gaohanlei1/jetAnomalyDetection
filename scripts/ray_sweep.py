@@ -162,8 +162,11 @@ from ray.air import session
 from ray.tune import Tuner, TuneConfig, RunConfig
 from torch_geometric.loader import DataLoader
 
-# === Add project root to path ===
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add parent directory to import local project modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import constants as c
+from helpers import helpers_main
+
 from models.autoencoder import JetGraphAutoencoder
 from train.utils_training import train_loop, eval_loop
 from preprocess.make_graphs import graph_data_loader
@@ -182,8 +185,7 @@ BASE_DIR = "/home/anagaman/jet-anomaly-summer25/jetAnomalyDetection_updated/jetA
 train_file = os.path.join(BASE_DIR, config['data']['processed_data_dir'], config['data']['background_file'])
 test_file = os.path.join(BASE_DIR, ['data']['processed_data_dir'], config['data']['signal_file'])
 
-# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-device = torch.device(config["training"]["device"])
+device = helpers_main.get_device()
 
 def train_autoencoder_ray(config_ray):
     # === Load data ===
