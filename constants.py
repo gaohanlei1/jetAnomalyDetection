@@ -36,4 +36,4 @@ RAW_FATJET_PROPERTIES = [
     "particleNet_QCD", "particleNet_massCorr"
 ]
 # to distinguish from the processed columns
-RAW_FATJET_PROPERTIES_PREFIX = "rawfj_"
+RAW_FATJET_PROPERTIES_PREFIX = "fj_"

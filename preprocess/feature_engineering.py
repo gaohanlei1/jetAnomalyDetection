@@ -24,7 +24,11 @@ import constants as c
 from helpers import helpers_main
 helpers_main.log_config(f"logs/proc_feature_{helpers_main.curr_time()}.log")
 
-METADATA_ROWS = ("within_bounds", "fj_pt", "fj_phi", "fj_eta")
+METADATA_ROWS = (
+    "within_bounds", "fj_pt", 
+    "fj_phi", "fj_eta", 'fj_msoftdrop', 
+    'fj_particleNetWithMass_QCD', 'fj_particleNet_XbbVsQCD',
+    'fj_particleNet_XccVsQCD', 'fj_particleNet_XqqVsQCD')
 
 def calculate_d_over_dErr(row: pd.Series, label: str, valid_pdg: List[str]) -> np.ndarray:
     """
@@ -158,11 +162,14 @@ def modify_df(df: pd.DataFrame, pdg: List[str]) -> pd.DataFrame:
     df['log_pt'] = df.apply(lambda row: np.log(np.array(row['pt'])), axis=1)
     logging.info(f"Found log_pt {timer.time_taken()}, calculating one-hot lists...")
 
+    print("Columns before one-hot encoding:", df.columns.tolist())
     # Compute one-hot encodings using full PDG set
     unique_pdg_ids = sorted(df['pdgId'].explode().unique().tolist())
     # TAKES THE MOST TIME!!!
     df = df.apply(lambda row: one_hot_encode_pdgId(row, unique_pdg_ids), axis=1)
     logging.info(f"Found one-hot lists {timer.time_taken()}, now filtering out-of-bounds particles...")
+
+    print("Columns after one-hot encoding:", df.columns.tolist())
 
     # Filter out particles outside bounds
     df = df.apply(lambda row: filter_row(row, row['within_bounds']), axis=1)

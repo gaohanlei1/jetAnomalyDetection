@@ -61,7 +61,7 @@ def build_mass_knn_edges(pt, eta, phi, mass, k, device=DEVICE):
     edge_index = torch.tensor(edge_index_np, dtype=torch.long).to(device)
     return edge_index
 
-def build_hybrid_knn_edges_vectorized(pt, eta, phi, mass, k, alpha=0.5, device=DEVICE):
+def build_hybrid_knn_edges_vectorized(pt, eta, phi, mass, k, alpha=0.5, fj_mass=None, device=DEVICE):
     """Vectorized: Build kNN edges using hybrid of ΔR and 1/invariant mass."""
 
     # 4-momentum components
@@ -87,7 +87,13 @@ def build_hybrid_knn_edges_vectorized(pt, eta, phi, mass, k, alpha=0.5, device=D
 
     # Normalize distances
     norm_dR = (delta_r - delta_r.min()) / (delta_r.max() - delta_r.min() + 1e-6)
-    norm_mass = (inv_mass_dist - inv_mass_dist.min()) / (inv_mass_dist.max() - inv_mass_dist.min() + 1e-6)
+    # norm_mass = (inv_mass_dist - inv_mass_dist.min()) / (inv_mass_dist.max() - inv_mass_dist.min() + 1e-6)
+
+    if fj_mass is None:
+        raise ValueError("fj_mass must be provided for normalization.")
+
+    norm_mass = inv_mass_dist * (fj_mass + 1e-6)
+
 
     # Hybrid metric
     hybrid_dist = alpha * norm_dR + (1 - alpha) * norm_mass
@@ -163,7 +169,11 @@ def make_graph(data: dict,
             edge_index = build_mass_knn_edges(pt, eta, phi, mass, k, device=device)
         
         elif method == 'hybrid_knn':
-            edge_index = build_hybrid_knn_edges_vectorized(pt, eta, phi, mass, k, alpha=alpha, device=device)
+            # edge_index = build_hybrid_knn_edges_vectorized(pt, eta, phi, mass, k, alpha=alpha, device=device)
+            fj_mass = data.get('fj_msoftdrop', None)
+            if fj_mass is None:
+                raise ValueError("fj_mass is required for hybrid_knn normalization but not found in data.")
+            edge_index = build_hybrid_knn_edges_vectorized(pt, eta, phi, mass, k, alpha=alpha, fj_mass=fj_mass, device=device)
 
         else:
             raise ValueError(f"Unknown method: {method}")

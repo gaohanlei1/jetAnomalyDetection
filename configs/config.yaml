@@ -24,7 +24,7 @@ data:
   
   preprocessed_qcd: data/preprocessed/qcd/qcd_with_metadata2
   preprocessed_wjet: data/preprocessed/wjet
-  processed_data_dir: data/processed/scaledby_QCD_PT-80to470/scaledby_QCD
+  processed_data_dir: data/processed/PT-200to400/scaledby_QCD
   background_file: QCD_scaled.pkl
   signal_file: WJet_scaled.pkl
 
@@ -45,4 +45,4 @@ training:
 # Other
 misc:
   k_nearest_neighbors: 32
-  node_feature_names: ['pt', 'eta', 'phi', 'd0/d0Err', 'dz/dzErr']
+  node_feature_names: ['pt', 'eta', 'phi', 'd0/d0Err', 'dz/dzErr', 'fj_particleNet_XbbVsQCD', 'fj_particleNet_XccVsQCD']

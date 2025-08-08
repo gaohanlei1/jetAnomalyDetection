@@ -78,7 +78,7 @@ class DataProcessor:
             logging.info(f"Concatenating {jet_label}:" + self.timer.time_taken())
             combined = pd.concat(preproc_dfs, ignore_index=True)
 
-        logging.info(f"Combined {jet_label} data length: {len(combined)} {self.self.timer.time_taken()}")
+        logging.info(f"Combined {jet_label} data length: {len(combined)}") # {self.self.timer.time_taken()}")
 
         return self.mask_pt_bounds(combined)
     
@@ -155,6 +155,8 @@ class DataProcessor:
             self.qcd_scaled,  self.qcd_scaled_vals,  self.qcd_raw_vals,  self.zero1
         ) = apply_scalers(self.qcd_modified.copy(), scaler_dict)
         # .copy()
+        
+        # print("Final columns after scaling:", df.columns.tolist())
 
         logging.info(f"{self.timer.time_taken()} Now wjet:")
         (

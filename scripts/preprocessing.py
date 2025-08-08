@@ -113,17 +113,34 @@ class Preprocessor:
             results = pool.map(preproc_events_slice, shared_datas)
 
             logging.info(f"All done! Converting {len(results)=} dicts to dataframes and concatenating...")
-            results = pd.concat([pd.DataFrame.from_dict(data_dict) for data_dict in results])
+            # results = pd.concat([pd.DataFrame.from_dict(data_dict) for data_dict in results])
+
+
             logging.info(f"Concatenated {len(results)=} fatjets! Saving...")
 
             basename = helpers_main.trim_name(filepath)
-            output_file_path = os.path.join(
-                self.savepath,
-                f"{basename}_Pt{helpers_main.strnone_to_str(self.lowerpt)}-{helpers_main.strnone_to_str(self.upperpt)}_{os.getpid()}_{helpers_main.curr_time()}.pkl"
-            )
-            helpers_main.create_missing_dir(output_file_path)
-            results.to_pickle(output_file_path)
-            logging.info(f"Preprocessed into {output_file_path}.")
+            for i, data_dict in enumerate(results):
+                lengths = [len(v) for v in data_dict.values()]
+                if len(set(lengths)) != 1:
+                    logging.error(f"Chunk {i} has inconsistent array lengths: {dict(zip(data_dict.keys(), lengths))}")
+                    continue  # or raise an error if you'd rather fail loudly
+                df = pd.DataFrame.from_dict(data_dict)
+
+                output_file_path = os.path.join(
+                    self.savepath,
+                    f"{basename}_chunk{i}_Pt{helpers_main.strnone_to_str(self.lowerpt)}-{helpers_main.strnone_to_str(self.upperpt)}_{os.getpid()}_{helpers_main.curr_time()}.pkl"
+                )
+                helpers_main.create_missing_dir(output_file_path)
+                df.to_pickle(output_file_path)
+                logging.info(f"Saved chunk {i} to {output_file_path}.")
+                
+            # output_file_path = os.path.join(
+            #     self.savepath,
+            #     f"{basename}_Pt{helpers_main.strnone_to_str(self.lowerpt)}-{helpers_main.strnone_to_str(self.upperpt)}_{os.getpid()}_{helpers_main.curr_time()}.pkl"
+            # )
+            # helpers_main.create_missing_dir(output_file_path)
+            # results.to_pickle(output_file_path)
+            # logging.info(f"Preprocessed into {output_file_path}.")
 
         if config["data"]["move_to_used"]:
             move_to_used(filepath)

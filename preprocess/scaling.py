@@ -100,6 +100,8 @@ def apply_scalers(df: pd.DataFrame, scaler_dict: Dict[str, np.ndarray]) -> Tuple
             scaled_zero[col] = np.nan
         elif col.startswith(c.RAW_FATJET_PROPERTIES_PREFIX):
             data_dict[col] = df[col]
+            org_data_dict[col] = df[col]
+            scaled_zero[col] = np.nan
         else:
             per_minus_36, per_plus_36 = scaler_dict[col]
             denominator = per_plus_36 - per_minus_36 + 1e-6
@@ -109,5 +111,12 @@ def apply_scalers(df: pd.DataFrame, scaler_dict: Dict[str, np.ndarray]) -> Tuple
             zero = ((0.0 - per_minus_36) / denominator) * 2 - 1
             scaled_zero[col] = zero
             data_dict[col] = [item for sublist in df[col] for item in sublist]            
+
+    # Reattach unscaled fj_ columns
+    for col in df.columns:
+        if col.startswith("fj_") and col not in data_dict:
+            data_dict[col] = df[col]
+            org_data_dict[col] = df[col]
+            scaled_zero[col] = np.nan
 
     return df, data_dict, org_data_dict, scaled_zero
