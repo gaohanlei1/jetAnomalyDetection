@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/oscar/home/hgao50/jetAnomalyDetection/scripts/preprocessing.py", line 380, in <module>
+    helpers_main.profile_func(f"logs/{preproc.session_name}.prof", main, preproc)
+  File "/oscar/home/hgao50/jetAnomalyDetection/helpers/helpers_main.py", line 36, in profile_func
+    func(*args)
+  File "/oscar/home/hgao50/jetAnomalyDetection/scripts/preprocessing.py", line 330, in main
+    preproc.load_root(file)
+  File "/oscar/home/hgao50/jetAnomalyDetection/scripts/preprocessing.py", line 117, in load_root
+    logging.info(f"Intialised pool {pool} with {CPUS} CPUs.")
+NameError: name 'CPUS' is not defined

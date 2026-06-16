@@ -1,0 +1,25 @@
+Loading QCD files:   0%|          | 0/8 [00:00<?, ?it/s]Loading QCD files:  38%|███▊      | 3/8 [00:00<00:00, 26.50it/s]Loading QCD files:  75%|███████▌  | 6/8 [00:00<00:00, 23.91it/s]Loading QCD files: 100%|██████████| 8/8 [00:00<00:00, 27.29it/s]
+Loading WJet files:   0%|          | 0/4 [00:00<?, ?it/s]Loading WJet files: 100%|██████████| 4/4 [00:00<00:00, 412.08it/s]
+Finding scalers for QCD - lostOuterHits: 0it [00:00, ?it/s]Finding scalers for QCD - lostOuterHits: 56529it [00:00, 585079.14it/s]
+Traceback (most recent call last):
+  File "/oscar/home/hgao50/jetAnomalyDetection/scripts/processing.py", line 314, in <module>
+    helpers_main.profile_func(f"logs/proc_{helpers_main.curr_time()}.prof", main, args)
+  File "/oscar/home/hgao50/jetAnomalyDetection/helpers/helpers_main.py", line 36, in profile_func
+    func(*args)
+  File "/oscar/home/hgao50/jetAnomalyDetection/scripts/processing.py", line 267, in main
+    proc.scale_data()
+  File "/oscar/home/hgao50/jetAnomalyDetection/scripts/processing.py", line 154, in scale_data
+    scaler_dict = find_scalers(self.qcd_modified.copy(), self.label_bg, cols=variables_to_analyze)
+  File "/oscar/home/hgao50/jetAnomalyDetection/preprocess/scaling.py", line 55, in find_scalers
+    percentiles = np.percentile(
+  File "/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/numpy/lib/function_base.py", line 4283, in percentile
+    return _quantile_unchecked(
+  File "/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/numpy/lib/function_base.py", line 4555, in _quantile_unchecked
+    return _ureduce(a,
+  File "/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/numpy/lib/function_base.py", line 3823, in _ureduce
+    r = func(a, **kwargs)
+  File "/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/numpy/lib/function_base.py", line 4721, in _quantile_ureduce_func
+    result = _quantile(arr,
+  File "/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/numpy/lib/function_base.py", line 4834, in _quantile
+    previous = arr[previous_indexes]
+IndexError: index 0 is out of bounds for axis 0 with size 0

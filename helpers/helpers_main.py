@@ -83,8 +83,19 @@ def create_missing_dir(filepath):
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
 def get_device():
-    device = "cuda" if config["training"]["device"] == "cuda" and cuda.is_available() else "cpu"
+    requested_device = os.environ.get(
+        "JET_DEVICE", config["training"]["device"]
+    ).lower()
+    if requested_device not in {"cpu", "cuda"}:
+        raise ValueError(
+            f"Unsupported device '{requested_device}'. Use 'cpu' or 'cuda'."
+        )
+
+    device = "cuda" if requested_device == "cuda" and cuda.is_available() else "cpu"
+    if requested_device == "cuda" and device == "cpu":
+        logging.warning("CUDA was requested but is unavailable; falling back to CPU.")
     logging.info(f"Using {device=}")
+    return device
 
 def get_files(path, extension=None, filter_name=None, pickled_df=False):
     '''Returns the given path (with the given extension and/or filter phrase) if it's a filepath;

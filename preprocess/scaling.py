@@ -13,7 +13,6 @@ Functions:
 import numpy as np
 import pandas as pd
 from typing import List, Tuple, Dict
-import math
 from tqdm import tqdm
 import logging
 
@@ -45,17 +44,31 @@ def find_scalers(df: pd.DataFrame, df_label: str, cols: List[str]) -> Dict[str, 
             # Skip scaling for PDG one-hot columns and fatjet metadata
             scaler_dict[col] = [-1]
         else:
-            flattened_list = sorted(df[col].explode())
-            # Keep only valid, non-zero, non-NaN entries
-            indices = [
-                i for i, item in tqdm(enumerate(flattened_list),
-                desc = f"Finding scalers for {df_label} - {col}")
-                if item != 0.0 and not math.isnan(item)
-            ]
-            percentiles = np.percentile(
-                np.array(flattened_list)[indices].flatten(), [16, 84]
-            )
-            scaler_dict[col] = percentiles
+            flattened = pd.to_numeric(df[col].explode(), errors="coerce").to_numpy()
+            valid_values = np.array([
+                item for item in tqdm(
+                    flattened,
+                    desc=f"Finding scalers for {df_label} - {col}"
+                )
+                if np.isfinite(item) and item != 0.0
+            ])
+
+            if valid_values.size == 0:
+                logging.warning(
+                    f"Preserving {col} without scaling because the QCD "
+                    "reference contains no finite non-zero values."
+                )
+                scaler_dict[col] = None
+            else:
+                percentiles = np.percentile(valid_values, [16, 84])
+                if np.isclose(percentiles[0], percentiles[1]):
+                    logging.warning(
+                        f"Preserving {col} without scaling because its QCD "
+                        "16th and 84th percentiles are identical."
+                    )
+                    scaler_dict[col] = None
+                else:
+                    scaler_dict[col] = percentiles
 
     return scaler_dict
 
@@ -102,6 +115,13 @@ def apply_scalers(df: pd.DataFrame, scaler_dict: Dict[str, np.ndarray]) -> Tuple
             data_dict[col] = df[col]
             org_data_dict[col] = df[col]
             scaled_zero[col] = np.nan
+        elif scaler_dict[col] is None:
+            logging.info(f"Preserving uninformative {col=}")
+            data_dict[col] = [
+                item for sublist in df[col]
+                for item in np.array(sublist).flatten()
+            ]
+            scaled_zero[col] = 0.0
         else:
             per_minus_36, per_plus_36 = scaler_dict[col]
             denominator = per_plus_36 - per_minus_36 + 1e-6

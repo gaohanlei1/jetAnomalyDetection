@@ -1,0 +1,48 @@
+Loading QCD files:   0%|          | 0/8 [00:00<?, ?it/s]Loading QCD files:  25%|██▌       | 2/8 [00:00<00:00, 16.52it/s]Loading QCD files:  62%|██████▎   | 5/8 [00:00<00:00, 18.32it/s]Loading QCD files: 100%|██████████| 8/8 [00:00<00:00, 22.67it/s]Loading QCD files: 100%|██████████| 8/8 [00:00<00:00, 21.22it/s]
+Loading WJet files:   0%|          | 0/4 [00:00<?, ?it/s]Loading WJet files: 100%|██████████| 4/4 [00:00<00:00, 281.01it/s]
+Finding scalers for QCD - lostOuterHits:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - lostOuterHits:  71%|███████▏  | 40379/56529 [00:00<00:00, 403719.16it/s]Finding scalers for QCD - lostOuterHits: 100%|██████████| 56529/56529 [00:00<00:00, 416700.75it/s]
+Finding scalers for QCD - numberOfHits:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - numberOfHits:  73%|███████▎  | 41089/56529 [00:00<00:00, 410857.09it/s]Finding scalers for QCD - numberOfHits: 100%|██████████| 56529/56529 [00:00<00:00, 420035.24it/s]
+Finding scalers for QCD - numberOfPixelHits:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - numberOfPixelHits:  72%|███████▏  | 40772/56529 [00:00<00:00, 407693.17it/s]Finding scalers for QCD - numberOfPixelHits: 100%|██████████| 56529/56529 [00:00<00:00, 417641.74it/s]
+Finding scalers for QCD - pvAssocQuality:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - pvAssocQuality:  72%|███████▏  | 40900/56529 [00:00<00:00, 408964.31it/s]Finding scalers for QCD - pvAssocQuality: 100%|██████████| 56529/56529 [00:00<00:00, 418754.07it/s]
+Finding scalers for QCD - trkAlgo:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - trkAlgo:  74%|███████▎  | 41615/56529 [00:00<00:00, 416117.66it/s]Finding scalers for QCD - trkAlgo: 100%|██████████| 56529/56529 [00:00<00:00, 425346.07it/s]
+Finding scalers for QCD - trkQuality:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - trkQuality:  73%|███████▎  | 41132/56529 [00:00<00:00, 411283.13it/s]Finding scalers for QCD - trkQuality: 100%|██████████| 56529/56529 [00:00<00:00, 418595.86it/s]
+Finding scalers for QCD - d0:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - d0:  72%|███████▏  | 40555/56529 [00:00<00:00, 405517.51it/s]Finding scalers for QCD - d0: 100%|██████████| 56529/56529 [00:00<00:00, 411766.01it/s]
+Finding scalers for QCD - d0Err:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - d0Err:  68%|██████▊   | 38642/56529 [00:00<00:00, 386390.89it/s]Finding scalers for QCD - d0Err: 100%|██████████| 56529/56529 [00:00<00:00, 402463.69it/s]
+Finding scalers for QCD - dz:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - dz:  72%|███████▏  | 40892/56529 [00:00<00:00, 408884.32it/s]Finding scalers for QCD - dz: 100%|██████████| 56529/56529 [00:00<00:00, 418885.02it/s]
+Finding scalers for QCD - dzErr:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - dzErr:  72%|███████▏  | 40678/56529 [00:00<00:00, 406738.69it/s]Finding scalers for QCD - dzErr: 100%|██████████| 56529/56529 [00:00<00:00, 411825.37it/s]
+Finding scalers for QCD - mass:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - mass:  72%|███████▏  | 40551/56529 [00:00<00:00, 405471.72it/s]Finding scalers for QCD - mass: 100%|██████████| 56529/56529 [00:00<00:00, 415848.58it/s]
+Finding scalers for QCD - puppiWeight:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - puppiWeight:  72%|███████▏  | 40787/56529 [00:00<00:00, 407842.19it/s]Finding scalers for QCD - puppiWeight: 100%|██████████| 56529/56529 [00:00<00:00, 416730.05it/s]
+Finding scalers for QCD - puppiWeightNoLep:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - puppiWeightNoLep:  72%|███████▏  | 40865/56529 [00:00<00:00, 408614.34it/s]Finding scalers for QCD - puppiWeightNoLep: 100%|██████████| 56529/56529 [00:00<00:00, 417188.33it/s]
+Finding scalers for QCD - trkChi2:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - trkChi2:  73%|███████▎  | 41155/56529 [00:00<00:00, 411515.07it/s]Finding scalers for QCD - trkChi2: 100%|██████████| 56529/56529 [00:00<00:00, 419372.53it/s]
+Finding scalers for QCD - trkEta:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - trkEta:  73%|███████▎  | 41108/56529 [00:00<00:00, 411046.09it/s]Finding scalers for QCD - trkEta: 100%|██████████| 56529/56529 [00:00<00:00, 418929.42it/s]
+Finding scalers for QCD - trkP:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - trkP:  72%|███████▏  | 40832/56529 [00:00<00:00, 408258.09it/s]Finding scalers for QCD - trkP: 100%|██████████| 56529/56529 [00:00<00:00, 415799.72it/s]
+Finding scalers for QCD - trkPhi:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - trkPhi:  72%|███████▏  | 40683/56529 [00:00<00:00, 406789.65it/s]Finding scalers for QCD - trkPhi: 100%|██████████| 56529/56529 [00:00<00:00, 415219.37it/s]
+Finding scalers for QCD - trkPt:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - trkPt:  72%|███████▏  | 40522/56529 [00:00<00:00, 405180.78it/s]Finding scalers for QCD - trkPt: 100%|██████████| 56529/56529 [00:00<00:00, 414268.26it/s]
+Finding scalers for QCD - vtxChi2:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - vtxChi2:  73%|███████▎  | 41199/56529 [00:00<00:00, 411958.96it/s]Finding scalers for QCD - vtxChi2: 100%|██████████| 56529/56529 [00:00<00:00, 419931.09it/s]
+Finding scalers for QCD - dz/dzErr:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - dz/dzErr:  72%|███████▏  | 40969/56529 [00:00<00:00, 409651.32it/s]Finding scalers for QCD - dz/dzErr: 100%|██████████| 56529/56529 [00:00<00:00, 419866.39it/s]
+Finding scalers for QCD - d0/d0Err:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - d0/d0Err:  72%|███████▏  | 40940/56529 [00:00<00:00, 409361.35it/s]Finding scalers for QCD - d0/d0Err: 100%|██████████| 56529/56529 [00:00<00:00, 418635.77it/s]
+Finding scalers for QCD - dR:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - dR:  73%|███████▎  | 41049/56529 [00:00<00:00, 410453.20it/s]Finding scalers for QCD - dR: 100%|██████████| 56529/56529 [00:00<00:00, 418586.99it/s]
+Finding scalers for QCD - within_bounds:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - within_bounds:  73%|███████▎  | 41112/56529 [00:00<00:00, 411069.43it/s]Finding scalers for QCD - within_bounds: 100%|██████████| 56529/56529 [00:00<00:00, 420325.64it/s]
+Finding scalers for QCD - log_pt:   0%|          | 0/56529 [00:00<?, ?it/s]Finding scalers for QCD - log_pt:  72%|███████▏  | 40579/56529 [00:00<00:00, 405739.12it/s]Finding scalers for QCD - log_pt: 100%|██████████| 56529/56529 [00:00<00:00, 415173.57it/s]
+Traceback (most recent call last):
+  File "/oscar/home/hgao50/jetAnomalyDetection/scripts/processing.py", line 314, in <module>
+    helpers_main.profile_func(f"logs/proc_{helpers_main.curr_time()}.prof", main, args)
+  File "/oscar/home/hgao50/jetAnomalyDetection/helpers/helpers_main.py", line 36, in profile_func
+    func(*args)
+  File "/oscar/home/hgao50/jetAnomalyDetection/scripts/processing.py", line 271, in main
+    proc.save_data()
+  File "/oscar/home/hgao50/jetAnomalyDetection/scripts/processing.py", line 228, in save_data
+    pickle_dict(extras_folder, self.qcd_scaled_vals,  self.label_bg + "_scaledvals.pkl")
+  File "/oscar/home/hgao50/jetAnomalyDetection/scripts/processing.py", line 239, in pickle_dict
+    if isinstance(dickle_pickle, dict): dickle_pickle = pd.DataFrame.from_dict(dickle_pickle)
+  File "/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/pandas/core/frame.py", line 1905, in from_dict
+    return cls(data, index=index, columns=columns, dtype=dtype)
+  File "/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/pandas/core/frame.py", line 767, in __init__
+    mgr = dict_to_mgr(data, index, columns, dtype=dtype, copy=copy, typ=manager)
+  File "/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/pandas/core/internals/construction.py", line 503, in dict_to_mgr
+    return arrays_to_mgr(arrays, columns, index, dtype=dtype, typ=typ, consolidate=copy)
+  File "/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/pandas/core/internals/construction.py", line 114, in arrays_to_mgr
+    index = _extract_index(arrays)
+  File "/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/pandas/core/internals/construction.py", line 690, in _extract_index
+    raise ValueError(msg)
+ValueError: array length 56529 does not match index length 2642

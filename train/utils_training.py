@@ -41,15 +41,17 @@ def train_loop(dataloader, model, loss_fn, optimizer):
     """
     model.train()
     total_loss = []
+    device = next(model.parameters()).device
 
     for batch, X in enumerate(dataloader):
+        X = X.to(device)
         optimizer.zero_grad()
         pred = model(X)
         pred = pred[:, :X.x.shape[1]]  # Only reconstruct original feature dimensions
 
         loss = loss_fn(pred, X.x)
 
-        total_loss.append(float(loss))
+        total_loss.append(loss.item())
 
         loss.backward()
         optimizer.step()
@@ -74,13 +76,15 @@ def eval_loop(dataloader, model, loss_fn, test=False, signal=False):
     model.eval()
     loss = []
     data = []
+    device = next(model.parameters()).device
 
     with torch.no_grad():
         for X in dataloader:
+            X = X.to(device)
             pred = model(X)
             pred = pred[:, :X.x.shape[1]]
-            loss.append(float(loss_fn(pred, X.x)))
-            data.append(X.x)
+            loss.append(loss_fn(pred, X.x).item())
+            data.append(X.x.detach().cpu())
 
     # Store for downstream use if flagged
     if test:

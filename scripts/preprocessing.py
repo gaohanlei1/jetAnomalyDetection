@@ -21,8 +21,11 @@ warnings.filterwarnings("ignore", category=UserWarning, module="coffea")
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="coffea")
 
 from multiprocessing import Pool, Manager, cpu_count
-# brux keeps freezing if I try to do cpu-1?
-CPUS = (cpu_count() * 3)//4
+
+DEFAULT_WORKERS = min(
+    4,
+    int(os.environ.get("SLURM_CPUS_PER_TASK", cpu_count())),
+)
 
 # Add parent directory to import local project modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -47,6 +50,10 @@ class Preprocessor:
         self.type = args.type
         self.upperpt, self.lowerpt = args.upperpt, args.lowerpt
         self.savepath = args.savepath
+        self.workers = args.workers
+        self.move_to_used = args.move_to_used
+        self.recursive = args.recursive
+        self.max_events = args.max_events
         
     def setup_log(self):
         self.session_name = f"preproc_{self.type}_pt{helpers_main.strnone_to_str(self.lowerpt)}-{helpers_main.strnone_to_str(self.upperpt)}_{helpers_main.curr_time()}"
@@ -70,9 +77,23 @@ class Preprocessor:
                 raise Exception(f"Invalid path: {old}\n{self.path=}\n{self.jet_type=}")
 
         # by now, guaranteed to be full file/folder paths
-        files = helpers_main.get_files(self.path, extension=self.DATA_FILE_EXT)
+        if os.path.isdir(self.path) and self.recursive:
+            files = sorted(
+                os.path.join(root, filename)
+                for root, _, filenames in os.walk(self.path, followlinks=True)
+                for filename in filenames
+                if filename.endswith(self.DATA_FILE_EXT)
+            )
+        else:
+            files = helpers_main.get_files(
+                self.path, extension=self.DATA_FILE_EXT
+            )
 
         logging.info(f"Loaded {len(files)} file(s)!")
+        if not files:
+            raise FileNotFoundError(
+                f"No {self.DATA_FILE_EXT} files found at {self.path}"
+            )
         return files
     
     def load_root(self, filepath):
@@ -84,12 +105,19 @@ class Preprocessor:
         # - So, I'll be doing sth very stupid here: loading the same file multiple times
         # - coz pickle can't pickle coffea events for whatever reason
         num_events = len(NanoEventsFactory.from_root(filepath, schemaclass = PFNanoAODSchema).events())
-        logging.info(f"{num_events} events in total, splitting into {CPUS} chunks.")
-        start_i = np.linspace(0, num_events, endpoint=False, dtype=int, num=CPUS)
+        if self.max_events is not None:
+            num_events = min(num_events, self.max_events)
+        if num_events == 0:
+            logging.warning(f"Skipping empty ROOT file: {filepath}")
+            return
+
+        workers = min(self.workers, num_events)
+        logging.info(f"{num_events} events in total, splitting into {workers} chunks.")
+        start_i = np.linspace(0, num_events, endpoint=False, dtype=int, num=workers)
         end_i   = np.append(start_i[1:], num_events)
 
-        with (Pool(CPUS) as pool, Manager() as m):
-            logging.info(f"Intialised pool {pool} with {CPUS} CPUs.")
+        with (Pool(workers) as pool, Manager() as m):
+            logging.info(f"Initialised pool {pool} with {workers} workers.")
 
             pid_list = m.list()
             pid_lock = m.Lock()
@@ -120,10 +148,17 @@ class Preprocessor:
 
             basename = helpers_main.trim_name(filepath)
             for i, data_dict in enumerate(results):
+                if not data_dict:
+                    logging.warning(
+                        f"Chunk {i} contained no jets passing the selection."
+                    )
+                    continue
                 lengths = [len(v) for v in data_dict.values()]
                 if len(set(lengths)) != 1:
-                    logging.error(f"Chunk {i} has inconsistent array lengths: {dict(zip(data_dict.keys(), lengths))}")
-                    continue  # or raise an error if you'd rather fail loudly
+                    raise ValueError(
+                        f"Chunk {i} has inconsistent array lengths: "
+                        f"{dict(zip(data_dict.keys(), lengths))}"
+                    )
                 df = pd.DataFrame.from_dict(data_dict)
 
                 output_file_path = os.path.join(
@@ -142,7 +177,7 @@ class Preprocessor:
             # results.to_pickle(output_file_path)
             # logging.info(f"Preprocessed into {output_file_path}.")
 
-        if config["data"]["move_to_used"]:
+        if self.move_to_used:
             move_to_used(filepath)
         
 
@@ -225,27 +260,8 @@ def process_event_root(events, lowerpt=None, upperpt=None):
             properties.append(ak.to_numpy(pfcands[field]).flatten()[pfcs])
             property_names.append(field)
 
-    
-    softdrop_mass = fatjets.msoftdrop[0]
-    properties.append(np.array([softdrop_mass]))
-    property_names.append("fj_msoftdrop")
-
-    # --- ParticleNet Scores ---
-    pnet_keys = [
-    "particleNetWithMass_QCD",
-    "particleNet_XbbVsQCD",
-    "particleNet_XccVsQCD",
-    "particleNet_XqqVsQCD",
-    ]
-
-    for key in pnet_keys:
-        if key in fatjets.fields:
-            score = fatjets[key][0]
-            properties.append(np.array([score]))
-            property_names.append(f"fj_" + key)
-        else:
-            # print(list(fatjets.fields))
-            logging.warning(f"FatJet missing expected field: {key}")
+    if len(property_names) != len(set(property_names)):
+        raise ValueError(f"Duplicate output column names: {property_names}")
 
     return properties, property_names
 
@@ -330,8 +346,31 @@ if __name__ == "__main__":
         "--lowerpt", "-b", type=float, default=None,
         help=f"lower bound on fatjet Pt?"
     )
+    parser.add_argument(
+        "--workers", "-j", type=int, default=DEFAULT_WORKERS,
+        help=f"Number of worker processes. Default: {DEFAULT_WORKERS}"
+    )
+    parser.add_argument(
+        "--move-to-used", default=config["data"]["move_to_used"],
+        action=argparse.BooleanOptionalAction,
+        help="Move each raw ROOT file into a used/ subdirectory after it succeeds. Default: disabled"
+    )
+    parser.add_argument(
+        "--recursive", default=False, action=argparse.BooleanOptionalAction,
+        help="Search subdirectories recursively when --path is a directory"
+    )
+    parser.add_argument(
+        "--max-events", type=int, default=None,
+        help="Process at most this many events from each ROOT file (for smoke tests)"
+    )
 
-    preproc = Preprocessor(parser.parse_args())
+    args = parser.parse_args()
+    if args.workers < 1:
+        parser.error("--workers must be at least 1")
+    if args.max_events is not None and args.max_events < 1:
+        parser.error("--max-events must be at least 1")
+
+    preproc = Preprocessor(args)
     preproc.setup_log()
 
     if config["dbg"]["measure_perf"]:

@@ -53,6 +53,7 @@ class DataProcessor:
         self.label_bg,  self.label_sg  = cli_args.label_bg, cli_args.label_sg
         self.filter = cli_args.filter
         self.lowerpt, self.upperpt = cli_args.lowerpt, cli_args.upperpt
+        self.output_dir = cli_args.output_dir
 
         self.qcd_modified, self.wjet_modified = None, None
         self.qcd_scaled,  self.qcd_scaled_vals,  self.qcd_raw_vals,  self.zero1 = None, None, None, None
@@ -68,6 +69,10 @@ class DataProcessor:
             data_path, extension=".pkl",
             filter_name=jet_label if self.filter else None
         )
+        if not preproc_paths:
+            raise FileNotFoundError(
+                f"No .pkl files found for {jet_label} at {data_path}"
+            )
         preproc_dfs = [
             pd.read_pickle(file)            #.head(100)
             for file in tqdm(preproc_paths, desc=f"Loading {jet_label} files")
@@ -211,7 +216,7 @@ class DataProcessor:
 
     def save_data(self):
         # Save data as .pkl!
-        output_folder = os.path.join(config["data"]["processed_data_dir"], "scaledby_" + self.label_bg)
+        output_folder = self.output_dir
 
         extras_folder = os.path.join(output_folder, "other")
         os.makedirs(extras_folder, exist_ok=True)
@@ -298,6 +303,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--lowerpt", type=float, default=None,
         help=f"lower bound on fatjet Pt? (make sure the preprocessed file has an raw fatjet pt column!)"
+    )
+    parser.add_argument(
+        "--output-dir", "-o", default=config["data"]["processed_data_dir"],
+        help="Directory for the final scaled pickle files. Default: processed_data_dir from config.yaml"
     )
     args = parser.parse_args()
 
