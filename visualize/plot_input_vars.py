@@ -12,7 +12,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Set the path to your data file and the variables you want to plot!
-PATH_TO_DATA = "data/processed/PT-200to400/QCD_scaled.pkl"
+# PATH_TO_DATA = "data/processed/PT-200to400/QCD_scaled.pkl"
+PATH_TO_DATA = "data/processed/PT-200to400/WJet_scaled.pkl"
+PLOT_TITLE = f"Variable Distributions for Scaled WJet Data"
 Z_VARIABLES = ['pt', 'd0/d0Err', 'dz/dzErr']
 IS_SCALED = "_scaled" in PATH_TO_DATA
 
@@ -65,6 +67,6 @@ for i, var in enumerate(Z_VARIABLES):
     # ensure the aspect ratio is equal
     ax[i].set_aspect('equal', adjustable='box')
     fig.colorbar(scatter, ax=ax[i], label=var if not IS_SCALED else f"{var} (scaled)")
-
+plt.suptitle(PLOT_TITLE)
 plt.tight_layout()
 plt.show()

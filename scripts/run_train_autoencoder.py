@@ -65,24 +65,24 @@ class TrainAutoencoder:
     TRAIN_PLOTS_PATH   = "plots/test-plots"
     
     def __init__(self):
-        args = parser.parse_args()
-        self.bg_file, self.sg_file = args.background, args.signal
+        self.args = parser.parse_args()
+        self.bg_file, self.sg_file = self.args.background, self.args.signal
         self.bg_name, self.sg_name = helpers_main.trim_name(self.bg_file), helpers_main.trim_name(self.sg_file)
-        self.method = args.method
-        self.knn = args.knn
-        self.smallest_dim = args.smallest_dim
-        self.num_reduced_edges = args.num_reduced_edges
-        self.batch_size = args.batch_size
-        self.epochs = args.epochs
-        self.initial_lr = args.learning_rate
-        self.weight_decay = args.weight_decay
-        self.lr_scheduler = args.lr_scheduler
-        self.normalize_features = args.normalize_features
-        self.seed = args.seed
-        self.max_background_events = args.max_background_events
-        self.max_signal_events = args.max_signal_events
-        self.TRAIN_PLOTS_PATH = args.output_dir
-        self.FEATURE_PLOTS_PATH = os.path.join(args.output_dir, "features")
+        self.method = self.args.method
+        self.knn = self.args.knn
+        self.smallest_dim = self.args.smallest_dim
+        self.num_reduced_edges = self.args.num_reduced_edges
+        self.batch_size = self.args.batch_size
+        self.epochs = self.args.epochs
+        self.initial_lr = self.args.learning_rate
+        self.weight_decay = self.args.weight_decay
+        self.lr_scheduler = self.args.lr_scheduler
+        self.normalize_features = self.args.normalize_features
+        self.seed = self.args.seed
+        self.max_background_events = self.args.max_background_events
+        self.max_signal_events = self.args.max_signal_events
+        self.TRAIN_PLOTS_PATH = self.args.output_dir
+        self.FEATURE_PLOTS_PATH = os.path.join(self.args.output_dir, "features")
 
         random.seed(self.seed)
         np.random.seed(self.seed)
@@ -151,6 +151,13 @@ class TrainAutoencoder:
             )
 
     def compute_stats(self):
+        if self.args.dry_run:
+            self.all_features = torch.empty((0, 0))
+            self.num_features = 0
+            self.feature_names = []
+            self.means = torch.empty(0)
+            self.stds = torch.empty(0)
+            return
         self.all_features = torch.cat([graph.x for graph in self.bg_train_graphs], dim=0)
         self.num_features = self.all_features.shape[1]
         self.feature_names = config["misc"]["node_feature_names"]
@@ -264,6 +271,12 @@ def run_autoencoder_training(
         smallest_dim=smallest_dim,
         num_reduced_edges=num_reduced_edges
     ).to(DEVICE)
+    
+    # print model summary
+    logging.info(f"Model Summary:\n{model}")
+    # number of trainable parameters
+    num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    logging.info(f"Number of trainable parameters: {num_params}")
 
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=initial_lr, weight_decay=weight_decay
@@ -409,11 +422,29 @@ if __name__ == "__main__":
         "--max-signal-events", type=int,
         help="Optional signal row limit for a smoke test."
     )
+    parser.add_argument(
+        "--check-model-size", action=argparse.BooleanOptionalAction, default=False,
+        help="If set, will not train the model and will not load data. Only print model size."
+    )
 
-    train_ae = TrainAutoencoder()
-    train_ae.load()
-    train_ae.build_graphs()
-    train_ae.compute_stats()
-    train_ae.plot_features()
-    train_ae.train()
-    # train_ae.plot_loss()
+    args = parser.parse_args()
+    if args.check_model_size:
+        model = JetGraphAutoencoder(
+            num_features=0,
+            smallest_dim=args.smallest_dim,
+            num_reduced_edges=args.num_reduced_edges
+        ).to(DEVICE)
+        
+        # print model summary
+        logging.info(f"Model Summary:\n{model}")
+        # number of trainable parameters
+        num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        logging.info(f"Number of trainable parameters: {num_params}")
+    else: 
+        train_ae = TrainAutoencoder()
+        train_ae.load()
+        train_ae.build_graphs()
+        train_ae.compute_stats()
+        train_ae.plot_features()
+        train_ae.train()
+        # train_ae.plot_loss()

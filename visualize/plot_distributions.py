@@ -83,14 +83,14 @@ def plot_pt(qcd_events, wjet_events):
     wjet_pt = get_prop_from_fatjets(wjet_fj)
 
     # before any preproc
-    plot_property_distribution(
+    plot_property_distributions(
         qcd_pt, wjet_pt, "Pt before scaling",
         "QCD", "WJet",
         ax=axes[0], is_scaled=False, include_zeros=True
     )
 
     # after preproc
-    # plot_property_distribution(
+    # plot_property_distributions(
     #     qcd_pt, wjet_pt, "Pt before scaling",
     #     "QCD", "WJet",
     #     ax=axes[0], is_scaled=False, include_zeros=True
