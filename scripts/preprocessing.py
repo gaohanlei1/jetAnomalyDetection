@@ -1,3 +1,11 @@
+"""
+Preprocesses raw ROOT files into pandas DataFrames of jet constituent properties, saved as pickles.
+Example command:
+python scripts/preprocessing.py -p "data/raw/btv-nano/QCD_PT-170to300_TuneCP5_13p6TeV_pythia8_1.root" -t "background"
+Default save dir:
+data/preprocessed/
+"""
+
 from coffea.nanoevents import NanoEventsFactory, PFNanoAODSchema, BaseSchema
 from multiprocessing import Pool, Manager, RLock, cpu_count
 import numpy as np
