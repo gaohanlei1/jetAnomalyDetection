@@ -151,13 +151,6 @@ class TrainAutoencoder:
             )
 
     def compute_stats(self):
-        if self.args.dry_run:
-            self.all_features = torch.empty((0, 0))
-            self.num_features = 0
-            self.feature_names = []
-            self.means = torch.empty(0)
-            self.stds = torch.empty(0)
-            return
         self.all_features = torch.cat([graph.x for graph in self.bg_train_graphs], dim=0)
         self.num_features = self.all_features.shape[1]
         self.feature_names = config["misc"]["node_feature_names"]
@@ -422,29 +415,12 @@ if __name__ == "__main__":
         "--max-signal-events", type=int,
         help="Optional signal row limit for a smoke test."
     )
-    parser.add_argument(
-        "--check-model-size", action=argparse.BooleanOptionalAction, default=False,
-        help="If set, will not train the model and will not load data. Only print model size."
-    )
 
     args = parser.parse_args()
-    if args.check_model_size:
-        model = JetGraphAutoencoder(
-            num_features=0,
-            smallest_dim=args.smallest_dim,
-            num_reduced_edges=args.num_reduced_edges
-        ).to(DEVICE)
-        
-        # print model summary
-        logging.info(f"Model Summary:\n{model}")
-        # number of trainable parameters
-        num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        logging.info(f"Number of trainable parameters: {num_params}")
-    else: 
-        train_ae = TrainAutoencoder()
-        train_ae.load()
-        train_ae.build_graphs()
-        train_ae.compute_stats()
-        train_ae.plot_features()
-        train_ae.train()
-        # train_ae.plot_loss()
+    train_ae = TrainAutoencoder()
+    train_ae.load()
+    train_ae.build_graphs()
+    train_ae.compute_stats()
+    train_ae.plot_features()
+    train_ae.train()
+    # train_ae.plot_loss()
