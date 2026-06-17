@@ -1,4 +1,5 @@
-from coffea.nanoevents import NanoEventsFactory, PFNanoAODSchema
+from coffea.nanoevents import NanoEventsFactory, PFNanoAODSchema, BaseSchema
+from multiprocessing import Pool, Manager, RLock, cpu_count
 import numpy as np
 import awkward as ak
 from fast_histogram import histogram2d
@@ -8,6 +9,7 @@ import pandas as pd
 from tqdm import tqdm
 import argparse
 import logging
+import uproot
 
 '''
 NOTE!
@@ -17,12 +19,11 @@ Coffea only takes the first instance of each duplicate branch.
 Shouldn't be an issue unless you start using said branches, maybe.
 '''
 import warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="coffea")
-warnings.filterwarnings("ignore", category=RuntimeWarning, module="coffea")
+warnings.filterwarnings("ignore", category=UserWarning, module="coffea.*")
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="coffea.*")
+warnings.filterwarnings("ignore", category=FutureWarning, module="coffea.*")
 
-from multiprocessing import Pool, Manager, cpu_count
-
-DEFAULT_WORKERS = min(
+DEFAULT_WORKERS = max(
     4,
     int(os.environ.get("SLURM_CPUS_PER_TASK", cpu_count())),
 )
@@ -102,9 +103,8 @@ class Preprocessor:
         if self.savepath is None: self.savepath = config["data"]["preprocessed_" + self.jet_type]
         logging.info(f"{self.savepath=}")
 
-        # - So, I'll be doing sth very stupid here: loading the same file multiple times
-        # - coz pickle can't pickle coffea events for whatever reason
-        num_events = len(NanoEventsFactory.from_root(filepath, schemaclass = PFNanoAODSchema).events())
+        with uproot.open(filepath) as f:
+            num_events = f["Events"].num_entries
         if self.max_events is not None:
             num_events = min(num_events, self.max_events)
         if num_events == 0:
@@ -116,6 +116,7 @@ class Preprocessor:
         start_i = np.linspace(0, num_events, endpoint=False, dtype=int, num=workers)
         end_i   = np.append(start_i[1:], num_events)
 
+        tqdm.set_lock(RLock())  # for cleaner tqdm output across processes
         with (Pool(workers) as pool, Manager() as m):
             logging.info(f"Initialised pool {pool} with {workers} workers.")
 
@@ -180,91 +181,201 @@ class Preprocessor:
         if self.move_to_used:
             move_to_used(filepath)
         
+def delta_phi(phi1, phi2):
+    return (phi1 - phi2 + np.pi) % (2 * np.pi) - np.pi
 
-def get_fatjets(events, lowerpt=None, upperpt=None): 
-    fatjets = events.FatJet
-    # store unmasked fjs
-    store_fj = [fj for fj in fatjets[0]]
-    logging.debug(f"{fatjets.fields=}")
 
-    # accept jets that do not have electrons or muons nearby   
-    electrons = events.Electron
-    electrons = fatjets.nearest(electrons[electrons.pt > c.ELECTRON_PT_LOWER_BOUND])
-    muons = events.Muon
-    muons = fatjets.nearest(muons[muons.pt > c.MUON_PT_LOWER_BOUND])
+def delta_r(eta1, phi1, eta2, phi2):
+    return np.sqrt((eta1 - eta2) ** 2 + delta_phi(phi1, phi2) ** 2)
 
-    lowerpt = lowerpt if lowerpt else float(c.FATJET_PT_LOWER_BOUND)
-    upperpt = upperpt if upperpt else float(1e10)
 
-    mask = (
-        (ak.fill_none(fatjets.delta_r(electrons) > c.ELECTRON_R_LOWER_BOUND, True)) &
-        (ak.fill_none(fatjets.delta_r(muons) > c.MUON_R_LOWER_BOUND, True)) & 
-        (~ak.is_none(fatjets.matched_gen, axis=1)) & 
-        (fatjets.delta_r(fatjets.matched_gen) < c.MATCHED_GEN_R_LOWER_BOUND) & 
-        (fatjets.pt > lowerpt) & (fatjets.pt < upperpt) &
-        (abs(fatjets.eta) < c.FATJET_ETA_BOUNDS) &
-        (ak.num(fatjets) > 0) &
-        (~ak.is_none(fatjets))
-    )
-    
-    fatjets = fatjets[mask]
-    sort_i = ak.argsort(fatjets.pt, axis=1)
+def min_delta_r_to_objects(fj_eta, fj_phi, obj_eta, obj_phi):
+    if len(obj_eta) == 0:
+        return np.inf
+    drs = delta_r(fj_eta, fj_phi, obj_eta, obj_phi)
+    return float(ak.min(drs))
 
-    if len(fatjets) == 0 or len(fatjets[0]) == 0 or (len(fatjets) == 1 and fatjets[0][0] is None) or len(sort_i[0]) == 0:
-        # logging.warning(f"Skipped fatjet after masking: {fatjets}")
+
+def get_event_array(events, branch_name):
+    """
+    BaseSchema keeps branches as flat names like FatJet_pt, PFCands_eta, etc.
+    Since process_event_root passes events[i:i+1], each branch is a length-1 jagged array.
+    This returns the per-event content, e.g. events.FatJet_pt[0].
+    """
+    return getattr(events, branch_name)[0]
+
+
+def get_fatjets(events, lowerpt=None, upperpt=None):
+    """
+    BaseSchema-compatible replacement for the old PFNanoAODSchema version.
+
+    Returns:
+        selected_fatjet: dict of selected FatJet scalar properties.
+        pfcs: numpy array of PFCands indices associated with the selected FatJet.
+    """
+    lowerpt = lowerpt if lowerpt is not None else float(c.FATJET_PT_LOWER_BOUND)
+    upperpt = upperpt if upperpt is not None else float(1e10)
+
+    # FatJet branches
+    fj_pt = get_event_array(events, "FatJet_pt")
+    fj_eta = get_event_array(events, "FatJet_eta")
+    fj_phi = get_event_array(events, "FatJet_phi")
+
+    if len(fj_pt) == 0:
         return -1, -1
-    
-    fatjets = ak.firsts(fatjets[sort_i])
 
-    for j, fj in enumerate(store_fj):
-        if (
-            abs(fj.eta - fatjets.eta[0]) < c.FATJET_DELTA_ETA_BOUND and
-            abs(fj.phi - fatjets.phi[0]) < c.FATJET_DELTA_PHI_BOUND and
-            abs(fj.pt - fatjets.pt[0]) < c.FATJET_DELTA_PT_BOUND
-        ):
-            pfcs = [pfcand["pFCandsIdx"] for pfcand in events.FatJetPFCands[0] if pfcand["jetIdx"] == j]
+    # Lepton branches
+    ele_pt = get_event_array(events, "Electron_pt")
+    ele_eta = get_event_array(events, "Electron_eta")
+    ele_phi = get_event_array(events, "Electron_phi")
 
-    
-    return fatjets, pfcs
+    mu_pt = get_event_array(events, "Muon_pt")
+    mu_eta = get_event_array(events, "Muon_eta")
+    mu_phi = get_event_array(events, "Muon_phi")
+
+    ele_mask = ele_pt > c.ELECTRON_PT_LOWER_BOUND
+    mu_mask = mu_pt > c.MUON_PT_LOWER_BOUND
+
+    # GenJetAK8 matching branches
+    fj_gen_idx = get_event_array(events, "FatJet_genJetAK8Idx")
+    gen_eta = get_event_array(events, "GenJetAK8_eta")
+    gen_phi = get_event_array(events, "GenJetAK8_phi")
+
+    good_fatjet_indices = []
+
+    for j in range(len(fj_pt)):
+        pt_j = float(fj_pt[j])
+        eta_j = float(fj_eta[j])
+        phi_j = float(fj_phi[j])
+
+        if not (pt_j > lowerpt and pt_j < upperpt):
+            continue
+
+        if abs(eta_j) >= c.FATJET_ETA_BOUNDS:
+            continue
+
+        min_dr_ele = min_delta_r_to_objects(
+            eta_j,
+            phi_j,
+            ele_eta[ele_mask],
+            ele_phi[ele_mask],
+        )
+        if min_dr_ele <= c.ELECTRON_R_LOWER_BOUND:
+            continue
+
+        min_dr_mu = min_delta_r_to_objects(
+            eta_j,
+            phi_j,
+            mu_eta[mu_mask],
+            mu_phi[mu_mask],
+        )
+        if min_dr_mu <= c.MUON_R_LOWER_BOUND:
+            continue
+
+        gen_idx_j = int(fj_gen_idx[j])
+        if gen_idx_j < 0 or gen_idx_j >= len(gen_eta):
+            continue
+
+        dr_gen = delta_r(
+            eta_j,
+            phi_j,
+            float(gen_eta[gen_idx_j]),
+            float(gen_phi[gen_idx_j]),
+        )
+        if dr_gen >= c.MATCHED_GEN_R_LOWER_BOUND:
+            continue
+
+        good_fatjet_indices.append(j)
+
+    if len(good_fatjet_indices) == 0:
+        return -1, -1
+
+    # Choose leading-pT fatjet.
+    # If you want to reproduce the old ak.argsort(...); ak.firsts(...) behavior exactly,
+    # change max(...) to min(...). The old code likely selected the lowest-pT passing jet.
+    best_j = max(good_fatjet_indices, key=lambda j: float(fj_pt[j]))
+
+    # Find PFCands associated with this selected FatJet.
+    fjpc_jet_idx = get_event_array(events, "FatJetPFCands_jetIdx")
+    fjpc_pfc_idx = get_event_array(events, "FatJetPFCands_pFCandsIdx")
+
+    pfcs = ak.to_numpy(fjpc_pfc_idx[fjpc_jet_idx == best_j])
+
+    if len(pfcs) == 0:
+        return -1, -1
+
+    selected_fatjet = {
+        "index": best_j,
+        "pt": float(fj_pt[best_j]),
+        "eta": float(fj_eta[best_j]),
+        "phi": float(fj_phi[best_j]),
+    }
+
+    # Preserve extra raw FatJet properties requested in constants.RAW_FATJET_PROPERTIES.
+    for prop in c.RAW_FATJET_PROPERTIES:
+        branch = f"FatJet_{prop}"
+        if hasattr(events, branch):
+            selected_fatjet[prop] = get_event_array(events, branch)[best_j]
+        else:
+            logging.warning(f"Missing requested FatJet branch: {branch}")
+
+    return selected_fatjet, pfcs
+
 
 def process_event_root(events, lowerpt=None, upperpt=None):
-    # processes on a per-jet basis, NOT per-event! hence the flattening
-    fatjets, pfcs = get_fatjets(events, lowerpt, upperpt)
-    
-    if isinstance(fatjets, int):
+    """
+    BaseSchema-compatible event processor.
+    Processes one event slice: events[i:i+1].
+    """
+    fatjet, pfcs = get_fatjets(events, lowerpt, upperpt)
+
+    if isinstance(fatjet, int):
         return -1, -1
-    pfcands = events.PFCands
 
-    if len(fatjets["pt"]) != 1:
-        logging.warning(f"Fatjets array size isn't 1*events!\n{len(fatjets['pt'][0])=}, {fatjets['pt']=}\n")
-        # raise Exception("FatJet wrong shape!")
+    # PFCands core branches
+    pfc_pt = get_event_array(events, "PFCands_pt")
+    pfc_eta = get_event_array(events, "PFCands_eta")
+    pfc_phi = get_event_array(events, "PFCands_phi")
 
-    eta = ak.to_numpy(ak.flatten(pfcands["phi"] - fatjets["phi"])[pfcs])
-    phi = ak.to_numpy(ak.flatten(pfcands["eta"] - fatjets["eta"])[pfcs])
-    pt  = ak.to_numpy(ak.flatten(pfcands["pt"]/fatjets["pt"])[pfcs])
-    # TODO: old ratio based on whether it is qcd or wjet ->x     this is not model agnostic !!!
-      # check that current pt scheme is correct
+    # Constituent features relative to selected fatjet
+    pt = ak.to_numpy(pfc_pt[pfcs] / fatjet["pt"])
+    eta = ak.to_numpy(pfc_eta[pfcs] - fatjet["eta"])
+    phi = ak.to_numpy(delta_phi(pfc_phi[pfcs], fatjet["phi"]))
 
     properties = [pt, eta, phi]
     property_names = ["pt", "eta", "phi"]
 
-    # add more "raw fields" to preserve through constants.RAW_FATJET_PROPERTIES!
+    # Add selected FatJet-level metadata
     for new_prop in c.RAW_FATJET_PROPERTIES:
-        properties.append(fatjets[new_prop][0])
-        property_names.append(c.RAW_FATJET_PROPERTIES_PREFIX + new_prop)
-        
-    # add all other fields
-    for field in pfcands.fields:
-        if field not in property_names:
-            # logging.debug(f"Added {field=} to property_names")
-            properties.append(ak.to_numpy(pfcands[field]).flatten()[pfcs])
+        if new_prop in fatjet:
+            properties.append(fatjet[new_prop])
+            property_names.append(c.RAW_FATJET_PROPERTIES_PREFIX + new_prop)
+
+    # Add all PFCands branches.
+    # BaseSchema field names are flat, e.g. PFCands_d0, PFCands_charge, etc.
+    pfcand_fields = [
+        field[len("PFCands_"):]
+        for field in events.fields
+        if field.startswith("PFCands_")
+    ]
+
+    for field in pfcand_fields:
+        if field in property_names:
+            continue
+
+        branch = f"PFCands_{field}"
+        values = get_event_array(events, branch)
+
+        try:
+            properties.append(ak.to_numpy(values[pfcs]))
             property_names.append(field)
+        except Exception as e:
+            logging.warning(f"Skipping PFCands field {field} due to error: {e}")
 
     if len(property_names) != len(set(property_names)):
         raise ValueError(f"Duplicate output column names: {property_names}")
 
     return properties, property_names
-
 
 def move_to_used(filepath):
     new_path = os.path.join(os.path.dirname(filepath), "used", os.path.basename(filepath))
@@ -275,6 +386,7 @@ def move_to_used(filepath):
 #     raise NotImplementedError
 
 def preproc_events_slice(metadata):
+    """Process a slice of events from a ROOT file and return a dictionary of properties for each jet."""
     pid = os.getpid()
     with metadata["pid_lock"]:
         # no need to check whether it already exists, since duplicate pids aren't possible?
@@ -284,20 +396,25 @@ def preproc_events_slice(metadata):
     curr_events_num = metadata["end"] - metadata["start"]
     logging.info(f"#{pid_posn} ({pid}): Received range {metadata['start']} to {metadata['end']} ({curr_events_num} events).")
     events = NanoEventsFactory.from_root(
-        metadata['filepath'], schemaclass = PFNanoAODSchema
+        {metadata['filepath']: "Events"}, schemaclass = BaseSchema, 
+        delayed=False, entry_start=metadata['start'], entry_stop=metadata['end'],
         ).events()
     data = {}
 
     logging.debug(f"{events.fields=}")
     
-    # iterator = range(metadata['start'], metadata['end'])
-    iterator = range(metadata['start'], metadata['end'])
-    iterator = iterator if config["dbg"]["only_one_progress_bar"] and pid_posn != 0 else tqdm(
-        iterator, desc=f"Process {pid_posn}", position=pid_posn, leave=None
+    it = tqdm(
+        range(len(events)),
+        desc=f"Worker {pid_posn} [{metadata['start']}:{metadata['end']}]",
+        position=pid_posn,
+        leave=False,
+        dynamic_ncols=True,
     )
 
-    for i in iterator:
-        properties, property_names = process_event_root(events[i:i+1], metadata["lowerpt"], metadata["upperpt"])
+    for i in it:
+        properties, property_names = process_event_root(
+            events[i:i+1], metadata["lowerpt"], metadata["upperpt"]
+        )
         if properties == -1: continue
 
         if not data: 
@@ -373,6 +490,8 @@ if __name__ == "__main__":
     preproc = Preprocessor(args)
     preproc.setup_log()
 
+    # time the operation
+    tic = helpers_main.curr_time()
     if config["dbg"]["measure_perf"]:
         helpers_main.profile_func(f"logs/{preproc.session_name}.prof", main, preproc)
     else:
