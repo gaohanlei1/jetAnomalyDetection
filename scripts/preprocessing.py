@@ -31,10 +31,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="coffea.*")
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="coffea.*")
 warnings.filterwarnings("ignore", category=FutureWarning, module="coffea.*")
 
-DEFAULT_WORKERS = max(
-    4,
-    int(os.environ.get("SLURM_CPUS_PER_TASK", cpu_count())),
-)
+DEFAULT_WORKERS = int(os.environ.get("SLURM_CPUS_PER_TASK", cpu_count()))
 
 # Add parent directory to import local project modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -492,6 +489,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.workers < 1:
         parser.error("--workers must be at least 1")
+    if args.workers > cpu_count():
+        parser.error(f"--workers must be at most {cpu_count()} on your device")
     if args.max_events is not None and args.max_events < 1:
         parser.error("--max-events must be at least 1")
 
