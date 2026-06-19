@@ -141,12 +141,13 @@ def plot_anomaly_score(test_scores, anomaly_scores, background_label, signal_lab
 from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
 
-def plot_roc_curve(model, signal_label, background_label, savepath, examples, loss_fn, properties=[]):
+def plot_roc_curve(background_loss, signal_loss, signal_label, background_label, savepath, examples, loss_fn, properties=[]):
     """
     Compute and plot the ROC curve using signal and background reconstruction losses.
 
     Args:
-        model (nn.Module): Trained autoencoder model containing `background_test_loss` and `signal_loss`.
+        background_loss (list): List of reconstruction losses for background events.
+        signal_loss (list): List of reconstruction losses for signal events.
         signal_label (str): Label for signal class.
         background_label (str): Label for background class.
         savepath (str): File path to save the plot.
@@ -157,8 +158,8 @@ def plot_roc_curve(model, signal_label, background_label, savepath, examples, lo
     Returns:
         None
     """
-    test_loss = np.array(model.background_test_loss)
-    signal_loss = np.array(model.signal_loss)
+    test_loss = np.array(background_loss)
+    signal_loss = np.array(signal_loss)
 
     # Labels: 0 = background, 1 = signal
     y_true = np.concatenate([np.zeros_like(test_loss), np.ones_like(signal_loss)])
@@ -171,9 +172,9 @@ def plot_roc_curve(model, signal_label, background_label, savepath, examples, lo
     plt.figure()
     plt.plot(fpr, tpr, label=f'AUC = {auc_score:.3f}')
     plt.plot([0, 1], [0, 1], 'k--', label='Random Guess')
-    plt.xlabel(f'False Positive Rate (background as {signal_label})')
-    plt.ylabel(f'True Positive Rate ({signal_label})')
-    plt.title('Receiver Operating Characteristic (ROC) Curve')
+    plt.xlabel(f'False Positive Rate')
+    plt.ylabel(f'True Positive Rate')
+    plt.title(f'Receiver Operating Characteristic (ROC) Curve - BG: {background_label}, Signal: {signal_label}')
     plt.grid(True)
     plt.legend()
     plt.tight_layout()

@@ -85,75 +85,6 @@ config = helpers_main.load_config()
 import logging
 helpers_main.log_config(f"logs/train_{helpers_main.curr_time()}.log")
 
-def train_loop(dataloader, model, loss_fn, optimizer):
-    """
-    Executes one epoch of training.
-
-    Args:
-        dataloader (DataLoader): Dataloader for training graphs.
-        model (torch.nn.Module): The autoencoder model.
-        loss_fn (callable): Loss function (e.g., MSE).
-        optimizer (torch.optim.Optimizer): Optimizer instance.
-
-    Returns:
-        float: Mean training loss over the epoch.
-    """
-    model.train()
-    total_loss = []
-    device = next(model.parameters()).device
-
-    for batch, X in enumerate(dataloader):
-        X = X.to(device)
-        optimizer.zero_grad()
-        pred = model(X)
-        pred = pred[:, :X.x.shape[1]]  # Only reconstruct original feature dimensions
-
-        loss = loss_fn(pred, X.x)
-
-        total_loss.append(loss.item())
-
-        loss.backward()
-        optimizer.step()
-
-    return np.nanmean(total_loss)
-
-
-def eval_loop(dataloader, model, loss_fn, test=False, signal=False):
-    """
-    Evaluates the model on a given dataset.
-
-    Args:
-        dataloader (DataLoader): Loader containing the evaluation set.
-        model (torch.nn.Module): Trained model to evaluate.
-        loss_fn (callable): Loss function to use.
-        test (bool): If True, stores losses as `background_test_loss`.
-        signal (bool): If True, stores losses as `signal_loss`.
-
-    Returns:
-        List[float]: List of per-graph losses.
-    """
-    model.eval()
-    loss = []
-    data = []
-    device = next(model.parameters()).device
-
-    with torch.no_grad():
-        for X in dataloader:
-            X = X.to(device)
-            pred = model(X)
-            pred = pred[:, :X.x.shape[1]]
-            loss.append(loss_fn(pred, X.x).item())
-            data.append(X.x.detach().cpu())
-
-    # Store for downstream use if flagged
-    if test:
-        model.test_data = data
-        model.background_test_loss = loss
-    elif signal:
-        model.signal_data = data
-        model.signal_loss = loss
-
-    return loss
 
 def normalize_graph_features(
     graphs: List[Data],
@@ -680,16 +611,27 @@ class TrainAutoencoder:
         plot_anomaly_score(
             self.model.background_test_loss,
             self.model.signal_loss,
-            background_label="QCD",
+            background_label="QCD (Test)",
             signal_label="WJet",
             save_path=os.path.join(self.TRAIN_PLOTS_PATH, "anomaly_score.png"),
         )
 
         plot_roc_curve(
-            self.model,
-            "signal",
-            "background",
-            savepath=os.path.join(self.TRAIN_PLOTS_PATH, "roc.png"),
+            self.model.background_test_loss,
+            self.model.signal_loss,
+            background_label="QCD (Test)",
+            signal_label="WJet",
+            savepath=os.path.join(self.TRAIN_PLOTS_PATH, "roc-bgtest-vs-signal.png"),
+            examples=False,
+            loss_fn=torch.nn.MSELoss(reduction="mean"),
+        )
+        
+        plot_roc_curve(
+            self.model.background_train_loss,
+            self.model.signal_loss,
+            background_label="QCD (Train)",
+            signal_label="WJet",
+            savepath=os.path.join(self.TRAIN_PLOTS_PATH, "roc-bgtrain-vs-signal.png"),
             examples=False,
             loss_fn=torch.nn.MSELoss(reduction="mean"),
         )
