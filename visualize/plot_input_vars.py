@@ -17,8 +17,12 @@ PATH_TO_DATA = "data/processed/PT-200to400/WJet_scaled.pkl"
 PLOT_TITLE = f"Variable Distributions for Scaled WJet Data"
 Z_VARIABLES = ['pt', 'd0/d0Err', 'dz/dzErr']
 IS_SCALED = "_scaled" in PATH_TO_DATA
+NUM_SAMPLES = 1  # number of samples to plot, -1 to plot all
 
 data = pd.read_pickle(PATH_TO_DATA)
+if NUM_SAMPLES != -1:
+    data = data.sample(n=NUM_SAMPLES)
+    PLOT_TITLE += f" ({NUM_SAMPLES} Events Subset)"
 
 for var in Z_VARIABLES:
     assert var in data.columns, f"Variable {var} not found in data columns."
@@ -57,7 +61,7 @@ for i, var in enumerate(Z_VARIABLES):
     else:
         raise ValueError(f"Unknown variable {var}")
 
-    scatter = ax[i].scatter(phi_all_flatten, eta_all_flatten, c=z_values, cmap='viridis', s=1, alpha=0.3)
+    scatter = ax[i].scatter(phi_all_flatten, eta_all_flatten, c=z_values, cmap='viridis', s=4, alpha=0.3)
     ax[i].set_title(f"{var} distribution")
     ax[i].set_xlabel("Phi")
     ax[i].set_ylabel("Eta")

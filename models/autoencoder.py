@@ -129,7 +129,7 @@ class JetGraphAutoencoder(nn.Module):
         x = self.encoder(self.embedding(x), edge_index, data, training)
 
         if knn:
-            edge_index = knn_graph(x, k=self.num_reduced_edges)
+            edge_index = knn_graph(x, k=self.num_reduced_edges, batch=data.batch, loop=False).to(data.x.device)
 
         if topk:
             x, edge_index, _, batch, _, _ = self.topk(x, edge_index.to(torch.int64), batch=data.batch)
