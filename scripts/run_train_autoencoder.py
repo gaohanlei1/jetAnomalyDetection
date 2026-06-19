@@ -129,6 +129,7 @@ class TrainAutoencoder:
         self.bg_name, self.sg_name = helpers_main.trim_name(self.bg_file), helpers_main.trim_name(self.sg_file)
         self.method = self.args.method
         self.knn = self.args.knn
+        self.hidden_dim = self.args.hidden_dim
         self.smallest_dim = self.args.smallest_dim
         self.num_reduced_edges = self.args.num_reduced_edges
         self.batch_size = self.args.batch_size
@@ -317,6 +318,7 @@ class TrainAutoencoder:
         # ------------------------------------------------------------------
         self.model = JetGraphAutoencoder(
             num_features=self.bg_train_graphs[0].x.shape[1],
+            hidden_dim=self.hidden_dim,
             smallest_dim=self.smallest_dim,
             num_reduced_edges=self.num_reduced_edges,
         ).to(DEVICE)
@@ -497,7 +499,7 @@ class TrainAutoencoder:
                 pred = self.model(batch)
 
                 # Only reconstruct the original feature dimensions.
-                pred = pred[:, : batch.x.shape[1]]
+                # pred = pred[:, : batch.x.shape[1]]
 
                 loss = loss_fn(pred, batch.x)
 
@@ -528,7 +530,7 @@ class TrainAutoencoder:
                     batch = batch.to(DEVICE)
 
                     pred = self.model(batch)
-                    pred = pred[:, : batch.x.shape[1]]
+                    # pred = pred[:, : batch.x.shape[1]]
 
                     loss = loss_fn(pred, batch.x)
                     val_loss = loss.item()
@@ -561,18 +563,36 @@ class TrainAutoencoder:
         # ------------------------------------------------------------------
         self.model.eval()
 
+        background_train_loss = []
+        background_train_data = []
+        
+        with torch.no_grad():
+             for batch in tqdm(
+                train_loader,
+                desc="Final Background (Training) Evaluation",
+            ):
+                batch = batch.to(DEVICE)
+
+                pred = self.model(batch)
+                # pred = pred[:, : batch.x.shape[1]]
+
+                loss = loss_fn(pred, batch.x)
+
+                background_train_loss.append(loss.item())
+                background_train_data.append(batch.x.detach().cpu())
+        
         background_test_loss = []
         background_test_data = []
 
         with torch.no_grad():
             for batch in tqdm(
                 background_val_loader,
-                desc="Final Background Evaluation",
+                desc="Final Background (Testing) Evaluation",
             ):
                 batch = batch.to(DEVICE)
 
                 pred = self.model(batch)
-                pred = pred[:, : batch.x.shape[1]]
+                # pred = pred[:, : batch.x.shape[1]]
 
                 loss = loss_fn(pred, batch.x)
 
@@ -590,7 +610,7 @@ class TrainAutoencoder:
                 batch = batch.to(DEVICE)
 
                 pred = self.model(batch)
-                pred = pred[:, : batch.x.shape[1]]
+                # pred = pred[:, : batch.x.shape[1]]
 
                 loss = loss_fn(pred, batch.x)
 
@@ -598,9 +618,10 @@ class TrainAutoencoder:
                 signal_data.append(batch.x.detach().cpu())
 
         self.model.background_test_loss = background_test_loss
-        self.model.background_train_loss = self.model.train_hist
+        self.model.background_train_loss = background_train_loss
         self.model.signal_loss = signal_loss
 
+        self.model.train_data = background_train_data
         self.model.test_data = background_test_data
         self.model.signal_data = signal_data
         self.model.signal_hist.append(float(np.nanmean(signal_loss)))
@@ -698,38 +719,6 @@ class TrainAutoencoder:
 
         logging.info(f"Saved run summary to {summary_path}")
         logging.info(f"Final AUC: {auc_score}")
-        
-        # # Execute the training routine
-        # self.model = run_autoencoder_training(
-        #     self.bg_train_graphs, self.bg_test_graphs, self.sg_graphs,
-        #     smallest_dim=self.smallest_dim,
-        #     num_reduced_edges=self.num_reduced_edges,
-        #     batch_size=self.batch_size,
-        #     epochs=self.epochs,
-        #     initial_lr=self.initial_lr,
-        #     weight_decay=self.weight_decay,
-        #     lr_scheduler=self.lr_scheduler,
-        #     save_dir=self.TRAIN_PLOTS_PATH,
-        #     run_metadata={
-        #         "background": self.bg_file,
-        #         "signal": self.sg_file,
-        #         "method": self.method,
-        #         "knn": self.knn,
-        #         "smallest_dim": self.smallest_dim,
-        #         "num_reduced_edges": self.num_reduced_edges,
-        #         "batch_size": self.batch_size,
-        #         "epochs": self.epochs,
-        #         "learning_rate": self.initial_lr,
-        #         "weight_decay": self.weight_decay,
-        #         "lr_scheduler": self.lr_scheduler,
-        #         "normalize_features": self.normalize_features,
-        #         "seed": self.seed,
-        #         "device": DEVICE,
-        #         "max_background_events": self.max_background_events,
-        #         "max_signal_events": self.max_signal_events,
-        #     },
-        # )
-
 
 
 if __name__ == "__main__":
@@ -752,6 +741,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--knn", "-n", type=int, default=config["misc"]["k_nearest_neighbors"],
         help=f"Nearest neighbours count. Defaults to config"
+    )
+    parser.add_argument(
+        "--hidden-dim", type=int, default=config["model"]["hidden_dim"],
+        help="Initial hidden dimension for GNN layers. Defaults to config."
     )
     parser.add_argument(
         "--smallest-dim", type=int, default=config["model"]["smallest_dim"],
@@ -802,7 +795,6 @@ if __name__ == "__main__":
         help="Optional signal row limit for a smoke test."
     )
 
-    args = parser.parse_args()
     train_ae = TrainAutoencoder()
     train_ae.load()
     train_ae.build_graphs()

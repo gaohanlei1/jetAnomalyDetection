@@ -31,9 +31,10 @@ data:
 # Model Hyperparameters
 model:
   num_features: 5
-  smallest_dim: 4
+  smallest_dim: 16
   num_reduced_edges: 16
   batch_size: 64
+  hidden_dim: 32
 
 # Training Settings
 training:
