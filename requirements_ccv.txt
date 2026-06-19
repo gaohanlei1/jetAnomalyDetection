@@ -1,0 +1,25 @@
+--extra-index-url https://download.pytorch.org/whl/cu124
+-f https://data.pyg.org/whl/torch-2.6.0+cu124.html
+
+Markdown==3.10.2
+Werkzeug==3.1.8
+awkward_cpp==44
+coffea==2024.11.0
+fast-histogram==0.14
+fsspec_xrootd==0.5.5
+ipython_pygments_lexers==1.1.1
+jupyterlab_widgets==3.0.16
+loky==3.5.6
+mdurl==0.1.2
+mplhep_data==0.1.0
+pure_eval==0.2.3
+pydantic_core==2.46.4
+stack-data==0.6.3
+tensorboard==2.16.2
+torch==2.6.0
+torchvision==0.21.0
+torchaudio==2.6.0
+torch-geometric==2.8.0
+torch_cluster==1.6.3+pt26cu124
+uproot3==3.14.4
+widgetsnbextension==4.0.15
