@@ -180,35 +180,6 @@ class TrainAutoencoder:
         logging.info(f"Number of test events after removing leptonic jet: {len(self.sg_data)}")
         logging.info(f"\nSample background pt values:\n{self.bg_data['pt'].head().to_string()}")
         logging.info(f"Sample signal pt values:\n{self.sg_data['pt'].head().to_string()}")
-    
-    def build_graphs(self):
-        # Keep the complete graph collection in CPU memory. Training moves one
-        # batch at a time to the selected accelerator.
-        self.bg_graphs = graph_data_loader(
-            self.bg_data, data_label=0, nearest_neighbors=self.knn, device="cpu", method=self.method, alpha=config['training']['alpha']
-        )
-        self.sg_graphs = graph_data_loader(
-            self.sg_data, data_label=1, nearest_neighbors=self.knn, device="cpu", method=self.method, alpha=config['training']['alpha']
-        )
-        logging.info(f"Number of background graphs: {len(self.bg_graphs)}")
-        logging.info(f"Number of signal graphs: {len(self.sg_graphs)}")
-
-        # Split background dataset into training and test portions
-        train_size = int(self.TRAIN_SPLIT * len(self.bg_graphs))
-        self.bg_train_graphs = self.bg_graphs[:train_size]
-        self.bg_test_graphs  = self.bg_graphs[train_size:]
-        # self.sg_graphs = self.sg_graphs
-
-        if self.normalize_features:
-            self.bg_train_graphs, self.bg_train_mean, self.bg_train_std = normalize_graph_features(
-                self.bg_train_graphs
-            )
-            self.bg_test_graphs, _, _ = normalize_graph_features(
-                self.bg_test_graphs, mean=self.bg_train_mean, std=self.bg_train_std
-            )
-            self.sg_graphs, _, _ = normalize_graph_features(
-                self.sg_graphs, mean=self.bg_train_mean, std=self.bg_train_std
-            )
 
     def build_graphs(self):
         print("Building background graphs...")
@@ -324,11 +295,14 @@ class TrainAutoencoder:
         ).to(DEVICE)
 
         logging.info(f"Model Summary:\n{self.model}")
-
+        # also print
+        print(f"Model Summary:\n{self.model}")
         num_params = sum(
             p.numel() for p in self.model.parameters() if p.requires_grad
         )
         logging.info(f"Number of trainable parameters: {num_params}")
+        # also print
+        print(f"Number of trainable parameters: {num_params}")
 
         optimizer = torch.optim.AdamW(
             self.model.parameters(),
@@ -379,6 +353,7 @@ class TrainAutoencoder:
         epoch_end_steps = []
 
         best_val_loss = float("inf")
+        best_model_path = os.path.join(self.TRAIN_PLOTS_PATH, "best_model.pth")
         timer = helpers_main.LeTimer()
 
         # ------------------------------------------------------------------
@@ -498,9 +473,6 @@ class TrainAutoencoder:
 
                 pred = self.model(batch)
 
-                # Only reconstruct the original feature dimensions.
-                # pred = pred[:, : batch.x.shape[1]]
-
                 loss = loss_fn(pred, batch.x)
 
                 loss.backward()
@@ -530,7 +502,6 @@ class TrainAutoencoder:
                     batch = batch.to(DEVICE)
 
                     pred = self.model(batch)
-                    # pred = pred[:, : batch.x.shape[1]]
 
                     loss = loss_fn(pred, batch.x)
                     val_loss = loss.item()
@@ -548,6 +519,9 @@ class TrainAutoencoder:
 
             if mean_val_loss < best_val_loss:
                 best_val_loss = mean_val_loss
+                torch.save(self.model, best_model_path)
+                logging.info(f"Saved new best model to {best_model_path}")
+                print(f"Saved new best model to {best_model_path}")
 
             plot_progress()
 
@@ -574,7 +548,6 @@ class TrainAutoencoder:
                 batch = batch.to(DEVICE)
 
                 pred = self.model(batch)
-                # pred = pred[:, : batch.x.shape[1]]
 
                 loss = loss_fn(pred, batch.x)
 
@@ -592,7 +565,6 @@ class TrainAutoencoder:
                 batch = batch.to(DEVICE)
 
                 pred = self.model(batch)
-                # pred = pred[:, : batch.x.shape[1]]
 
                 loss = loss_fn(pred, batch.x)
 
@@ -610,7 +582,6 @@ class TrainAutoencoder:
                 batch = batch.to(DEVICE)
 
                 pred = self.model(batch)
-                # pred = pred[:, : batch.x.shape[1]]
 
                 loss = loss_fn(pred, batch.x)
 
