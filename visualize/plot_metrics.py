@@ -67,9 +67,9 @@ def plot_anomaly_score(test_scores, anomaly_scores, background_label, signal_lab
     )
 
     plt.hist(anomaly_scores, bins=bins, range=range_, color='red', alpha=0.5,
-             label=f'signal: {signal_label}', density=True)
+             label=f'Anomalous - Signal: {signal_label}', density=True)
     plt.hist(test_scores, bins=bins, range=range_, color='blue', alpha=0.5,
-             label=f'background: {background_label}', density=True)
+             label=f'Non-anomalous - Background: {background_label}', density=True)
 
     plt.xlabel('Loss (MSE)')
     plt.title('Anomaly Score Distribution')

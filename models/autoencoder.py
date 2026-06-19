@@ -22,7 +22,7 @@ class JetGraphAutoencoder(nn.Module):
         Various histories and losses for training analysis and evaluation.
     """
 
-    def __init__(self, num_features: int = 3, smallest_dim: int = 8, topk=None, num_reduced_edges: int = 8):
+    def __init__(self, num_features: int = 3, smallest_dim: int = 16, hidden_dim: int = 32, topk=None, num_reduced_edges: int = 8):
         """
         Initialize the JetGraphAutoencoder.
 
@@ -39,33 +39,35 @@ class JetGraphAutoencoder(nn.Module):
         self.num_reduced_edges = num_reduced_edges
 
         # embeddng layer
-        self.embedding = Linear(num_features, smallest_dim * 2)
-        self.unembedding = Linear(smallest_dim * 2, num_features)
+        self.hidden_dim = hidden_dim
+        self.embedding = Linear(num_features, self.hidden_dim)
+        self.unembedding = Linear(self.hidden_dim, num_features)
+        
         
         # Encoder
         self.conv1 = EdgeConv(Sequential(
-            Linear(self.num_features * 4, self.smallest_dim * 16),
+            Linear(self.hidden_dim * 2, self.hidden_dim * 8),
             ReLU(),
-            Linear(self.smallest_dim * 16, self.smallest_dim * 2)
+            Linear(self.hidden_dim * 8, self.hidden_dim)
         ), aggr='max')
 
         self.conv2 = EdgeConv(Sequential(
-            Linear(self.smallest_dim * 4, self.smallest_dim * 16),
+            Linear(self.hidden_dim * 2, self.hidden_dim * 8),
             ReLU(),
-            Linear(self.smallest_dim * 16, self.smallest_dim)
+            Linear(self.hidden_dim * 8, self.smallest_dim)
         ), aggr='max')
 
         # Decoder
         self.conv3 = EdgeConv(Sequential(
-            Linear(self.smallest_dim * 2, self.smallest_dim * 8),
+            Linear(self.smallest_dim * 2, self.hidden_dim * 8),
             ReLU(),
-            Linear(self.smallest_dim * 8, self.smallest_dim * 2)
+            Linear(self.hidden_dim * 8, self.hidden_dim)
         ), aggr='max')
 
         self.conv4 = EdgeConv(Sequential(
-            Linear(self.smallest_dim * 4, self.smallest_dim * 16),
+            Linear(self.hidden_dim * 2, self.hidden_dim * 8),
             ReLU(),
-            Linear(self.smallest_dim * 16, self.smallest_dim * 2)
+            Linear(self.hidden_dim * 8, self.hidden_dim)
         ), aggr='max')
 
         # Tracking variables
@@ -91,8 +93,8 @@ class JetGraphAutoencoder(nn.Module):
         Returns:
             Tensor: Encoded node features.
         """
-        x = torch.tanh(self.conv1(x, edge_index, training=training))
-        x = torch.tanh(self.conv2(x, edge_index, training=training))
+        x = torch.tanh(self.conv1(x, edge_index))
+        x = torch.tanh(self.conv2(x, edge_index))
         return x
 
     def decoder(self, x, edge_index, batch, training=True):
@@ -108,8 +110,8 @@ class JetGraphAutoencoder(nn.Module):
         Returns:
             Tensor: Reconstructed node features.
         """
-        x = torch.tanh(self.conv3(x, edge_index, training=training))
-        x = self.conv4(x, edge_index, training=training)
+        x = torch.tanh(self.conv3(x, edge_index))
+        x = self.conv4(x, edge_index)
         return x
 
     def forward(self, data, knn=False, topk=False, training=True):
