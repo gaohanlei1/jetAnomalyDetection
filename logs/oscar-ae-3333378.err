@@ -1,0 +1,13 @@
+usage: Train Autoencoder [-h] [--background BACKGROUND] [--signal SIGNAL]
+                         [--method {eta_phi,all_features,fully_connected,mass_knn,hybrid_knn}]
+                         [--knn KNN] [--smallest-dim SMALLEST_DIM]
+                         [--num-reduced-edges NUM_REDUCED_EDGES]
+                         [--batch-size BATCH_SIZE] [--epochs EPOCHS]
+                         [--learning-rate LEARNING_RATE]
+                         [--weight-decay WEIGHT_DECAY]
+                         [--lr-scheduler | --no-lr-scheduler]
+                         [--normalize-features | --no-normalize-features]
+                         [--seed SEED] [--output-dir OUTPUT_DIR]
+                         [--max-background-events MAX_BACKGROUND_EVENTS]
+                         [--max-signal-events MAX_SIGNAL_EVENTS]
+Train Autoencoder: error: unrecognized arguments: --hidden-dim 32

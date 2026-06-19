@@ -257,6 +257,8 @@ These are your new background and signal datasets. Keep them in `~/data`.
 Submit the training job:
 
 ```bash
+DATASET="$HOME/scratch/jet-anomaly-work/datasets/pt200to400-v1/processed/PT-200to400/scaledby_QCD"
+
 cd ~/jetAnomalyDetection
 
 sbatch oscar_batch_ae.sh \
