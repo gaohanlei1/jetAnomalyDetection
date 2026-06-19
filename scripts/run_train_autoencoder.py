@@ -27,13 +27,13 @@ import argparse
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import Data
 from models.autoencoder import JetGraphAutoencoder
-from train.utils_training import train_loop, eval_loop, train_model, normalize_graph_features
 from preprocess.make_graphs import graph_data_loader
 from visualize.plot_metrics import plot_loss, plot_anomaly_score, plot_roc_curve
 import matplotlib.pyplot as plt
 from torch.optim.lr_scheduler import StepLR
 from typing import List, Tuple
 from sklearn.metrics import roc_auc_score
+from tqdm import tqdm
 
 from helpers import join_dfs
 config = helpers_main.load_config()
@@ -57,6 +57,134 @@ def remove_low_pt_muons(row):
             row[col] = val[mask]
     return row
 
+"""
+Training utility functions for JetGraphAutoencoder models.
+
+This module includes:
+- `train_loop`: One epoch of training over a data loader.
+- `eval_loop`: Evaluation on a dataset with optional labeling for background/signal.
+- `train_model`: Full training procedure across multiple epochs for background/signal separation.
+"""
+
+import torch
+import numpy as np
+from torch_geometric.loader import DataLoader
+from torch.optim.lr_scheduler import StepLR
+from torch_geometric.data import Data
+from typing import List, Tuple
+
+import os 
+import sys
+
+# Add parent directory to import local project modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import constants as c
+from helpers import helpers_main
+config = helpers_main.load_config()
+
+import logging
+helpers_main.log_config(f"logs/train_{helpers_main.curr_time()}.log")
+
+def train_loop(dataloader, model, loss_fn, optimizer):
+    """
+    Executes one epoch of training.
+
+    Args:
+        dataloader (DataLoader): Dataloader for training graphs.
+        model (torch.nn.Module): The autoencoder model.
+        loss_fn (callable): Loss function (e.g., MSE).
+        optimizer (torch.optim.Optimizer): Optimizer instance.
+
+    Returns:
+        float: Mean training loss over the epoch.
+    """
+    model.train()
+    total_loss = []
+    device = next(model.parameters()).device
+
+    for batch, X in enumerate(dataloader):
+        X = X.to(device)
+        optimizer.zero_grad()
+        pred = model(X)
+        pred = pred[:, :X.x.shape[1]]  # Only reconstruct original feature dimensions
+
+        loss = loss_fn(pred, X.x)
+
+        total_loss.append(loss.item())
+
+        loss.backward()
+        optimizer.step()
+
+    return np.nanmean(total_loss)
+
+
+def eval_loop(dataloader, model, loss_fn, test=False, signal=False):
+    """
+    Evaluates the model on a given dataset.
+
+    Args:
+        dataloader (DataLoader): Loader containing the evaluation set.
+        model (torch.nn.Module): Trained model to evaluate.
+        loss_fn (callable): Loss function to use.
+        test (bool): If True, stores losses as `background_test_loss`.
+        signal (bool): If True, stores losses as `signal_loss`.
+
+    Returns:
+        List[float]: List of per-graph losses.
+    """
+    model.eval()
+    loss = []
+    data = []
+    device = next(model.parameters()).device
+
+    with torch.no_grad():
+        for X in dataloader:
+            X = X.to(device)
+            pred = model(X)
+            pred = pred[:, :X.x.shape[1]]
+            loss.append(loss_fn(pred, X.x).item())
+            data.append(X.x.detach().cpu())
+
+    # Store for downstream use if flagged
+    if test:
+        model.test_data = data
+        model.background_test_loss = loss
+    elif signal:
+        model.signal_data = data
+        model.signal_loss = loss
+
+    return loss
+
+def normalize_graph_features(
+    graphs: List[Data],
+    mean: torch.Tensor = None,
+    std: torch.Tensor = None
+) -> Tuple[List[Data], torch.Tensor, torch.Tensor]:
+    """
+    Normalize features across all graphs using the global mean and std.
+
+    Args:
+        graphs (List[Data]): List of PyG graphs with node features.
+        mean (torch.Tensor, optional): If given, use this mean to normalize.
+        std (torch.Tensor, optional): If given, use this std to normalize.
+
+    Returns:
+        Tuple containing:
+        - List[Data]: Normalized graphs
+        - torch.Tensor: Feature mean used
+        - torch.Tensor: Feature std used
+    """
+    if mean is None or std is None:
+        all_features = torch.cat([graph.x for graph in graphs], dim=0)
+        mean = all_features.mean(dim=0)
+        std = all_features.std(dim=0)
+        std[std == 0] = 1.0  # Prevent divide-by-zero
+
+    # Normalize each graph
+    for graph in graphs:
+        graph.x = (graph.x - mean) / std
+
+    return graphs, mean, std
 
 class TrainAutoencoder:
     # Packaged into a class for variable management
@@ -150,6 +278,64 @@ class TrainAutoencoder:
                 self.sg_graphs, mean=self.bg_train_mean, std=self.bg_train_std
             )
 
+    def build_graphs(self):
+        print("Building background graphs...")
+        print(f"Number of background rows before graph construction: {len(self.bg_data)}")
+        print(f"Using knn = {self.knn}")
+
+        self.bg_graphs = graph_data_loader(
+            self.bg_data,
+            data_label=0,
+            nearest_neighbors=self.knn,
+            device="cpu",
+            method=self.method,
+            alpha=config["training"]["alpha"],
+        )
+
+        print("Finished background graphs.")
+        print(f"Number of background graphs: {len(self.bg_graphs)}")
+
+        print("Building signal graphs...")
+        print(f"Number of signal rows before graph construction: {len(self.sg_data)}")
+
+        self.sg_graphs = graph_data_loader(
+            self.sg_data,
+            data_label=1,
+            nearest_neighbors=self.knn,
+            device="cpu",
+            method=self.method,
+            alpha=config["training"]["alpha"],
+        )
+
+        print("Finished signal graphs.")
+        print(f"Number of signal graphs: {len(self.sg_graphs)}")
+
+        train_size = int(self.TRAIN_SPLIT * len(self.bg_graphs))
+        self.bg_train_graphs = self.bg_graphs[:train_size]
+        self.bg_test_graphs = self.bg_graphs[train_size:]
+
+        if len(self.bg_train_graphs) == 0:
+            raise ValueError("No background training graphs were created.")
+        if len(self.bg_test_graphs) == 0:
+            raise ValueError("No background validation graphs were created.")
+        if len(self.sg_graphs) == 0:
+            raise ValueError("No signal graphs were created.")
+
+        if self.normalize_features:
+            self.bg_train_graphs, self.bg_train_mean, self.bg_train_std = normalize_graph_features(
+                self.bg_train_graphs
+            )
+            self.bg_test_graphs, _, _ = normalize_graph_features(
+                self.bg_test_graphs,
+                mean=self.bg_train_mean,
+                std=self.bg_train_std,
+            )
+            self.sg_graphs, _, _ = normalize_graph_features(
+                self.sg_graphs,
+                mean=self.bg_train_mean,
+                std=self.bg_train_std,
+            )
+        
     def compute_stats(self):
         self.all_features = torch.cat([graph.x for graph in self.bg_train_graphs], dim=0)
         self.num_features = self.all_features.shape[1]
@@ -184,167 +370,425 @@ class TrainAutoencoder:
             plt.clf()
     
     def train(self):
+        """
+        Train the autoencoder, validate on held-out background graphs, and finally
+        evaluate anomaly performance by comparing background validation graphs
+        against signal graphs.
+
+        This keeps the same functional behavior as the previous nested
+        train_model/run_autoencoder_training path, but flattens the workflow into
+        one readable training routine.
+        """
         os.makedirs(self.TRAIN_PLOTS_PATH, exist_ok=True)
 
-        # Execute the training routine
-        self.model = run_autoencoder_training(
-            self.bg_train_graphs, self.bg_test_graphs, self.sg_graphs,
+        # ------------------------------------------------------------------
+        # 1. Setup model
+        # ------------------------------------------------------------------
+        self.model = JetGraphAutoencoder(
+            num_features=self.bg_train_graphs[0].x.shape[1],
             smallest_dim=self.smallest_dim,
             num_reduced_edges=self.num_reduced_edges,
-            batch_size=self.batch_size,
-            epochs=self.epochs,
-            initial_lr=self.initial_lr,
+        ).to(DEVICE)
+
+        logging.info(f"Model Summary:\n{self.model}")
+
+        num_params = sum(
+            p.numel() for p in self.model.parameters() if p.requires_grad
+        )
+        logging.info(f"Number of trainable parameters: {num_params}")
+
+        optimizer = torch.optim.AdamW(
+            self.model.parameters(),
+            lr=self.initial_lr,
             weight_decay=self.weight_decay,
-            lr_scheduler=self.lr_scheduler,
-            save_dir=self.TRAIN_PLOTS_PATH,
-            run_metadata={
-                "background": self.bg_file,
-                "signal": self.sg_file,
-                "method": self.method,
-                "knn": self.knn,
-                "smallest_dim": self.smallest_dim,
-                "num_reduced_edges": self.num_reduced_edges,
-                "batch_size": self.batch_size,
-                "epochs": self.epochs,
-                "learning_rate": self.initial_lr,
-                "weight_decay": self.weight_decay,
-                "lr_scheduler": self.lr_scheduler,
-                "normalize_features": self.normalize_features,
-                "seed": self.seed,
-                "device": DEVICE,
-                "max_background_events": self.max_background_events,
-                "max_signal_events": self.max_signal_events,
-            },
         )
 
-    # def plot_loss(self):
-    #     # Plot per-graph reconstruction loss distribution
-    #     plt.figure(figsize=(8, 5))
-    #     plt.hist(self.model.background_test_loss, bins=50, alpha=0.6, label='Background (QCD)', color='blue', density=True)
-    #     plt.hist(self.model.signal_loss, bins=50, alpha=0.6, label='Signal', color='red', density=True)
-    #     plt.xlabel("Per-Graph Reconstruction Loss")
-    #     plt.ylabel("Density")
-    #     plt.title("Reconstruction Loss Distribution")
-    #     plt.legend()
-    #     plt.grid(True)
-    #     plt.tight_layout()
+        scheduler = (
+            StepLR(optimizer, step_size=10, gamma=0.7)
+            if self.lr_scheduler
+            else None
+        )
 
-    #     # Save plot
-    #     plt.savefig(os.path.join(
-    #         self.TRAIN_PLOTS_PATH, f"loss_{self.bg_name}_{self.sg_name}_{helpers_main.curr_time()}.png"
-    #     ))
-    #     if config["dbg"]["show_plots"]: plt.show()
-    #     plt.clf()
+        loss_fn = torch.nn.MSELoss()
+
+        # ------------------------------------------------------------------
+        # 2. Setup dataloaders
+        # ------------------------------------------------------------------
+        train_loader = DataLoader(
+            self.bg_train_graphs,
+            batch_size=self.batch_size,
+            shuffle=True,
+        )
+
+        # This is validation background, not final test in the usual ML sense.
+        background_val_loader = DataLoader(
+            self.bg_test_graphs,
+            batch_size=self.batch_size,
+            shuffle=False,
+        )
+
+        # Signal is only used for final anomaly-score / ROC evaluation.
+        signal_loader = DataLoader(
+            self.sg_graphs,
+            batch_size=self.batch_size,
+            shuffle=False,
+        )
+
+        # ------------------------------------------------------------------
+        # 3. Histories
+        # ------------------------------------------------------------------
+        self.model.train_hist = []          # epoch-level train loss
+        self.model.val_hist = []            # epoch-level background-val loss
+        self.model.signal_hist = []         # kept for compatibility, final only
+
+        training_loss_history = []          # step-level train loss
+        validation_loss_history = []        # epoch-level val loss
+        epoch_end_steps = []
+
+        best_val_loss = float("inf")
+        timer = helpers_main.LeTimer()
+
+        # ------------------------------------------------------------------
+        # 4. Loss plotting helper
+        # ------------------------------------------------------------------
+        def plot_progress():
+            if len(training_loss_history) == 0:
+                return
+
+            training_loss_history_np = np.asarray(training_loss_history)
+            validation_loss_history_np = np.asarray(validation_loss_history)
+
+            step_num_history_np = np.arange(
+                1, len(training_loss_history_np) + 1
+            )
+            epoch_end_steps_np = np.asarray(epoch_end_steps)
+
+            fig, ax = plt.subplots(figsize=(10, 6))
+
+            ax.plot(
+                step_num_history_np,
+                training_loss_history_np,
+                label="Training Loss",
+                alpha=0.7,
+            )
+
+            if len(validation_loss_history_np) > 0:
+                # Repeat each epoch-level validation loss across roughly one
+                # epoch of training steps, matching the template style.
+                repeat_count = int(
+                    np.ceil(
+                        len(training_loss_history_np)
+                        / len(validation_loss_history_np)
+                    )
+                )
+                repeated_val_loss = np.repeat(
+                    validation_loss_history_np,
+                    repeat_count,
+                )[: len(training_loss_history_np)]
+
+                ax.plot(
+                    step_num_history_np,
+                    repeated_val_loss,
+                    label="Validation Loss",
+                    alpha=0.7,
+                )
+
+            for step_idx in epoch_end_steps_np:
+                ax.axvline(
+                    step_idx,
+                    color="gray",
+                    ls="--",
+                    lw=0.6,
+                    alpha=0.35,
+                )
+
+            if len(epoch_end_steps_np) > 0:
+                epoch_ids = np.arange(1, len(epoch_end_steps_np) + 1)
+                max_labels = 12
+                stride = max(
+                    1,
+                    int(np.ceil(len(epoch_end_steps_np) / max_labels)),
+                )
+
+                top_ticks = epoch_end_steps_np[::stride]
+                top_labels = epoch_ids[::stride]
+
+                top_ax = ax.secondary_xaxis("top")
+                top_ax.set_xticks(top_ticks)
+                top_ax.set_xticklabels(top_labels)
+                top_ax.set_xlabel("Epoch")
+
+            if np.isfinite(best_val_loss):
+                ax.axhline(
+                    y=best_val_loss,
+                    color="black",
+                    linestyle="--",
+                    linewidth=1,
+                    alpha=0.2,
+                    label=f"Min Val Loss: {best_val_loss:.4g}",
+                )
+
+            ax.set_xlabel("Step Number")
+            ax.set_ylabel("Loss")
+            ax.set_title("Loss Curves")
+            ax.legend()
+            ax.grid(False)
+
+            fig.tight_layout()
+            fig.savefig(os.path.join(self.TRAIN_PLOTS_PATH, "loss.png"))
+            plt.close(fig)
+
+        # ------------------------------------------------------------------
+        # 5. Training + validation loop
+        # ------------------------------------------------------------------
+        for epoch in range(self.epochs):
+            logging.info(f"\nEpoch [{epoch + 1}/{self.epochs}]")
+
+            current_lr = optimizer.param_groups[0]["lr"]
+            logging.info(f"Learning Rate: {current_lr:.6f}")
+
+            # ------------------------------
+            # Training phase
+            # ------------------------------
+            self.model.train()
+            epoch_train_losses = []
+
+            pbar = tqdm(
+                train_loader,
+                desc=f"Train Epoch {epoch + 1}/{self.epochs}",
+            )
+
+            for batch in pbar:
+                batch = batch.to(DEVICE)
+
+                optimizer.zero_grad()
+
+                pred = self.model(batch)
+
+                # Only reconstruct the original feature dimensions.
+                pred = pred[:, : batch.x.shape[1]]
+
+                loss = loss_fn(pred, batch.x)
+
+                loss.backward()
+                optimizer.step()
+
+                step_loss = loss.item()
+                epoch_train_losses.append(step_loss)
+                training_loss_history.append(step_loss)
+
+                pbar.set_postfix({"Train Loss": f"{step_loss:.6g}"})
+
+            mean_train_loss = float(np.nanmean(epoch_train_losses))
+
+            # ------------------------------
+            # Validation phase
+            # ------------------------------
+            self.model.eval()
+            val_losses = []
+
+            pbar = tqdm(
+                background_val_loader,
+                desc=f"Val Epoch {epoch + 1}/{self.epochs}",
+            )
+
+            with torch.no_grad():
+                for batch in pbar:
+                    batch = batch.to(DEVICE)
+
+                    pred = self.model(batch)
+                    pred = pred[:, : batch.x.shape[1]]
+
+                    loss = loss_fn(pred, batch.x)
+                    val_loss = loss.item()
+
+                    val_losses.append(val_loss)
+                    pbar.set_postfix({"Val Loss": f"{val_loss:.6g}"})
+
+            mean_val_loss = float(np.nanmean(val_losses))
+
+            self.model.train_hist.append(mean_train_loss)
+            self.model.val_hist.append(mean_val_loss)
+
+            validation_loss_history.append(mean_val_loss)
+            epoch_end_steps.append(len(training_loss_history))
+
+            if mean_val_loss < best_val_loss:
+                best_val_loss = mean_val_loss
+
+            plot_progress()
+
+            if scheduler is not None:
+                scheduler.step()
+
+            logging.info(f"train loss: {mean_train_loss}")
+            logging.info(f"validation/background loss: {mean_val_loss}")
+            logging.info(timer.time_taken())
+
+        # ------------------------------------------------------------------
+        # 6. Final evaluation for anomaly detection
+        # ------------------------------------------------------------------
+        self.model.eval()
+
+        background_test_loss = []
+        background_test_data = []
+
+        with torch.no_grad():
+            for batch in tqdm(
+                background_val_loader,
+                desc="Final Background Evaluation",
+            ):
+                batch = batch.to(DEVICE)
+
+                pred = self.model(batch)
+                pred = pred[:, : batch.x.shape[1]]
+
+                loss = loss_fn(pred, batch.x)
+
+                background_test_loss.append(loss.item())
+                background_test_data.append(batch.x.detach().cpu())
+
+        signal_loss = []
+        signal_data = []
+
+        with torch.no_grad():
+            for batch in tqdm(
+                signal_loader,
+                desc="Final Signal Evaluation",
+            ):
+                batch = batch.to(DEVICE)
+
+                pred = self.model(batch)
+                pred = pred[:, : batch.x.shape[1]]
+
+                loss = loss_fn(pred, batch.x)
+
+                signal_loss.append(loss.item())
+                signal_data.append(batch.x.detach().cpu())
+
+        self.model.background_test_loss = background_test_loss
+        self.model.background_train_loss = self.model.train_hist
+        self.model.signal_loss = signal_loss
+
+        self.model.test_data = background_test_data
+        self.model.signal_data = signal_data
+        self.model.signal_hist.append(float(np.nanmean(signal_loss)))
+
+        # ------------------------------------------------------------------
+        # 7. Final plots
+        # ------------------------------------------------------------------
+        plot_anomaly_score(
+            self.model.background_test_loss,
+            self.model.signal_loss,
+            background_label="QCD",
+            signal_label="WJet",
+            save_path=os.path.join(self.TRAIN_PLOTS_PATH, "anomaly_score.png"),
+        )
+
+        plot_roc_curve(
+            self.model,
+            "signal",
+            "background",
+            savepath=os.path.join(self.TRAIN_PLOTS_PATH, "roc.png"),
+            examples=False,
+            loss_fn=torch.nn.MSELoss(reduction="mean"),
+        )
+
+        # ------------------------------------------------------------------
+        # 8. Save losses and summary
+        # ------------------------------------------------------------------
+        np.save(
+            os.path.join(self.TRAIN_PLOTS_PATH, "background_test_loss.npy"),
+            np.asarray(self.model.background_test_loss),
+        )
+
+        np.save(
+            os.path.join(self.TRAIN_PLOTS_PATH, "signal_loss.npy"),
+            np.asarray(self.model.signal_loss),
+        )
+
+        auc_score = roc_auc_score(
+            np.concatenate(
+                [
+                    np.zeros(len(self.model.background_test_loss)),
+                    np.ones(len(self.model.signal_loss)),
+                ]
+            ),
+            np.concatenate(
+                [
+                    self.model.background_test_loss,
+                    self.model.signal_loss,
+                ]
+            ),
+        )
+
+        summary = {
+            "background": self.bg_file,
+            "signal": self.sg_file,
+            "method": self.method,
+            "knn": self.knn,
+            "smallest_dim": self.smallest_dim,
+            "num_reduced_edges": self.num_reduced_edges,
+            "batch_size": self.batch_size,
+            "epochs": self.epochs,
+            "learning_rate": self.initial_lr,
+            "weight_decay": self.weight_decay,
+            "lr_scheduler": self.lr_scheduler,
+            "normalize_features": self.normalize_features,
+            "seed": self.seed,
+            "device": DEVICE,
+            "max_background_events": self.max_background_events,
+            "max_signal_events": self.max_signal_events,
+            "auc": float(auc_score),
+            "background_train_graphs": len(self.bg_train_graphs),
+            "background_test_graphs": len(self.bg_test_graphs),
+            "signal_graphs": len(self.sg_graphs),
+            "best_val_loss": float(best_val_loss),
+            "final_val_loss": float(np.nanmean(self.model.background_test_loss)),
+            "final_signal_loss": float(np.nanmean(self.model.signal_loss)),
+            "num_trainable_parameters": int(num_params),
+        }
+
+        summary_path = os.path.join(self.TRAIN_PLOTS_PATH, "summary.json")
+
+        with open(summary_path, "w") as f:
+            json.dump(summary, f, indent=2)
+
+        logging.info(f"Saved run summary to {summary_path}")
+        logging.info(f"Final AUC: {auc_score}")
+        
+        # # Execute the training routine
+        # self.model = run_autoencoder_training(
+        #     self.bg_train_graphs, self.bg_test_graphs, self.sg_graphs,
+        #     smallest_dim=self.smallest_dim,
+        #     num_reduced_edges=self.num_reduced_edges,
+        #     batch_size=self.batch_size,
+        #     epochs=self.epochs,
+        #     initial_lr=self.initial_lr,
+        #     weight_decay=self.weight_decay,
+        #     lr_scheduler=self.lr_scheduler,
+        #     save_dir=self.TRAIN_PLOTS_PATH,
+        #     run_metadata={
+        #         "background": self.bg_file,
+        #         "signal": self.sg_file,
+        #         "method": self.method,
+        #         "knn": self.knn,
+        #         "smallest_dim": self.smallest_dim,
+        #         "num_reduced_edges": self.num_reduced_edges,
+        #         "batch_size": self.batch_size,
+        #         "epochs": self.epochs,
+        #         "learning_rate": self.initial_lr,
+        #         "weight_decay": self.weight_decay,
+        #         "lr_scheduler": self.lr_scheduler,
+        #         "normalize_features": self.normalize_features,
+        #         "seed": self.seed,
+        #         "device": DEVICE,
+        #         "max_background_events": self.max_background_events,
+        #         "max_signal_events": self.max_signal_events,
+        #     },
+        # )
 
 
-def run_autoencoder_training(
-    train_graphs, test_graphs, signal_graphs, smallest_dim,
-    num_reduced_edges, batch_size, epochs, initial_lr, weight_decay,
-    lr_scheduler, save_dir="plots/test-plots", run_metadata=None
-):
-    """
-    Trains the JetGraphAutoencoder and evaluates it on background and signal graphs.
-
-    Args:
-        train_graphs (List[Data]): List of training graphs (background only).
-        test_graphs (List[Data]): List of testing graphs (background only).
-        signal_graphs (List[Data]): List of testing graphs (signal events).
-        smallest_dim (int): Latent bottleneck dimensionality in the autoencoder.
-        num_reduced_edges (int): Number of nearest neighbors to use in the kNN graph.
-        batch_size (int): Batch size used during training.
-        epochs (int): Number of training epochs.
-        initial_lr (float): Initial learning rate for the optimizer.
-
-    Returns:
-        model (JetGraphAutoencoder): Trained model.
-    """
-
-    model = JetGraphAutoencoder(
-        num_features=train_graphs[0].x.shape[1],
-        smallest_dim=smallest_dim,
-        num_reduced_edges=num_reduced_edges
-    ).to(DEVICE)
-    
-    # print model summary
-    logging.info(f"Model Summary:\n{model}")
-    # number of trainable parameters
-    num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    logging.info(f"Number of trainable parameters: {num_params}")
-
-    optimizer = torch.optim.AdamW(
-        model.parameters(), lr=initial_lr, weight_decay=weight_decay
-    )
-    scheduler = (
-        StepLR(optimizer, step_size=10, gamma=0.7)
-        if lr_scheduler
-        else None
-    )
-
-    loss_fn = torch.nn.MSELoss()
-
-    # Dataloaders
-    train_loader = DataLoader(train_graphs, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_graphs, batch_size=1, shuffle=False)
-    signal_loader = DataLoader(signal_graphs, batch_size=1, shuffle=False)
-
-    # Train the model and track loss
-    train_loss, val_loss, signal_loss = train_model(
-        train_loader, test_loader, signal_loader,
-        model, loss_fn, optimizer,
-        epochs=epochs, batch_size=batch_size, 
-        scheduler=scheduler
-    )
-
-    os.makedirs(save_dir, exist_ok=True)
-    # Generate plots for analysis
-    plot_anomaly_score(
-        model.background_test_loss,
-        model.signal_loss,
-        background_label="QCD",
-        signal_label="WJet",
-        save_path=os.path.join(save_dir, "anomaly_score.png"),
-    )
-    plot_roc_curve(
-        model,
-        "signal",
-        "background",
-        savepath=os.path.join(save_dir, "roc.png"),
-        examples=False,
-        loss_fn=torch.nn.MSELoss(reduction='mean'),
-    )
-    plot_loss(
-        model.train_hist,
-        model.val_hist,
-        save_path=os.path.join(save_dir, "loss.png"),
-    )
-
-    np.save(
-        os.path.join(save_dir, "background_test_loss.npy"),
-        np.asarray(model.background_test_loss),
-    )
-    np.save(
-        os.path.join(save_dir, "signal_loss.npy"),
-        np.asarray(model.signal_loss),
-    )
-    auc_score = roc_auc_score(
-        np.concatenate([
-            np.zeros(len(model.background_test_loss)),
-            np.ones(len(model.signal_loss)),
-        ]),
-        np.concatenate([model.background_test_loss, model.signal_loss]),
-    )
-    summary = dict(run_metadata or {})
-    summary.update({
-        "auc": float(auc_score),
-        "background_train_graphs": len(train_graphs),
-        "background_test_graphs": len(test_graphs),
-        "signal_graphs": len(signal_graphs),
-    })
-    with open(os.path.join(save_dir, "summary.json"), "w") as f:
-        json.dump(summary, f, indent=2)
-    logging.info(f"Saved run summary to {os.path.join(save_dir, 'summary.json')}")
-
-    return model
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

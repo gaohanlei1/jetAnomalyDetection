@@ -151,6 +151,8 @@ def make_graph(data: dict,
         
         x = torch.tensor(np.column_stack([clean_data[name] for name in node_feature_names]), dtype=torch.float).to(device)
         k = min(nearest_neighbors, x.shape[0] - 1)
+        if k < nearest_neighbors:
+            logging.info(f"Event has only {x.shape[0]} valid particles, reducing k to {k}.")
 
         if method == 'eta_phi':
             nn_features = torch.tensor(np.column_stack([eta, phi]), dtype=torch.float).to(device)
