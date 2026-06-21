@@ -87,14 +87,21 @@ def get_device():
     requested_device = os.environ.get(
         "JET_DEVICE", config["training"]["device"]
     ).lower()
-    if requested_device not in {"cpu", "cuda"}:
+    if requested_device not in {"cpu", "cuda", "mps"}:
         raise ValueError(
-            f"Unsupported device '{requested_device}'. Use 'cpu' or 'cuda'."
+            f"Unsupported device '{requested_device}'. Use 'cpu', 'cuda', or 'mps'."
         )
 
-    device = "cuda" if requested_device == "cuda" and cuda.is_available() else "cpu"
+    if requested_device == "cuda" and cuda.is_available():
+        device = "cuda"
+    elif requested_device == "mps" and torch.backends.mps.is_available():
+        device = "mps"
+    else:
+        device = "cpu"
     if requested_device == "cuda" and device == "cpu":
         logging.warning("CUDA was requested but is unavailable; falling back to CPU.")
+    if requested_device == "mps" and device == "cpu":
+        logging.warning("MPS was requested but is unavailable; falling back to CPU.")
     logging.info(f"Using {device=}")
     return device
 

@@ -170,11 +170,23 @@ class TrainAutoencoder:
 
         rawfj_pt_col = c.RAW_FATJET_PROPERTIES_PREFIX + "pt"
         if rawfj_pt_col in self.bg_data:
-            self.bg_data = self.bg_data[(self.bg_data[rawfj_pt_col] > pt_min) & (self.bg_data[rawfj_pt_col] < pt_max)]
+            self.bg_data = self.bg_data[
+                (self.bg_data[rawfj_pt_col] > pt_min) 
+                & (self.bg_data[rawfj_pt_col] < pt_max)
+            ]
         # logging.info(f"Signal Data Columns: {self.sg_data.columns.tolist()}")
-
+        if rawfj_pt_col in self.sg_data:
+            self.sg_data = self.sg_data[
+                (self.sg_data[rawfj_pt_col] > pt_min)
+                & (self.sg_data[rawfj_pt_col] < pt_max)
+            ]
         # Only for WminusH - This removes the leptonic jet
         if "WminusH" in self.sg_file: self.sg_data = self.sg_data.apply(remove_low_pt_muons, axis=1)
+
+        print("Background pt stats after slicing:")
+        print(self.bg_data[rawfj_pt_col].describe())
+        print("Signal pt stats after slicing:")
+        print(self.sg_data[rawfj_pt_col].describe())
 
         logging.info(f"Number of training events after slicing: {len(self.bg_data)}")
         logging.info(f"Number of test events after removing leptonic jet: {len(self.sg_data)}")
@@ -238,6 +250,23 @@ class TrainAutoencoder:
                 mean=self.bg_train_mean,
                 std=self.bg_train_std,
             )
+        
+        print("Feature names:", config["misc"]["node_feature_names"])
+        print("Example graph.x shape:", self.bg_graphs[0].x.shape)
+        print("Example graph.y:", getattr(self.bg_graphs[0], "y", None))
+        print("Example bg x first rows:", self.bg_graphs[0].x[:5])
+        print("Example sg x first rows:", self.sg_graphs[0].x[:5])
+        bg_x = torch.cat([g.x for g in self.bg_graphs], dim=0).numpy()
+        sg_x = torch.cat([g.x for g in self.sg_graphs], dim=0).numpy()
+
+        for i, name in enumerate(config["misc"]["node_feature_names"]):
+            if i < bg_x.shape[1]:
+                print(
+                    i,
+                    name,
+                    "bg mean/std:", bg_x[:, i].mean(), bg_x[:, i].std(),
+                    "sg mean/std:", sg_x[:, i].mean(), sg_x[:, i].std(),
+                )
         
     def compute_stats(self):
         self.all_features = torch.cat([graph.x for graph in self.bg_train_graphs], dim=0)
@@ -539,6 +568,30 @@ class TrainAutoencoder:
 
         background_train_loss = []
         background_train_data = []
+        
+        # reconstruct the train, val, and test loader to use batch size of 1
+        # to ensure event-level losses, as using batch-average could reduce
+        # std of loss distribution.
+        
+        train_loader = DataLoader(
+            self.bg_train_graphs,
+            batch_size=1,
+            shuffle=True,
+        )
+
+        # This is validation background, not final test in the usual ML sense.
+        background_val_loader = DataLoader(
+            self.bg_test_graphs,
+            batch_size=1,
+            shuffle=False,
+        )
+
+        # Signal is only used for final anomaly-score / ROC evaluation.
+        signal_loader = DataLoader(
+            self.sg_graphs,
+            batch_size=1,
+            shuffle=False,
+        )
         
         with torch.no_grad():
              for batch in tqdm(
