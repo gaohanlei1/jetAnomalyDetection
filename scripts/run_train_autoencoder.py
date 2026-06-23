@@ -7,6 +7,24 @@ This script:
 - Trains the JetGraphAutoencoder model on background data.
 - Evaluates the model on background and signal samples.
 - Plots anomaly scores, ROC curves, and training loss histories.
+
+Example command:
+python -u scripts/run_train_autoencoder.py \
+    --background "data/processed/qcd-vs-wjet-pt-200to400/QCD_scaled_scaled.pkl" \
+    --signal "data/processed/qcd-vs-wjet-pt-200to400/WJet_scaled_scaled.pkl" \
+    --method eta_phi \
+    --knn 3 \
+    --smallest-dim 4 \
+    --hidden-dim 16 \
+    --num-reduced-edges 3 \
+    --batch-size 64 \
+    --epochs 20 \
+    --learning-rate 1e-5 \
+    --weight-decay 5e-4 \
+    --no-lr-scheduler \
+    --no-normalize-features \
+    --seed 42 \
+    --output-dir "plots/run-16h-4s-3e-8v"
 """
 
 import sys
@@ -143,6 +161,7 @@ class TrainAutoencoder:
         self.max_signal_events = self.args.max_signal_events
         self.TRAIN_PLOTS_PATH = self.args.output_dir
         self.FEATURE_PLOTS_PATH = os.path.join(self.args.output_dir, "features")
+        self.num_layers = self.args.num_layers
 
         random.seed(self.seed)
         np.random.seed(self.seed)
@@ -198,6 +217,21 @@ class TrainAutoencoder:
         print(f"Number of background rows before graph construction: {len(self.bg_data)}")
         print(f"Using knn = {self.knn}")
 
+        feature_names = [
+            'pt', 'eta', 'phi', 'd0/d0Err', 'dz/dzErr', 'charge', 
+            'mass', 'log_pt'
+        ]
+        pdg_features = [
+            "pdgId_-211",
+            "pdgId_-13",
+            "pdgId_-11",
+            "pdgId_11",
+            "pdgId_13",
+            "pdgId_22",
+            "pdgId_130",
+            "pdgId_211",
+        ]
+        feature_names += pdg_features
         self.bg_graphs = graph_data_loader(
             self.bg_data,
             data_label=0,
@@ -205,6 +239,7 @@ class TrainAutoencoder:
             device="cpu",
             method=self.method,
             alpha=config["training"]["alpha"],
+            node_feature_names=feature_names,
         )
 
         print("Finished background graphs.")
@@ -220,6 +255,7 @@ class TrainAutoencoder:
             device="cpu",
             method=self.method,
             alpha=config["training"]["alpha"],
+            node_feature_names=feature_names,
         )
 
         print("Finished signal graphs.")
@@ -320,6 +356,7 @@ class TrainAutoencoder:
             num_features=self.bg_train_graphs[0].x.shape[1],
             hidden_dim=self.hidden_dim,
             smallest_dim=self.smallest_dim,
+            num_layers=self.num_layers,
             num_reduced_edges=self.num_reduced_edges,
         ).to(DEVICE)
 
@@ -817,6 +854,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max-signal-events", type=int,
         help="Optional signal row limit for a smoke test."
+    )
+    parser.add_argument(
+        "--num-layers", type=int, default=2,
+        help="Number of GNN layers in encoder and decoder. Default: 2."
     )
 
     train_ae = TrainAutoencoder()

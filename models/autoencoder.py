@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torch import nn
-from torch.nn import Sequential, Linear, ReLU
+from torch.nn import LeakyReLU, Sequential, Linear, ReLU
 from torch_geometric.nn import EdgeConv, TopKPooling, global_max_pool
 from torch_cluster import knn_graph
 
@@ -22,13 +22,15 @@ class JetGraphAutoencoder(nn.Module):
         Various histories and losses for training analysis and evaluation.
     """
 
-    def __init__(self, num_features: int = 3, smallest_dim: int = 16, hidden_dim: int = 32, topk=None, num_reduced_edges: int = 8):
+    def __init__(self, num_features: int = 3, smallest_dim: int = 16, hidden_dim: int = 32, num_layers: int = 2, topk=None, num_reduced_edges: int = 8):
         """
         Initialize the JetGraphAutoencoder.
 
         Args:
             num_features (int): Number of features per node (input dimensionality).
             smallest_dim (int): Latent dimensionality at the bottleneck layer.
+            hidden_dim (int): Dimensionality of hidden layers.
+            num_layers (int): Number of EdgeConv layers.
             topk (TopKPooling, optional): Optional pooling layer to downsample nodes.
             num_reduced_edges (int): Number of neighbors in recomputed edge graph (used during decoding if knn=True).
         """
@@ -37,6 +39,7 @@ class JetGraphAutoencoder(nn.Module):
         self.smallest_dim = smallest_dim
         self.topk = topk
         self.num_reduced_edges = num_reduced_edges
+        self.num_layers = num_layers
 
         # embeddng layer
         self.hidden_dim = hidden_dim
@@ -45,30 +48,39 @@ class JetGraphAutoencoder(nn.Module):
         
         
         # Encoder
-        self.conv1 = EdgeConv(Sequential(
-            Linear(self.hidden_dim * 2, self.hidden_dim * 8),
-            ReLU(),
-            Linear(self.hidden_dim * 8, self.hidden_dim)
-        ), aggr='max')
-
-        self.conv2 = EdgeConv(Sequential(
-            Linear(self.hidden_dim * 2, self.hidden_dim * 8),
-            ReLU(),
-            Linear(self.hidden_dim * 8, self.smallest_dim)
-        ), aggr='max')
-
+        self.encoder_layers = nn.ModuleList()
+        self.encoder_norms = nn.ModuleList()
+        for i in range(num_layers):
+            in_channels = self.hidden_dim
+            out_channels = self.hidden_dim if i < num_layers - 1 else self.smallest_dim
+            self.encoder_norms.append(nn.LayerNorm(in_channels))
+            self.encoder_layers.append(EdgeConv(Sequential(
+                Linear(in_channels * 2, self.hidden_dim * 8),
+                LeakyReLU(0.1),
+                Linear(self.hidden_dim * 8, out_channels),
+                torch.nn.Tanh()
+            ), aggr='max'))
+        
         # Decoder
-        self.conv3 = EdgeConv(Sequential(
-            Linear(self.smallest_dim * 2, self.hidden_dim * 8),
-            ReLU(),
-            Linear(self.hidden_dim * 8, self.hidden_dim)
-        ), aggr='max')
-
-        self.conv4 = EdgeConv(Sequential(
-            Linear(self.hidden_dim * 2, self.hidden_dim * 8),
-            ReLU(),
-            Linear(self.hidden_dim * 8, self.hidden_dim)
-        ), aggr='max')
+        self.decoder_layers = nn.ModuleList()
+        self.decoder_norms = nn.ModuleList()
+        for i in range(num_layers-1):
+            in_channels = self.smallest_dim if i == 0 else self.hidden_dim
+            out_channels = self.hidden_dim
+            self.decoder_norms.append(nn.LayerNorm(in_channels))
+            self.decoder_layers.append(EdgeConv(Sequential(
+                Linear(in_channels * 2, self.hidden_dim * 8),
+                LeakyReLU(0.1),
+                Linear(self.hidden_dim * 8, out_channels),
+                torch.nn.Tanh()
+            ), aggr='max'))
+        final_decoder_in_channels = self.smallest_dim if num_layers == 1 else self.hidden_dim
+        self.decoder_norms.append(nn.LayerNorm(final_decoder_in_channels))
+        self.decoder_layers.append(EdgeConv(Sequential(
+            Linear(final_decoder_in_channels * 2, self.hidden_dim * 8),
+            LeakyReLU(0.1),
+            Linear(self.hidden_dim * 8, self.hidden_dim),
+        ), aggr='max'))
 
         # Tracking variables
         self.background_test_loss = None
@@ -93,8 +105,13 @@ class JetGraphAutoencoder(nn.Module):
         Returns:
             Tensor: Encoded node features.
         """
-        x = torch.tanh(self.conv1(x, edge_index))
-        x = torch.tanh(self.conv2(x, edge_index))
+        for i, layer in enumerate(self.encoder_layers):
+            h = self.encoder_norms[i](x)
+            h = layer(h, edge_index)
+            if h.shape == x.shape:
+                x = x + h
+            else:
+                x = h
         return x
 
     def decoder(self, x, edge_index, batch, training=True):
@@ -110,8 +127,13 @@ class JetGraphAutoencoder(nn.Module):
         Returns:
             Tensor: Reconstructed node features.
         """
-        x = torch.tanh(self.conv3(x, edge_index))
-        x = self.conv4(x, edge_index)
+        for i, layer in enumerate(self.decoder_layers):
+            h = self.decoder_norms[i](x)
+            h = layer(h, edge_index)
+            if h.shape == x.shape:
+                x = x + h
+            else:
+                x = h
         return x
 
     def forward(self, data, knn=False, topk=False, training=True):
@@ -141,4 +163,3 @@ class JetGraphAutoencoder(nn.Module):
         x = self.decoder(x, edge_index, batch, training)
         x = self.unembedding(x)
         return x
-        
