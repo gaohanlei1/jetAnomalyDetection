@@ -5,7 +5,7 @@ from torch_geometric.utils import to_dense_batch
 
 class JetTransformerMaskedEncoder(nn.Module):
     """
-    Transformer-based masked autoencoder for jet constituent features.
+    Transformer-based masked encoder for jet constituent features.
 
     The first two input features are interpreted as eta-phi coordinates and are
     used only to build a learned positional encoding. The remaining features are
@@ -29,7 +29,7 @@ class JetTransformerMaskedEncoder(nn.Module):
         mask_ratio: float = 0.3,
     ):
         """
-        Initialize the transformer masked autoencoder.
+        Initialize the transformer masked encoder.
 
         Args:
             num_features: Total number of input features per node. The first two
@@ -120,7 +120,7 @@ class JetTransformerMaskedEncoder(nn.Module):
 
     def forward(self, data, mask_ratio: float | None = None):
         """
-        Run the masked transformer autoencoder.
+        Run the masked transformer encoder.
 
         Args:
             data: Either a PyG-style mini-batch with `.x` and `.batch`, a
@@ -196,12 +196,13 @@ class JetTransformerMaskedEncoder(nn.Module):
             "valid_mask": valid_mask, # shape: [batch_size, num_nodes], True for valid positions, False for padded positions
         }
 
-    def loss(self, output: dict) -> torch.Tensor:
+    def loss(self, output: dict, per_event=False) -> torch.Tensor:
         """
         Compute MSE only on masked non-CLS tokens.
 
         Args:
             output: The dictionary returned by `forward()`.
+            per_event: If True, returns a tensor of shape [batch_size] with the MSE loss for each event. If False, returns a scalar MSE loss over the batch.
 
         Returns:
             Scalar MSE loss over masked node positions. If no tokens are masked,
@@ -211,13 +212,19 @@ class JetTransformerMaskedEncoder(nn.Module):
         target = output["target"]
         mask = output["mask"]
         valid_mask = output["valid_mask"]
-
-        loss_mask = mask & valid_mask
-        if loss_mask.any():
-            return F.mse_loss(predictions[loss_mask], target[loss_mask])
-
-        return F.mse_loss(predictions[valid_mask], target[valid_mask])
-
-
-# Backward-compatible alias for training scripts that still import the old name.
-JetGraphAutoencoder = JetTransformerMaskedAutoencoder
+        
+        squared_error = F.mse_loss(predictions, target, reduction='none') # [batch_size, num_nodes, reconstruction_dim]
+        token_loss = squared_error.mean(dim=-1) # [batch_size, num_nodes], MSE per token
+        loss_mask = mask & valid_mask # [batch_size, num_nodes], True for masked and valid positions
+        
+        if not loss_mask.any():
+            raise ValueError("No masked tokens found for loss computation. Ensure that mask_ratio > 0 and valid_mask has True values.")
+        
+        if per_event:
+            event_loss_sum = (token_loss * loss_mask).sum(dim=1) # [batch_size], sum of losses for masked tokens
+            event_loss_count = loss_mask.sum(dim=1).clamp(min=1) # [batch_size], number of masked tokens per event
+            event_losses = event_loss_sum / event_loss_count # [batch_size], average loss per event
+            return event_losses
+        else:
+            return token_loss[loss_mask].mean() # Scalar, average loss over all masked tokens
+        

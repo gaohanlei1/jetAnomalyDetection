@@ -22,7 +22,6 @@ python -u scripts/run_train_transformer.py \
     --train-mask-ratio 0.3 \
     --test-mask-ratio 0.3 \
     --eval-mask-repeats 10 \
-    --no-lr-scheduler \
     --no-normalize-features \
     --seed 42 \
     --output-dir "plots/run-transformer"
@@ -49,7 +48,7 @@ from models.transformer import JetTransformerMaskedEncoder
 from preprocess.make_graphs import graph_data_loader
 from visualize.plot_metrics import plot_loss, plot_anomaly_score, plot_roc_curve
 import matplotlib.pyplot as plt
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from typing import List, Tuple
 from sklearn.metrics import roc_auc_score
 from tqdm import tqdm
@@ -85,11 +84,6 @@ This module includes:
 - `train_model`: Full training procedure across multiple epochs for background/signal separation.
 """
 
-import torch
-import numpy as np
-from torch_geometric.loader import DataLoader
-from torch.optim.lr_scheduler import StepLR
-from torch_geometric.data import Data
 from typing import List, Tuple
 
 import os 
@@ -157,7 +151,6 @@ class TrainMaskedTransformer:
         self.epochs = self.args.epochs
         self.initial_lr = self.args.learning_rate
         self.weight_decay = self.args.weight_decay
-        self.lr_scheduler = self.args.lr_scheduler
         self.normalize_features = self.args.normalize_features
         self.seed = self.args.seed
         self.max_background_events = self.args.max_background_events
@@ -377,9 +370,7 @@ class TrainMaskedTransformer:
         )
 
         scheduler = (
-            StepLR(optimizer, step_size=10, gamma=0.7)
-            if self.lr_scheduler
-            else None
+            CosineAnnealingLR(optimizer, T_max=self.epochs, eta_min=1e-6)
         )
 
         # ------------------------------------------------------------------
@@ -595,33 +586,9 @@ class TrainMaskedTransformer:
         # 6. Final evaluation for anomaly detection
         # ------------------------------------------------------------------
         self.model.eval()
-
+        
         background_train_loss = []
         background_train_data = []
-        
-        # reconstruct the train, val, and test loader to use batch size of 1
-        # to ensure event-level losses, as using batch-average could reduce
-        # std of loss distribution.
-        
-        train_loader = DataLoader(
-            self.bg_train_graphs,
-            batch_size=1,
-            shuffle=True,
-        )
-
-        # This is validation background, not final test in the usual ML sense.
-        background_val_loader = DataLoader(
-            self.bg_test_graphs,
-            batch_size=1,
-            shuffle=False,
-        )
-
-        # Signal is only used for final anomaly-score / ROC evaluation.
-        signal_loader = DataLoader(
-            self.sg_graphs,
-            batch_size=1,
-            shuffle=False,
-        )
         
         with torch.no_grad():
             for batch in tqdm(
@@ -632,8 +599,11 @@ class TrainMaskedTransformer:
                 repeated_losses = []
                 for _ in range(self.eval_mask_repeats):
                     output = self.model(batch, mask_ratio=self.test_mask_ratio)
-                    repeated_losses.append(self.model.loss(output).item())
-                background_train_loss.append(float(np.mean(repeated_losses)))
+                    repeated_losses.append(self.model.loss(output, per_event=True).detach().cpu())
+
+                repeated_losses = torch.stack(repeated_losses, dim=0)
+                batch_event_losses = repeated_losses.mean(dim=0).numpy()
+                background_train_loss.extend(batch_event_losses.tolist())
                 background_train_data.append(batch.x.detach().cpu())
         
         background_test_loss = []
@@ -648,8 +618,11 @@ class TrainMaskedTransformer:
                 repeated_losses = []
                 for _ in range(self.eval_mask_repeats):
                     output = self.model(batch, mask_ratio=self.test_mask_ratio)
-                    repeated_losses.append(self.model.loss(output).item())
-                background_test_loss.append(float(np.mean(repeated_losses)))
+                    repeated_losses.append(self.model.loss(output, per_event=True).detach().cpu())
+
+                repeated_losses = torch.stack(repeated_losses, dim=0)
+                batch_event_losses = repeated_losses.mean(dim=0).numpy()
+                background_test_loss.extend(batch_event_losses.tolist())
                 background_test_data.append(batch.x.detach().cpu())
 
         signal_loss = []
@@ -664,8 +637,11 @@ class TrainMaskedTransformer:
                 repeated_losses = []
                 for _ in range(self.eval_mask_repeats):
                     output = self.model(batch, mask_ratio=self.test_mask_ratio)
-                    repeated_losses.append(self.model.loss(output).item())
-                signal_loss.append(float(np.mean(repeated_losses)))
+                    repeated_losses.append(self.model.loss(output, per_event=True).detach().cpu())
+
+                repeated_losses = torch.stack(repeated_losses, dim=0)
+                batch_event_losses = repeated_losses.mean(dim=0).numpy()
+                signal_loss.extend(batch_event_losses.tolist())
                 signal_data.append(batch.x.detach().cpu())
 
         self.model.background_test_loss = background_test_loss
@@ -832,10 +808,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--weight-decay", type=float, default=1e-4,
         help="AdamW weight decay. Default: 1e-4."
-    )
-    parser.add_argument(
-        "--lr-scheduler", action=argparse.BooleanOptionalAction, default=True,
-        help="Decay the learning rate by 30 percent every 10 epochs."
     )
     parser.add_argument(
         "--normalize-features", action=argparse.BooleanOptionalAction, default=True,

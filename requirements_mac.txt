@@ -15,6 +15,7 @@ pip-chill==1.0.5
 pure_eval==0.2.3
 pydantic_core==2.46.4
 stack-data==0.6.3
+scikit-learn==1.4.0
 tensorboard==2.16.2
 
 torch==2.6.0

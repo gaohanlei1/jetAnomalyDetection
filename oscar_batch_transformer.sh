@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=4       # cpu-cores per task (>1 if multi-threaded tasks)
 #SBATCH -t 12:00:00             # total run time limit (HH:MM:SS)
 #SBATCH --mem=32000MB           # INCREASED from 16GB to 32GB
-#SBATCH --job-name='NNACLGAD'
+#SBATCH --job-name='JETANOMALY'
 #SBATCH --output=slurm_logs/R-%x.%j/log.out
 #SBATCH --error=slurm_logs/R-%x.%j/log.err
 # Force unbuffered output
@@ -29,7 +29,7 @@ module load miniforge3/25.3.0-3
 source ${MAMBA_ROOT_PREFIX}/etc/profile.d/conda.sh
 # source /oscar/runtime/software/external/miniconda3/23.11.0/etc/profile.d/conda.sh
 # conda init
-conda activate nnaclgad
+conda activate jet
 
 # check pytorch version
 python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
@@ -47,7 +47,6 @@ python -u scripts/run_train_transformer.py \
     --train-mask-ratio 0.3 \
     --test-mask-ratio 0.3 \
     --eval-mask-repeats 10 \
-    --no-lr-scheduler \
     --no-normalize-features \
     --seed 42 \
     --output-dir "plots/run-transformer"
