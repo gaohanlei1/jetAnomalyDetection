@@ -71,6 +71,3 @@ events.out.tfevents.*
 
 # local test files
 .untracked/
-
-# plots
-*.png
