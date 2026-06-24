@@ -456,15 +456,6 @@ class TrainMaskedTransformer:
                     alpha=0.7,
                 )
 
-            for step_idx in epoch_end_steps_np:
-                ax.axvline(
-                    step_idx,
-                    color="gray",
-                    ls="--",
-                    lw=0.6,
-                    alpha=0.35,
-                )
-
             if len(epoch_end_steps_np) > 0:
                 epoch_ids = np.arange(1, len(epoch_end_steps_np) + 1)
                 max_labels = 12
@@ -480,6 +471,15 @@ class TrainMaskedTransformer:
                 top_ax.set_xticks(top_ticks)
                 top_ax.set_xticklabels(top_labels)
                 top_ax.set_xlabel("Epoch")
+                
+                for step_idx in epoch_end_steps_np[::stride]:
+                    ax.axvline(
+                        step_idx,
+                        color="gray",
+                        ls="--",
+                        lw=0.6,
+                        alpha=0.35,
+                    )
 
             if np.isfinite(best_val_loss):
                 ax.axhline(
@@ -494,6 +494,7 @@ class TrainMaskedTransformer:
             ax.set_xlabel("Step Number")
             ax.set_ylabel("Loss")
             ax.set_title("Loss Curves")
+            ax.set_yscale("log") # Set y-axis to log scale
             ax.legend()
             ax.grid(False)
 
