@@ -37,8 +37,8 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 python -u scripts/run_train_transformer.py \
     --background "data/processed/qcd-vs-wjet-pt-200to400/QCD_scaled_scaled.pkl" \
     --signal "data/processed/qcd-vs-wjet-pt-200to400/WJet_scaled_scaled.pkl" \
-    --hidden-dim 128 \
-    --num-layers 8 \
+    --hidden-dim 256 \
+    --num-layers 16 \
     --num-heads 16 \
     --batch-size 64 \
     --epochs 150 \

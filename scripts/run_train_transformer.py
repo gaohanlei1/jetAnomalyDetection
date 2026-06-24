@@ -369,7 +369,7 @@ class TrainMaskedTransformer:
             weight_decay=self.weight_decay,
         )
 
-        scheduler = (
+        self.scheduler = (
             CosineAnnealingLR(optimizer, T_max=self.epochs, eta_min=1e-6)
         )
 
@@ -576,8 +576,8 @@ class TrainMaskedTransformer:
 
             plot_progress()
 
-            if scheduler is not None:
-                scheduler.step()
+            if self.scheduler is not None:
+                self.scheduler.step()
 
             logging.info(f"train loss: {mean_train_loss}")
             logging.info(f"validation/background loss: {mean_val_loss}")
