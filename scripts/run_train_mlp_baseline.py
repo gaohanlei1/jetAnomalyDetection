@@ -1,30 +1,25 @@
 """
-Script to train a transformer-based masked encoder for jet anomaly detection.
+Script to train an eta-phi-only MLP baseline for jet anomaly detection.
 
 This script:
 - Loads configuration and preprocessed datasets.
 - Constructs PyG event objects using node features.
-- Trains the JetTransformerMaskedEncoder model on background data.
-- Evaluates the model on background and signal samples using repeated random masks.
+- Trains an MLP that maps each node's eta-phi coordinates to the remaining node features.
+- Evaluates the model on background and signal samples with event-level reconstruction losses.
 - Plots anomaly scores, ROC curves, and training loss histories.
 
 Example command:
-python -u scripts/run_train_transformer.py \
+python -u scripts/run_train_mlp_baseline.py \
     --background "data/processed/qcd-vs-wjet-pt-200to400/QCD_scaled_scaled.pkl" \
     --signal "data/processed/qcd-vs-wjet-pt-200to400/WJet_scaled_scaled.pkl" \
-    --hidden-dim 16 \
+    --hidden-dim 128 \
     --num-layers 4 \
-    --num-heads 4 \
     --batch-size 128 \
     --epochs 20 \
     --learning-rate 1e-4 \
     --weight-decay 1e-4 \
-    --train-mask-ratio 0.3 \
-    --test-mask-ratio 0.3 \
-    --eval-mask-repeats 10 \
-    --no-normalize-features \
     --seed 42 \
-    --output-dir "plots/run-transformer"
+    --output-dir "plots/run-mlp-baseline"
 """
 
 import sys
@@ -44,7 +39,8 @@ import yaml
 import argparse
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import Data
-from models.transformer import JetTransformerMaskedEncoder
+import torch.nn.functional as F
+from torch import nn
 from preprocess.make_graphs import graph_data_loader
 from visualize.plot_metrics import plot_loss, plot_anomaly_score, plot_roc_curve
 import matplotlib.pyplot as plt
@@ -130,7 +126,97 @@ def normalize_graph_features(
 
     return graphs, mean, std
 
-class TrainMaskedTransformer:
+
+# EtaPhiMLPBaseline model definition
+class EtaPhiMLPBaseline(nn.Module):
+    """
+    Node-wise eta-phi baseline.
+
+    This model intentionally has no access to other nodes in the same event. It
+    predicts x[:, 2:] from x[:, :2] independently for each node, making it a
+    position-only baseline for the masked transformer.
+    """
+
+    def __init__(
+        self,
+        num_features: int,
+        hidden_dim: int = 128,
+        num_layers: int = 4,
+        dropout: float = 0.0,
+        **kwargs,
+    ):
+        super().__init__()
+
+        if num_features <= 2:
+            raise ValueError("num_features must be greater than 2 because x[:, :2] is used as eta-phi input.")
+        if num_layers < 1:
+            raise ValueError("num_layers must be at least 1.")
+
+        self.num_features = num_features
+        self.reconstruction_dim = num_features - 2
+
+        layers = []
+        in_dim = 2
+        for _ in range(num_layers - 1):
+            layers.append(nn.Linear(in_dim, hidden_dim))
+            layers.append(nn.GELU())
+            if dropout > 0:
+                layers.append(nn.Dropout(dropout))
+            in_dim = hidden_dim
+        layers.append(nn.Linear(in_dim, self.reconstruction_dim))
+
+        self.network = nn.Sequential(*layers)
+
+    def forward(self, data, mask_ratio=None):
+        """
+        Predict non-position node features from eta-phi only.
+
+        The `mask_ratio` argument is accepted only for API compatibility with
+        the transformer training script and is intentionally ignored.
+        """
+        x = data.x if hasattr(data, "x") else data
+        if x.dim() != 2:
+            raise ValueError(f"Expected PyG-style flattened node tensor [total_nodes, feature_dim], got {tuple(x.shape)}.")
+        if x.size(-1) != self.num_features:
+            raise ValueError(f"Expected x.size(-1) == {self.num_features}, got {x.size(-1)}.")
+
+        eta_phi = x[:, :2]
+        target = x[:, 2:]
+        predictions = self.network(eta_phi)
+
+        if hasattr(data, "batch") and data.batch is not None:
+            batch_index = data.batch
+        else:
+            batch_index = torch.zeros(x.size(0), dtype=torch.long, device=x.device)
+
+        return {
+            "predictions": predictions,
+            "target": target,
+            "batch_index": batch_index,
+        }
+
+    def loss(self, output: dict, per_event: bool = False) -> torch.Tensor:
+        predictions = output["predictions"]
+        target = output["target"]
+
+        squared_error = F.mse_loss(predictions, target, reduction="none")
+        node_loss = squared_error.mean(dim=-1)
+
+        if not per_event:
+            return node_loss.mean()
+
+        batch_index = output["batch_index"]
+        batch_size = int(batch_index.max().item()) + 1 if batch_index.numel() > 0 else 1
+        event_loss_sum = torch.zeros(batch_size, dtype=node_loss.dtype, device=node_loss.device)
+        event_loss_count = torch.zeros(batch_size, dtype=node_loss.dtype, device=node_loss.device)
+
+        event_loss_sum.scatter_add_(0, batch_index, node_loss)
+        event_loss_count.scatter_add_(0, batch_index, torch.ones_like(node_loss))
+        event_loss_count = event_loss_count.clamp_min(1)
+
+        return event_loss_sum / event_loss_count
+
+class TrainMLPBaseline:
     # Packaged into a class for variable management
     TRAIN_SPLIT = 0.8
     FEATURE_PLOTS_PATH = "plots/test-plots/features"
@@ -141,11 +227,7 @@ class TrainMaskedTransformer:
         self.bg_file, self.sg_file = self.args.background, self.args.signal
         self.bg_name, self.sg_name = helpers_main.trim_name(self.bg_file), helpers_main.trim_name(self.sg_file)
         self.hidden_dim = self.args.hidden_dim
-        self.num_heads = self.args.num_heads
-        self.ffn_dim = self.args.ffn_dim
         self.dropout = self.args.dropout
-        self.train_mask_ratio = self.args.train_mask_ratio
-        self.test_mask_ratio = self.args.test_mask_ratio
         self.eval_mask_repeats = self.args.eval_mask_repeats
         self.batch_size = self.args.batch_size
         self.epochs = self.args.epochs
@@ -165,7 +247,7 @@ class TrainMaskedTransformer:
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(self.seed)
         
-        self.session_name = f"logs/train_transformer_{self.bg_name}_{self.sg_name}_{helpers_main.curr_time()}.log"
+        self.session_name = f"logs/train_mlp_baseline_{self.bg_name}_{self.sg_name}_{helpers_main.curr_time()}.log"
         helpers_main.log_config(self.session_name)
 
     def load(self):
@@ -334,7 +416,7 @@ class TrainMaskedTransformer:
     
     def train(self):
         """
-        Train the transformer, validate on held-out background graphs, and finally
+        Train the eta-phi MLP baseline, validate on held-out background graphs, and finally
         evaluate anomaly performance by comparing background validation graphs
         against signal graphs.
         """
@@ -343,14 +425,11 @@ class TrainMaskedTransformer:
         # ------------------------------------------------------------------
         # 1. Setup model
         # ------------------------------------------------------------------
-        self.model = JetTransformerMaskedEncoder(
+        self.model = EtaPhiMLPBaseline(
             num_features=self.bg_train_graphs[0].x.shape[1],
             hidden_dim=self.hidden_dim,
             num_layers=self.num_layers,
-            num_heads=self.num_heads,
-            ffn_dim=self.ffn_dim,
             dropout=self.dropout,
-            mask_ratio=self.train_mask_ratio,
         ).to(DEVICE)
 
         logging.info(f"Model Summary:\n{self.model}")
@@ -526,7 +605,7 @@ class TrainMaskedTransformer:
                 batch = batch.to(DEVICE)
 
                 optimizer.zero_grad()
-                output = self.model(batch, mask_ratio=self.train_mask_ratio)
+                output = self.model(batch)
                 loss = self.model.loss(output)
                 loss.backward()
                 optimizer.step()
@@ -553,7 +632,7 @@ class TrainMaskedTransformer:
             with torch.no_grad():
                 for batch in pbar:
                     batch = batch.to(DEVICE)
-                    output = self.model(batch, mask_ratio=self.test_mask_ratio)
+                    output = self.model(batch)
                     loss = self.model.loss(output)
                     val_loss = loss.item()
 
@@ -599,7 +678,7 @@ class TrainMaskedTransformer:
                 batch = batch.to(DEVICE)
                 repeated_losses = []
                 for _ in range(self.eval_mask_repeats):
-                    output = self.model(batch, mask_ratio=self.test_mask_ratio)
+                    output = self.model(batch)
                     repeated_losses.append(self.model.loss(output, per_event=True).detach().cpu())
 
                 repeated_losses = torch.stack(repeated_losses, dim=0)
@@ -618,7 +697,7 @@ class TrainMaskedTransformer:
                 batch = batch.to(DEVICE)
                 repeated_losses = []
                 for _ in range(self.eval_mask_repeats):
-                    output = self.model(batch, mask_ratio=self.test_mask_ratio)
+                    output = self.model(batch)
                     repeated_losses.append(self.model.loss(output, per_event=True).detach().cpu())
 
                 repeated_losses = torch.stack(repeated_losses, dim=0)
@@ -637,7 +716,7 @@ class TrainMaskedTransformer:
                 batch = batch.to(DEVICE)
                 repeated_losses = []
                 for _ in range(self.eval_mask_repeats):
-                    output = self.model(batch, mask_ratio=self.test_mask_ratio)
+                    output = self.model(batch)
                     repeated_losses.append(self.model.loss(output, per_event=True).detach().cpu())
 
                 repeated_losses = torch.stack(repeated_losses, dim=0)
@@ -719,11 +798,7 @@ class TrainMaskedTransformer:
             "batch_size": self.batch_size,
             "hidden_dim": self.hidden_dim,
             "num_layers": self.num_layers,
-            "num_heads": self.num_heads,
-            "ffn_dim": self.ffn_dim,
             "dropout": self.dropout,
-            "train_mask_ratio": self.train_mask_ratio,
-            "test_mask_ratio": self.test_mask_ratio,
             "eval_mask_repeats": self.eval_mask_repeats,
             "epochs": self.epochs,
             "learning_rate": self.initial_lr,
@@ -755,8 +830,8 @@ class TrainMaskedTransformer:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        prog="Train Transformer Masked Encoder",
-        description="trains the transformer masked encoder model on processed data"
+        prog="Train Eta-Phi MLP Baseline",
+        description="trains an eta-phi-only MLP baseline on processed data"
     )
     parser.add_argument(
         "--background", "-b", type=str, default=bg_file,
@@ -771,28 +846,12 @@ if __name__ == "__main__":
         help="Transformer hidden dimension. Defaults to config."
     )
     parser.add_argument(
-        "--num-heads", type=int, default=4,
-        help="Number of transformer attention heads. Default: 4."
-    )
-    parser.add_argument(
-        "--ffn-dim", type=int, default=None,
-        help="Transformer FFN hidden dimension. Default: 4 * hidden_dim."
-    )
-    parser.add_argument(
         "--dropout", type=float, default=0.1,
         help="Dropout used inside transformer blocks. Default: 0.1."
     )
     parser.add_argument(
-        "--train-mask-ratio", type=float, default=0.3,
-        help="Fraction of valid non-CLS tokens to mask during training. Default: 0.3."
-    )
-    parser.add_argument(
-        "--test-mask-ratio", type=float, default=0.3,
-        help="Fraction of valid non-CLS tokens to mask during validation and final evaluation. Default: 0.3."
-    )
-    parser.add_argument(
-        "--eval-mask-repeats", type=int, default=10,
-        help="Number of random masks to average for each event during final evaluation. Default: 10."
+        "--eval-mask-repeats", type=int, default=1,
+        help="Number of repeated deterministic evaluations to average for API parity. Default: 1."
     )
     parser.add_argument(
         "--batch-size", type=int, default=config["model"]["batch_size"],
@@ -832,10 +891,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--num-layers", type=int, default=4,
-        help="Number of transformer encoder layers. Default: 4."
+        help="Number of MLP layers. Default: 4."
     )
 
-    trainer = TrainMaskedTransformer()
+    trainer = TrainMLPBaseline()
     trainer.load()
     trainer.build_graphs()
     trainer.compute_stats()
