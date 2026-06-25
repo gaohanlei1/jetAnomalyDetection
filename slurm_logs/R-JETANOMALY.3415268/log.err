@@ -1,6 +1,0 @@
-Traceback (most recent call last):
-  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_train_cls_transformer_ae.py", line 714, in <module>
-    trainer.load()
-  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_train_cls_transformer_ae.py", line 152, in load
-    raise FileNotFoundError(f"Background file does not exist: {self.bg_file}")
-FileNotFoundError: Background file does not exist: data/processed/PT-200to400/scaledby_QCD/QCD_scaled.pkl

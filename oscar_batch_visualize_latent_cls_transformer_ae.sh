@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --nodes=1               # node count
-#SBATCH --nodelist=gpu3101      # the L40S GPU!! 3001-3005 or gpu3101 are L40S
 #SBATCH -p gpu --gres=gpu:1     # number of gpus per node
+#SBATCH --nodelist=gpu3101      # the L40S GPU!! 3001-3005 and 3101 are L40S
 #SBATCH --ntasks-per-node=1     # total number of tasks across all nodes
 #SBATCH --cpus-per-task=4       # cpu-cores per task (>1 if multi-threaded tasks)
 #SBATCH -t 12:00:00             # total run time limit (HH:MM:SS)
@@ -34,19 +34,14 @@ conda activate jet
 # check pytorch version
 python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 
-python -u scripts/run_train_cls_transformer_ae.py \
-    --background "data/processed/qcd-vs-wjet-pt-200to400/QCD_scaled_scaled.pkl" \
-    --signal "data/processed/qcd-vs-wjet-pt-200to400/WJet_scaled_scaled.pkl" \
-    --hidden-dim 4 \
-    --latent-dim 2 \
-    --num-layers 8 \
-    --num-heads 2 \
-    --num-slots 128 \
-    --batch-size 64 \
-    --epochs 10 \
-    --learning-rate 1e-4 \
-    --weight-decay 1e-4 \
-    --loss-type hungarian \
-    --output-dir "plots/run-cls-transformer-ae-lixing-h4-l2-8l-5v-10epo"
-    
+# python -u visualize/plot_latent_space.py \
+#     plots/run-cls-transformer-ae-lixing-h4-l2-4l-5v-10epo \
+#     "QCD" \
+#     "WJet" \
+#     --output plots/run-cls-transformer-ae-lixing-h4-l2-4l-5v-10epo/latent_space.png
 
+python -u visualize/plot_latent_space.py \
+    plots/run-cls-transformer-ae-lixing-h32-l8-150epo \
+    "QCD" \
+    "WJet" \
+    --output plots/run-cls-transformer-ae-lixing-h32-l8-150epo/latent_space.png
