@@ -27,6 +27,7 @@ from typing import List, Tuple
 # Add parent directory to import local project modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from models.cls_t2t_transformer_ae import JetClassT2TTransformerAE
 import torch
 import pandas as pd
 import numpy as np
@@ -40,6 +41,7 @@ from sklearn.decomposition import PCA
 import constants as c
 from helpers import helpers_main
 from models.autoencoder import JetGraphAutoencoder
+from models.cls_transformer_ae import JetClassTokenTransformerAE
 from preprocess.make_graphs import graph_data_loader
 
 
@@ -132,8 +134,8 @@ def load_data_from_summary(summary: dict):
 
 
 def build_graphs_from_summary(summary: dict, bg_data, sg_data):
-    method = summary["method"]
-    knn = summary["knn"]
+    method = summary.get("method", "eta_phi")
+    knn = summary.get("knn", 3)
 
     bg_graphs = graph_data_loader(
         bg_data,
@@ -142,6 +144,7 @@ def build_graphs_from_summary(summary: dict, bg_data, sg_data):
         device="cpu",
         method=method,
         alpha=config["training"]["alpha"],
+        node_feature_names=summary.get("feature_names", None)
     )
 
     sg_graphs = graph_data_loader(
@@ -151,6 +154,7 @@ def build_graphs_from_summary(summary: dict, bg_data, sg_data):
         device="cpu",
         method=method,
         alpha=config["training"]["alpha"],
+        node_feature_names=summary.get("feature_names", None)
     )
 
     if len(bg_graphs) == 0:
@@ -202,7 +206,7 @@ def load_model_from_run(summary: dict, run_dir: str, device: torch.device):
         weights_only=False,
     )
 
-    if isinstance(loaded_obj, JetGraphAutoencoder):
+    if isinstance(loaded_obj, JetGraphAutoencoder) or isinstance(loaded_obj, JetClassTokenTransformerAE) or isinstance(loaded_obj, JetClassT2TTransformerAE):
         model = loaded_obj.to(device)
         model.eval()
         return model
@@ -234,17 +238,72 @@ def get_graph_level_latents(model, graphs, batch_size: int, device: torch.device
         for batch in loader:
             batch = batch.to(device)
 
-            # This mirrors JetGraphAutoencoder.forward(), but stops after encoder.
-            x = model.embedding(batch.x)
-            z_nodes = model.encoder(
-                x,
-                batch.edge_index,
-                batch,
-                training=False,
-            )
+            if isinstance(model, JetGraphAutoencoder):
+                # This mirrors JetGraphAutoencoder.forward(), but stops after encoder.
+                x = model.embedding(batch.x)
+                z_nodes = model.encoder(
+                    x,
+                    batch.edge_index,
+                    batch,
+                    training=False,
+                )
 
-            # Convert node-level latent vectors into graph/event-level latent vectors.
-            z_graph = global_mean_pool(z_nodes, batch.batch)
+                # Convert node-level latent vectors into graph/event-level latent vectors.
+                z_graph = global_mean_pool(z_nodes, batch.batch)
+            elif isinstance(model, JetClassTokenTransformerAE):
+                # This mirrors JetClassTokenTransformerAE.forward(), but stops after encoder.
+                x, valid_mask = model._to_dense(batch)
+                eta_phi = x[:, :, :2]
+
+                particle_tokens = model.feature_embedding(x)
+                particle_tokens = particle_tokens + model.position_embedding(eta_phi)
+
+                cls_token = model.cls_embedding.expand(batch.num_graphs, -1, -1)
+                encoder_input = torch.cat([cls_token, particle_tokens], dim=1)
+
+                cls_valid_mask = torch.ones(
+                    batch.num_graphs, 1, dtype=torch.bool, device=x.device
+                )
+                encoder_valid_mask = torch.cat([cls_valid_mask, valid_mask], dim=1)
+                key_padding_mask = ~encoder_valid_mask
+
+                encoded = model.encoder(
+                    encoder_input,
+                    src_key_padding_mask=key_padding_mask,
+                )
+                cls_hidden = encoded[:, 0]
+                latent = model.to_latent(cls_hidden)
+
+                # Convert node-level latent vectors into graph/event-level latent vectors.
+                z_graph = latent
+            elif isinstance(model, JetClassT2TTransformerAE):
+                # This mirrors JetClassT2TTransformerAE.forward(), but stops after encoder.
+                x, valid_mask = model._to_dense(batch)
+                eta_phi = x[:, :, :2]
+
+                particle_tokens = model.feature_embedding(x)
+                particle_tokens = particle_tokens + model.position_embedding(eta_phi)
+
+                cls_token = model.cls_embedding.expand(batch.num_graphs, -1, -1)
+                encoder_input = torch.cat([cls_token, particle_tokens], dim=1)
+
+                cls_valid_mask = torch.ones(
+                    batch.num_graphs, 1, dtype=torch.bool, device=x.device
+                )
+                encoder_valid_mask = torch.cat([cls_valid_mask, valid_mask], dim=1)
+                key_padding_mask = ~encoder_valid_mask
+
+                encoded = model.encoder(
+                    encoder_input,
+                    src_key_padding_mask=key_padding_mask,
+                )
+                cls_hidden = encoded[:, 0]
+                latent = model.to_latent(cls_hidden)
+
+                # Convert node-level latent vectors into graph/event-level latent vectors.
+                z_graph = latent
+            else:
+                raise TypeError(f"Unsupported model type: {type(model)}")
 
             latent_batches.append(z_graph.detach().cpu())
 

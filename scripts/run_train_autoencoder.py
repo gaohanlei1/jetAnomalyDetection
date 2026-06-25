@@ -15,16 +15,16 @@ python -u scripts/run_train_autoencoder.py \
     --method eta_phi \
     --knn 3 \
     --smallest-dim 4 \
-    --hidden-dim 16 \
+    --hidden-dim 8 \
     --num-reduced-edges 3 \
     --batch-size 64 \
-    --epochs 20 \
+    --epochs 150 \
     --learning-rate 1e-5 \
     --weight-decay 5e-4 \
     --no-lr-scheduler \
     --no-normalize-features \
     --seed 42 \
-    --output-dir "plots/run-16h-4s-3e-8v"
+    --output-dir "plots/run-8h-4s-3e-150epo"
 """
 
 import sys
@@ -231,7 +231,10 @@ class TrainAutoencoder:
             "pdgId_130",
             "pdgId_211",
         ]
-        feature_names += pdg_features
+        # feature_names += pdg_features
+        feature_names = [
+            'pt', 'eta', 'phi', 'd0/d0Err', 'dz/dzErr'
+        ]
         self.bg_graphs = graph_data_loader(
             self.bg_data,
             data_label=0,
@@ -695,7 +698,15 @@ class TrainAutoencoder:
             self.model.signal_loss,
             background_label="QCD (Test)",
             signal_label="WJet",
-            save_path=os.path.join(self.TRAIN_PLOTS_PATH, "anomaly_score.png"),
+            save_path=os.path.join(self.TRAIN_PLOTS_PATH, "bgtest-vs-signal-anomaly-score.png"),
+        )
+        
+        plot_anomaly_score(
+            self.model.background_train_loss,
+            self.model.signal_loss,
+            background_label="QCD (Train)",
+            signal_label="WJet",
+            save_path=os.path.join(self.TRAIN_PLOTS_PATH, "bgtrain-vs-signal-anomaly-score.png"),
         )
 
         plot_roc_curve(

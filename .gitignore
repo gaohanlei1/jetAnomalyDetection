@@ -31,7 +31,6 @@ dist/
 *.h5
 *.hdf5
 *.csv
-*.json
 *.db
 *.root
 

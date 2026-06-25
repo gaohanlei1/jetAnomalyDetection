@@ -69,9 +69,9 @@ DEFAULT_FEATURE_NAMES = [
     "pt",
     "d0/d0Err",
     "dz/dzErr",
-    "charge",
-    "mass",
-    "log_pt",
+    # "charge",
+    # "mass",
+    # "log_pt",
 ]
 
 
@@ -282,6 +282,12 @@ class TrainClassTokenTransformerAE:
             alpha=config["training"]["alpha"],
             node_feature_names=self.feature_names,
         )
+
+        train_size = int(self.TRAIN_SPLIT * len(self.bg_graphs))
+        # make sure to shuffle the background graphs before splitting
+        np.random.shuffle(self.bg_graphs)
+        self.bg_train_graphs = self.bg_graphs[:train_size]
+        self.bg_test_graphs = self.bg_graphs[train_size:]
 
         if len(self.bg_train_graphs) == 0:
             raise ValueError("No background training graphs were created.")
@@ -527,7 +533,8 @@ class TrainClassTokenTransformerAE:
                     pbar.set_postfix({"Val Loss": f"{loss.item():.6g}"})
 
             mean_val_loss = float(np.nanmean(val_losses))
-
+            print(f"Debug: Epoch {epoch + 1}/{self.epochs}, Mean Val Loss: {mean_val_loss:.6g}, Val Loss Std: {np.nanstd(val_losses):.6g}, Val Loss Min: {np.nanmin(val_losses):.6g}, Val Loss Max: {np.nanmax(val_losses):.6g}")
+            print(f"Debug: Epoch {epoch + 1}/{self.epochs}, Mean Train Loss: {mean_train_loss:.6g}, Train Loss Std: {np.nanstd(epoch_train_losses):.6g}, Train Loss Min: {np.nanmin(epoch_train_losses):.6g}, Train Loss Max: {np.nanmax(epoch_train_losses):.6g}")
             self.model.train_hist.append(mean_train_loss)
             self.model.val_hist.append(mean_val_loss)
             validation_loss_history.append(mean_val_loss)
@@ -579,7 +586,15 @@ class TrainClassTokenTransformerAE:
             self.model.signal_loss,
             background_label="QCD (Test)",
             signal_label="WJet",
-            save_path=os.path.join(self.output_dir, "anomaly_score.png"),
+            save_path=os.path.join(self.output_dir, "bgtest-vs-signal-anomaly-score.png"),
+        )
+        
+        plot_anomaly_score(
+            self.model.background_train_loss,
+            self.model.signal_loss,
+            background_label="QCD (Train)",
+            signal_label="WJet",
+            save_path=os.path.join(self.output_dir, "bgtrain-vs-signal-anomaly-score.png"),
         )
 
         plot_roc_curve(
