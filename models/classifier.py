@@ -67,6 +67,39 @@ class JetGraphAutoencoderClassification(nn.Module):
         self.fc3 = Linear(self.smallest_dim * 2, 2 * self.num_features)
         self.out = Linear(2 * self.num_features, 1)
 
+    def batched_knn_graph(self, x, batch, k):
+        """
+        Recompute kNN edges inside each graph, clamping k for small jets.
+
+        torch_cluster.knn_graph accepts one k value for the whole batch. Some
+        jets have fewer than k + 1 valid particles, so building each graph
+        separately avoids both cross-jet edges and too-large k values.
+        """
+        if batch is None:
+            if x.size(0) < 2:
+                return torch.empty((2, 0), dtype=torch.long, device=x.device)
+            return knn_graph(x, k=min(k, x.size(0) - 1), loop=False).to(x.device)
+
+        edge_indices = []
+        for graph_id in batch.unique(sorted=True):
+            node_indices = (batch == graph_id).nonzero(as_tuple=False).view(-1)
+            if node_indices.numel() < 2:
+                continue
+
+            local_x = x[node_indices]
+            local_k = min(k, local_x.size(0) - 1)
+            local_edge_index = knn_graph(
+                local_x,
+                k=local_k,
+                loop=False,
+            ).to(x.device)
+            edge_indices.append(node_indices[local_edge_index])
+
+        if not edge_indices:
+            return torch.empty((2, 0), dtype=torch.long, device=x.device)
+
+        return torch.cat(edge_indices, dim=1)
+
     def encoder(self, x, edge_index, data):
         """
         Encode node features into a latent graph representation.
@@ -118,7 +151,11 @@ class JetGraphAutoencoderClassification(nn.Module):
         x = self.encoder(x, edge_index, data)
 
         if knn:
-            edge_index = knn_graph(x, k=self.num_reduced_edges)
+            edge_index = self.batched_knn_graph(
+                x,
+                batch=data.batch,
+                k=self.num_reduced_edges,
+            )
 
         if topk:
             x, edge_index, _, batch, _, _ = self.topk(x, edge_index.to(torch.int64), batch=data.batch)

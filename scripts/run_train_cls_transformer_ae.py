@@ -24,6 +24,7 @@ python -u scripts/run_train_cls_transformer_ae.py \
 """
 
 import argparse
+import copy
 import json
 import logging
 import os
@@ -103,8 +104,6 @@ def normalize_graph_features(
 
 
 class TrainClassTokenTransformerAE:
-    TRAIN_SPLIT = 0.8
-
     def __init__(self):
         self.args = parser.parse_args()
 
@@ -129,7 +128,30 @@ class TrainClassTokenTransformerAE:
         self.normalize_features = self.args.normalize_features
         self.seed = self.args.seed
         self.max_background_events = self.args.max_background_events
+        self.max_background_train_events = (
+            self.args.max_background_train_events
+            if self.args.max_background_train_events is not None
+            else self.args.max_background_events
+        )
+        self.max_background_test_events = self.args.max_background_test_events
         self.max_signal_events = self.args.max_signal_events
+        self.test_fraction = self.args.test_fraction
+        self.shuffle_splits = self.args.shuffle_splits
+
+        if not 0.0 < self.test_fraction < 1.0:
+            raise ValueError("--test-fraction must be between 0 and 1.")
+        if (
+            self.max_background_train_events is not None
+            and self.max_background_train_events <= 0
+        ):
+            raise ValueError("--max-background-train-events must be positive.")
+        if (
+            self.max_background_test_events is not None
+            and self.max_background_test_events <= 0
+        ):
+            raise ValueError("--max-background-test-events must be positive.")
+        if self.max_signal_events is not None and self.max_signal_events <= 0:
+            raise ValueError("--max-signal-events must be positive.")
 
         self.output_dir = self.args.output_dir
         self.feature_plots_dir = os.path.join(self.output_dir, "features")
@@ -156,11 +178,6 @@ class TrainClassTokenTransformerAE:
         self.bg_data = pd.read_pickle(self.bg_file)
         self.sg_data = pd.read_pickle(self.sg_file)
 
-        if self.max_background_events is not None:
-            self.bg_data = self.bg_data.head(self.max_background_events)
-        if self.max_signal_events is not None:
-            self.sg_data = self.sg_data.head(self.max_signal_events)
-
         rawfj_pt_col = c.RAW_FATJET_PROPERTIES_PREFIX + "pt"
         if rawfj_pt_col in self.bg_data:
             self.bg_data = self.bg_data[
@@ -175,18 +192,78 @@ class TrainClassTokenTransformerAE:
         if "WminusH" in self.sg_file:
             self.sg_data = self.sg_data.apply(remove_low_pt_muons, axis=1)
 
+        if self.shuffle_splits:
+            self.bg_data = self.bg_data.sample(
+                frac=1.0,
+                random_state=self.seed,
+            ).reset_index(drop=True)
+            self.sg_data = self.sg_data.sample(
+                frac=1.0,
+                random_state=self.seed,
+            ).reset_index(drop=True)
+        else:
+            self.bg_data = self.bg_data.reset_index(drop=True)
+            self.sg_data = self.sg_data.reset_index(drop=True)
+
+        if self.max_signal_events is not None:
+            self.sg_data = self.sg_data.head(self.max_signal_events).reset_index(drop=True)
+
         logging.info(f"Loaded background rows: {len(self.bg_data)}")
         logging.info(f"Loaded signal rows: {len(self.sg_data)}")
         print(f"Loaded background rows: {len(self.bg_data)}")
         print(f"Loaded signal rows: {len(self.sg_data)}")
 
+    def split_background_data(self):
+        test_size = int(round(self.test_fraction * len(self.bg_data)))
+        test_size = min(max(test_size, 1), len(self.bg_data) - 1)
+
+        self.bg_test_data = self.bg_data.iloc[:test_size].reset_index(drop=True)
+        self.bg_train_pool_data = self.bg_data.iloc[test_size:].reset_index(drop=True)
+
+        if self.max_background_test_events is not None:
+            self.bg_test_data = self.bg_test_data.head(
+                self.max_background_test_events
+            ).reset_index(drop=True)
+
+        if self.max_background_train_events is not None:
+            self.bg_train_data = self.bg_train_pool_data.head(
+                self.max_background_train_events
+            ).reset_index(drop=True)
+        else:
+            self.bg_train_data = self.bg_train_pool_data
+
+        if len(self.bg_train_data) == 0:
+            raise ValueError("No background training rows are available after splitting.")
+        if len(self.bg_test_data) == 0:
+            raise ValueError("No background test rows are available after splitting.")
+
+        logging.info(f"Background train-pool rows: {len(self.bg_train_pool_data)}")
+        logging.info(f"Background train rows used: {len(self.bg_train_data)}")
+        logging.info(f"Background fixed test rows: {len(self.bg_test_data)}")
+        print(f"Background train-pool rows: {len(self.bg_train_pool_data)}")
+        print(f"Background train rows used: {len(self.bg_train_data)}")
+        print(f"Background fixed test rows: {len(self.bg_test_data)}")
+
     def build_graphs(self):
         if self.feature_names[:2] != ["eta", "phi"]:
             raise ValueError("feature_names must start with ['eta', 'phi'] for positional embedding.")
 
-        print("Building background graphs...")
-        self.bg_graphs = graph_data_loader(
-            self.bg_data,
+        self.split_background_data()
+
+        print("Building background training graphs...")
+        self.bg_train_graphs = graph_data_loader(
+            self.bg_train_data,
+            data_label=0,
+            nearest_neighbors=config["misc"]["k_nearest_neighbors"],
+            device="cpu",
+            method="eta_phi",
+            alpha=config["training"]["alpha"],
+            node_feature_names=self.feature_names,
+        )
+
+        print("Building fixed background test graphs...")
+        self.bg_test_graphs = graph_data_loader(
+            self.bg_test_data,
             data_label=0,
             nearest_neighbors=config["misc"]["k_nearest_neighbors"],
             device="cpu",
@@ -205,10 +282,6 @@ class TrainClassTokenTransformerAE:
             alpha=config["training"]["alpha"],
             node_feature_names=self.feature_names,
         )
-
-        train_size = int(self.TRAIN_SPLIT * len(self.bg_graphs))
-        self.bg_train_graphs = self.bg_graphs[:train_size]
-        self.bg_test_graphs = self.bg_graphs[train_size:]
 
         if len(self.bg_train_graphs) == 0:
             raise ValueError("No background training graphs were created.")
@@ -235,8 +308,8 @@ class TrainClassTokenTransformerAE:
         self._check_num_slots()
 
         print("Feature names:", self.feature_names)
-        print("Example graph.x shape:", self.bg_graphs[0].x.shape)
-        print("Background graphs:", len(self.bg_train_graphs), "train,", len(self.bg_test_graphs), "val")
+        print("Example graph.x shape:", self.bg_train_graphs[0].x.shape)
+        print("Background graphs:", len(self.bg_train_graphs), "train,", len(self.bg_test_graphs), "test")
         print("Signal graphs:", len(self.sg_graphs))
 
     def _check_num_slots(self):
@@ -365,6 +438,8 @@ class TrainClassTokenTransformerAE:
         epoch_end_steps = []
 
         best_val_loss = float("inf")
+        best_epoch = None
+        best_model_state = None
         best_model_path = os.path.join(self.output_dir, "best_model.pth")
         timer = helpers_main.LeTimer()
 
@@ -460,6 +535,8 @@ class TrainClassTokenTransformerAE:
 
             if mean_val_loss < best_val_loss:
                 best_val_loss = mean_val_loss
+                best_epoch = epoch + 1
+                best_model_state = copy.deepcopy(self.model.state_dict())
                 torch.save(self.model, best_model_path)
                 logging.info(f"Saved new best model to {best_model_path}")
                 print(f"Saved new best model to {best_model_path}")
@@ -470,6 +547,11 @@ class TrainClassTokenTransformerAE:
             logging.info(f"train loss: {mean_train_loss}")
             logging.info(f"validation/background loss: {mean_val_loss}")
             logging.info(timer.time_taken())
+
+        if best_model_state is not None:
+            self.model.load_state_dict(best_model_state)
+            logging.info(f"Loaded best validation checkpoint from epoch {best_epoch} for final evaluation.")
+            print(f"Loaded best validation checkpoint from epoch {best_epoch} for final evaluation.")
 
         background_train_loss, background_train_data = self._evaluate_loader(
             train_loader,
@@ -565,11 +647,22 @@ class TrainClassTokenTransformerAE:
             "seed": self.seed,
             "device": DEVICE,
             "max_background_events": self.max_background_events,
+            "max_background_train_events": self.max_background_train_events,
+            "max_background_test_events": self.max_background_test_events,
             "max_signal_events": self.max_signal_events,
+            "shuffle_splits": self.shuffle_splits,
+            "test_fraction": self.test_fraction,
+            "background_rows_after_filter": len(self.bg_data),
+            "background_train_pool_rows": len(self.bg_train_pool_data),
+            "background_train_rows": len(self.bg_train_data),
+            "background_test_rows": len(self.bg_test_data),
+            "signal_rows_after_filter": len(self.sg_data),
             "auc": float(auc_score),
             "background_train_graphs": len(self.bg_train_graphs),
             "background_test_graphs": len(self.bg_test_graphs),
             "signal_graphs": len(self.sg_graphs),
+            "best_epoch": best_epoch,
+            "evaluated_checkpoint": "best_val_loss",
             "best_val_loss": float(best_val_loss),
             "final_val_loss": float(np.nanmean(self.model.background_test_loss)),
             "final_signal_loss": float(np.nanmean(self.model.signal_loss)),
@@ -696,12 +789,43 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max-background-events",
         type=int,
-        help="Optional background row limit for a smoke test.",
+        help=(
+            "Backward-compatible alias for --max-background-train-events. "
+            "The cap is applied after the fixed background test split."
+        ),
+    )
+    parser.add_argument(
+        "--max-background-train-events",
+        type=int,
+        help=(
+            "Optional cap on background training rows. The fixed background test "
+            "set is selected first, so this does not change the evaluation set."
+        ),
+    )
+    parser.add_argument(
+        "--max-background-test-events",
+        type=int,
+        help=(
+            "Optional cap on held-out background test rows after the fixed split. "
+            "Use the same seed and cap across runs for comparable AUCs."
+        ),
     )
     parser.add_argument(
         "--max-signal-events",
         type=int,
-        help="Optional signal row limit for a smoke test.",
+        help="Optional cap on shuffled signal rows used for evaluation.",
+    )
+    parser.add_argument(
+        "--test-fraction",
+        type=float,
+        default=0.2,
+        help="Fraction of shuffled background rows held out as the fixed test set. Default: 0.2.",
+    )
+    parser.add_argument(
+        "--shuffle-splits",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Shuffle filtered rows with --seed before selecting fixed train/test splits.",
     )
     parser.add_argument(
         "--feature-names",

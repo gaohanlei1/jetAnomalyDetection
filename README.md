@@ -26,11 +26,15 @@ Do not run heavy preprocessing or training directly on an Oscar login node.
 - `oscar_batch_prepare_data.sh`: CPU batch job that creates the pickle pair.
 - `oscar_batch_ae.sh`: GPU batch job that trains and evaluates the graph
   autoencoder.
+- `oscar_batch_classifier.sh`: GPU batch job that trains a supervised
+  background-vs-signal classifier and reports a held-out ROC AUC reference.
 - `scripts/preprocessing.py`: converts ROOT events into intermediate pickle
   chunks.
 - `scripts/processing.py`: combines, feature-engineers, filters, and scales the
   intermediate data.
 - `scripts/run_train_autoencoder.py`: trains and evaluates the model.
+- `scripts/run_train_classifier.py`: trains the supervised classifier upper-bound
+  benchmark on the same processed pickle pair.
 
 ## Local repository
 

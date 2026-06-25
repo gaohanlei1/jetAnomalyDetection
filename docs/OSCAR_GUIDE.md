@@ -293,7 +293,54 @@ To cancel a mistaken job:
 scancel <job-id>
 ```
 
-## 8. Read the result
+## 8. Optional: run the supervised classifier reference
+
+The graph autoencoder is unsupervised: it trains on QCD and ranks WJet by
+reconstruction loss. A supervised classifier is different because it trains with
+both QCD and WJet labels. Its held-out AUC is a useful reference for the dataset
+separability, but it is not an anomaly-detection result.
+
+Submit it on the same processed pickle pair:
+
+```bash
+DATASET="$HOME/scratch/jet-anomaly-work/datasets/pt200to400-v1/processed/PT-200to400/scaledby_QCD"
+
+cd ~/jetAnomalyDetection
+
+sbatch oscar_batch_classifier.sh \
+  "$DATASET/QCD_scaled.pkl" \
+  "$DATASET/WJet_scaled.pkl" \
+  "$HOME/scratch/jet-anomaly-runs/classifier-upper-bound-pt200to400-v1"
+```
+
+For a quick diagnostic before the full job, append small event limits and one
+epoch:
+
+```bash
+sbatch oscar_batch_classifier.sh \
+  "$DATASET/QCD_scaled.pkl" \
+  "$DATASET/WJet_scaled.pkl" \
+  "$HOME/scratch/jet-anomaly-runs/classifier-smoke" \
+  --max-background-events 200 \
+  --max-signal-events 200 \
+  --epochs 1
+```
+
+After it completes, inspect:
+
+```bash
+RESULT="$HOME/scratch/jet-anomaly-runs/classifier-upper-bound-pt200to400-v1"
+
+cat "$RESULT/summary.json"
+ls -lh "$RESULT"
+```
+
+The key number is again `auc`, but here it means held-out supervised
+background-vs-signal ROC AUC. The output directory also contains `roc.png`,
+`classifier_score.png`, `training_curves.png`, `classifier_metrics.csv`, and the
+saved test score arrays.
+
+## 9. Read the autoencoder result
 
 After the GPU job completes:
 
