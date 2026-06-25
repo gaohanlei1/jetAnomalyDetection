@@ -5,7 +5,12 @@ from torch_geometric.utils import to_dense_batch
 
 class JetClassT2TTransformerAE(nn.Module):
     """
-    Transformer-based autoencoder with class token for jet anomaly detection.
+    Class-token transformer autoencoder with token-to-token reconstruction.
+
+    The encoder compresses the full particle set into a CLS latent vector. The
+    decoder reconstructs each input particle from the shared CLS latent context
+    and that particle's eta-phi positional query. This avoids fixed decoder
+    templates and uses a masked token-wise MSE loss.
     """
     def __init__(
         self,
@@ -16,8 +21,6 @@ class JetClassT2TTransformerAE(nn.Module):
         num_heads: int = 4,
         ffn_dim: int | None = None,
         dropout: float = 0.1,
-        num_slots: int = 64,
-        loss_type: str = "hungarian",
     ):
         """
         Initialize the JetClassTokenTransformerAE.
@@ -32,13 +35,9 @@ class JetClassT2TTransformerAE(nn.Module):
             ffn_dim: Hidden dimension of the transformer feed-forward network.
                 Defaults to 4 * hidden_dim.
             dropout: Dropout used inside transformer blocks.
-            num_slots: Fixed number of learned output slots. This must be at
-                least as large as the number of particles you want to reconstruct.
-            loss_type: Reconstruction loss to use. "hungarian" treats particles
-                as an unordered set; "index" compares slot i to particle i.
         """
 
-        super(JetClassTokenTransformerAE, self).__init__()
+        super(JetClassT2TTransformerAE, self).__init__()
 
         if num_features <= 2:
             raise ValueError("num_features must be greater than 2 because x[:, :2] is reserved for eta-phi.")
@@ -46,12 +45,8 @@ class JetClassT2TTransformerAE(nn.Module):
             raise ValueError("hidden_dim must be divisible by num_heads.")
         if latent_dim <= 0:
             raise ValueError("latent_dim must be positive.")
-        if num_slots <= 0:
-            raise ValueError("num_slots must be positive.")
         if not 0.0 <= dropout <= 1.0:
             raise ValueError("dropout must be in [0, 1].")
-        if loss_type not in {"hungarian", "index"}:
-            raise ValueError("loss_type must be either 'hungarian' or 'index'.")
 
         self.num_features = num_features
         self.hidden_dim = hidden_dim
@@ -60,8 +55,6 @@ class JetClassT2TTransformerAE(nn.Module):
         self.num_heads = num_heads
         self.ffn_dim = ffn_dim if ffn_dim is not None else hidden_dim * 4
         self.dropout = dropout
-        self.num_slots = num_slots
-        self.loss_type = loss_type
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=hidden_dim,
@@ -95,8 +88,6 @@ class JetClassT2TTransformerAE(nn.Module):
         self.to_latent = nn.Linear(hidden_dim, self.latent_dim)
         self.from_latent = nn.Linear(self.latent_dim, hidden_dim)
 
-        self.decoder_slots = nn.Parameter(torch.zeros(1, self.num_slots, hidden_dim))
-
         self.decoder = nn.TransformerEncoder(decoder_layer, num_layers)
 
         self.reconstruction_head = nn.Linear(hidden_dim, num_features)
@@ -105,7 +96,6 @@ class JetClassT2TTransformerAE(nn.Module):
 
     def _reset_parameters(self):
         nn.init.trunc_normal_(self.cls_embedding, std=0.02)
-        nn.init.trunc_normal_(self.decoder_slots, std=0.02)
 
     def _to_dense(self, data):
         if hasattr(data, "x"):
@@ -139,11 +129,6 @@ class JetClassT2TTransformerAE(nn.Module):
 
         if x.size(-1) != self.num_features:
             raise ValueError(f"Expected x.size(-1) == {self.num_features}, got {x.size(-1)}.")
-        if x.size(1) > self.num_slots:
-            raise ValueError(
-                f"Input has {x.size(1)} particles, but model has only {self.num_slots} decoder slots. "
-                "Increase num_slots or truncate/pad the dataset before training."
-            )
 
         batch_size = x.size(0)
         eta_phi = x[:, :, :2]
@@ -163,10 +148,10 @@ class JetClassT2TTransformerAE(nn.Module):
         latent = self.to_latent(cls_hidden)
 
         latent_context = self.from_latent(latent)
-        decoder_input = self.decoder_slots.expand(batch_size, -1, -1)
+        decoder_input = self.position_embedding(eta_phi)
         decoder_input = decoder_input + latent_context[:, None, :]
 
-        decoded = self.decoder(decoder_input)
+        decoded = self.decoder(decoder_input, src_key_padding_mask=~valid_mask)
         reconstruction = self.reconstruction_head(decoded)
 
         return {
@@ -176,13 +161,10 @@ class JetClassT2TTransformerAE(nn.Module):
             "latent": latent,
         }
 
-    def _index_loss(self, output: dict, per_event: bool = False) -> torch.Tensor:
+    def loss(self, output: dict, per_event: bool = False) -> torch.Tensor:
         reconstruction = output["reconstruction"]
         target = output["target"]
         valid_mask = output["valid_mask"]
-
-        num_target_nodes = target.size(1)
-        reconstruction = reconstruction[:, :num_target_nodes, :]
 
         squared_error = F.mse_loss(reconstruction, target, reduction="none")
         token_loss = squared_error.mean(dim=-1)
@@ -193,48 +175,3 @@ class JetClassT2TTransformerAE(nn.Module):
             return event_loss_sum / event_loss_count
 
         return token_loss[valid_mask].mean()
-
-    def _hungarian_loss(self, output: dict, per_event: bool = False) -> torch.Tensor:
-        try:
-            from scipy.optimize import linear_sum_assignment
-        except ImportError as exc:
-            raise ImportError(
-                "Hungarian set loss requires scipy. Install scipy or use loss_type='index'."
-            ) from exc
-
-        reconstruction = output["reconstruction"]
-        target = output["target"]
-        valid_mask = output["valid_mask"]
-
-        event_losses = []
-        for event_idx in range(target.size(0)):
-            event_target = target[event_idx, valid_mask[event_idx]]
-            event_reconstruction = reconstruction[event_idx]
-
-            if event_target.size(0) == 0:
-                event_losses.append(event_reconstruction.new_zeros(()))
-                continue
-            if event_target.size(0) > event_reconstruction.size(0):
-                raise ValueError(
-                    f"Event has {event_target.size(0)} valid particles, but only "
-                    f"{event_reconstruction.size(0)} decoder slots."
-                )
-
-            pairwise_cost = (
-                event_reconstruction[:, None, :] - event_target[None, :, :]
-            ).pow(2).mean(dim=-1)
-
-            row_idx, col_idx = linear_sum_assignment(pairwise_cost.detach().cpu().numpy())
-            row_idx = torch.as_tensor(row_idx, dtype=torch.long, device=pairwise_cost.device)
-            col_idx = torch.as_tensor(col_idx, dtype=torch.long, device=pairwise_cost.device)
-            event_losses.append(pairwise_cost[row_idx, col_idx].mean())
-
-        event_losses = torch.stack(event_losses)
-        if per_event:
-            return event_losses
-        return event_losses.mean()
-
-    def loss(self, output: dict, per_event: bool = False) -> torch.Tensor:
-        if self.loss_type == "hungarian":
-            return self._hungarian_loss(output, per_event=per_event)
-        return self._index_loss(output, per_event=per_event)
