@@ -207,6 +207,8 @@ class TrainClassTokenTransformerAE:
         )
 
         train_size = int(self.TRAIN_SPLIT * len(self.bg_graphs))
+        # make sure to shuffle the background graphs before splitting
+        np.random.shuffle(self.bg_graphs)
         self.bg_train_graphs = self.bg_graphs[:train_size]
         self.bg_test_graphs = self.bg_graphs[train_size:]
 
@@ -497,7 +499,15 @@ class TrainClassTokenTransformerAE:
             self.model.signal_loss,
             background_label="QCD (Test)",
             signal_label="WJet",
-            save_path=os.path.join(self.output_dir, "anomaly_score.png"),
+            save_path=os.path.join(self.output_dir, "bgtest-vs-signal-anomaly-score.png"),
+        )
+        
+        plot_anomaly_score(
+            self.model.background_train_loss,
+            self.model.signal_loss,
+            background_label="QCD (Train)",
+            signal_label="WJet",
+            save_path=os.path.join(self.output_dir, "bgtrain-vs-signal-anomaly-score.png"),
         )
 
         plot_roc_curve(
