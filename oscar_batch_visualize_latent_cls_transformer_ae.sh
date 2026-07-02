@@ -46,8 +46,14 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #     "WJet" \
 #     --output plots/run-cls-transformer-ae-lixing-h32-l8-150epo/latent_space.png
 
+# python -u visualize/plot_latent_space.py \
+#     plots/run-cls-t2t-transformer-ae-lixing-h4-l2-4l-8v-10epo \
+#     "QCD" \
+#     "WJet" \
+#     --output plots/run-cls-t2t-transformer-ae-lixing-h4-l2-4l-8v-10epo/latent_space.png
+
 python -u visualize/plot_latent_space.py \
-    plots/run-cls-t2t-transformer-ae-lixing-h4-l2-4l-8v-10epo \
+    plots/run-16h-2s-3e \
     "QCD" \
     "WJet" \
-    --output plots/run-cls-t2t-transformer-ae-lixing-h4-l2-4l-8v-10epo/latent_space.png
+    --output plots/run-16h-2s-3e/latent_space.png

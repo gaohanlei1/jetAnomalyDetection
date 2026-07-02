@@ -144,7 +144,7 @@ def build_graphs_from_summary(summary: dict, bg_data, sg_data):
         device="cpu",
         method=method,
         alpha=config["training"]["alpha"],
-        node_feature_names=summary.get("feature_names", None)
+        node_feature_names=summary.get("feature_names", ['pt', 'eta', 'phi', 'd0/d0Err', 'dz/dzErr'])
     )
 
     sg_graphs = graph_data_loader(
@@ -154,7 +154,7 @@ def build_graphs_from_summary(summary: dict, bg_data, sg_data):
         device="cpu",
         method=method,
         alpha=config["training"]["alpha"],
-        node_feature_names=summary.get("feature_names", None)
+        node_feature_names=summary.get("feature_names", ['pt', 'eta', 'phi', 'd0/d0Err', 'dz/dzErr'])
     )
 
     if len(bg_graphs) == 0:
