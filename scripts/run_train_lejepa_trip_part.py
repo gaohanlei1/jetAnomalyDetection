@@ -1262,8 +1262,8 @@ class TrainLeJEPATripletParticleTransformer:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        prog="Train LeJEPA ParticleTransformer Representation",
-        description="Train a minimal ParticleTransformer representation model with LeJEPA-style SSL.",
+        prog="Train LeJEPA Triplet ParticleTransformer Representation",
+        description="Train a ParticleTransformer representation model with LeJEPA + corrupted-negative triplet SSL.",
     )
 
     # Data.
@@ -1284,8 +1284,16 @@ if __name__ == "__main__":
     parser.add_argument(
         "--node-features",
         type=str,
-        default="eta,phi,pt,d0/d0Err,dz/dzErr,mass,charge",
-        help="Comma-separated node feature list. Default: eta,phi,pt,d0/d0Err,dz/dzErr,mass,charge.",
+        default=(
+            "eta,phi,pt,d0/d0Err,dz/dzErr,charge,mass,log_pt,"
+            "pdgId_-211,pdgId_-13,pdgId_-11,pdgId_11,"
+            "pdgId_13,pdgId_22,pdgId_130,pdgId_211"
+        ),
+        help=(
+            "Comma-separated node feature list. Default: eta,phi,pt,d0/d0Err,dz/dzErr,"
+            "charge,mass,log_pt,pdgId_-211,pdgId_-13,pdgId_-11,pdgId_11,"
+            "pdgId_13,pdgId_22,pdgId_130,pdgId_211."
+        ),
     )
     parser.add_argument(
         "--min-nodes",
@@ -1466,6 +1474,70 @@ if __name__ == "__main__":
         help="L2-normalize representations returned by the encoder.",
     )
 
+    # Triplet / corrupted-negative objective.
+    parser.add_argument(
+        "--triplet-weight",
+        type=float,
+        default=0.1,
+        help="Weight for corrupted-negative triplet loss. Default: 0.1.",
+    )
+    parser.add_argument(
+        "--triplet-margin",
+        type=float,
+        default=1.0,
+        help="Margin in ReLU(d_pos - d_neg + margin). Default: 1.0.",
+    )
+    parser.add_argument(
+        "--normalize-triplet-representations",
+        action="store_true",
+        help="L2-normalize representations before triplet distance computation.",
+    )
+    parser.add_argument(
+        "--use-all-views-as-triplet-positives",
+        action="store_true",
+        help="Use all global/local LeJEPA views as triplet positives instead of only global views.",
+    )
+    parser.add_argument(
+        "--num-negative-views",
+        type=int,
+        default=4,
+        help="Number of corrupted negative views generated per batch. Default: 4.",
+    )
+    parser.add_argument(
+        "--negative-modes",
+        type=str,
+        default="identity_shuffle,pt_resample,eta_phi_shuffle,batch_mix",
+        help=(
+            "Comma-separated corrupted negative modes. Supported: "
+            "identity_shuffle, pt_resample, eta_phi_shuffle, batch_mix. "
+            "Default: identity_shuffle,pt_resample,eta_phi_shuffle,batch_mix."
+        ),
+    )
+    parser.add_argument(
+        "--corrupt-node-frac",
+        type=float,
+        default=1.0,
+        help="Fraction of valid nodes corrupted in within-event negative modes. Default: 1.0.",
+    )
+    parser.add_argument(
+        "--batch-mix-anchor-frac",
+        type=float,
+        default=0.5,
+        help="Fraction of anchor-event nodes kept in batch_mix negatives. Default: 0.5.",
+    )
+    parser.add_argument(
+        "--renormalize-negative-pt-sum",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Renormalize corrupted negative pt sums to the original event pt sum. Default: True.",
+    )
+    parser.add_argument(
+        "--renormalize-negative-log-pt-stats",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Match corrupted negative log_pt mean/std to the original event. Default: True.",
+    )
+
     # Optimization.
     parser.add_argument(
         "--batch-size",
@@ -1532,7 +1604,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="plots/run-lejepa-part",
+        default="plots/run-lejepa-trip-part",
         help="Directory for plots, checkpoints, losses, and summary.json.",
     )
     parser.add_argument(
