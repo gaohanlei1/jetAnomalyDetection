@@ -362,8 +362,8 @@ def plot_latent_space(
         s=8,
     )
 
-    ax.set_xlabel("Latent dim 1")
-    ax.set_ylabel("Latent dim 2")
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
     ax.set_title("Latent Space")
     range_lim_low = min(bg_latents_2d.min(), sg_latents_2d.min()) - 0.1
     range_lim_high = max(bg_latents_2d.max(), sg_latents_2d.max()) + 0.1
