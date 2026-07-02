@@ -88,8 +88,10 @@ class ParticleTransformerConfig:
     embed_dim: int = 128
     num_heads: int = 8
     num_layers: int = 4
+    num_class_layers: int = 2
     ffn_mult: int = 4
     dropout: float = 0.1
+    class_dropout: float = 0.0
     representation_dim: int = 128
 
     use_pairwise_bias: bool = True
@@ -335,10 +337,7 @@ def pairwise_physics_features(
 
 class NodeEmbedding(nn.Module):
     """
-    Node feature embedding.
-
-    Submodule stage:
-        Stage 1 of the main model.
+    ParT-style particle feature embedding.
 
     Input:
         x: (B, N, input_dim)
@@ -346,17 +345,18 @@ class NodeEmbedding(nn.Module):
     Output:
         h: (B, N, embed_dim)
 
-    This replaces the original implementation's CPF/NPF/VTX/LT-specific
-    InputProcess modules.
+    For default embed_dim=128, this is:
 
-    Original code:
-        The existing implementation separately embedded cpf, npf, vtx, lt
-        using Conv1d or Linear layers, then concatenated them along the
-        sequence dimension.
+        Linear(input_dim -> 128)
+        GELU
+        LayerNorm
+        Linear(128 -> 512)
+        GELU
+        LayerNorm
+        Linear(512 -> 128)
 
-    This minimal version:
-        There is only one type of node, so a single shared Linear embedding
-        is applied to every node.
+    This is closer to the baseline ParT particle embedding described in the
+    paper.
     """
 
     def __init__(
@@ -367,17 +367,21 @@ class NodeEmbedding(nn.Module):
     ):
         super().__init__()
 
-        self.norm = RMSNorm(input_dim)
-        self.proj = nn.Linear(input_dim, embed_dim)
-        self.act = nn.SiLU()
-        self.dropout = nn.Dropout(dropout)
+        hidden_dim = 4 * embed_dim
+
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, embed_dim),
+            nn.GELU(),
+            nn.LayerNorm(embed_dim),
+            nn.Linear(embed_dim, hidden_dim),
+            nn.GELU(),
+            nn.LayerNorm(hidden_dim),
+            nn.Linear(hidden_dim, embed_dim),
+            nn.Dropout(dropout),
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.norm(x)
-        x = self.proj(x)
-        x = self.act(x)
-        x = self.dropout(x)
-        return x
+        return self.net(x)
 
 
 class PairwiseAttentionBias(nn.Module):
@@ -596,26 +600,13 @@ class ParticleTransformerEncoder(nn.Module):
 # CLS pooling and representation head
 # ------------------------------------------------------------
 
-class CLSPooling(nn.Module):
+class ClassAttentionBlock(nn.Module):
     """
-    CLS attention pooling module.
+    One ParT-style class attention block.
 
-    Submodule stage:
-        Stage after the Transformer encoder.
-
-    This module uses a learnable CLS token as a query. The encoded particle
-    nodes serve as keys and values.
-
-    This is close to the original implementation's logic:
-        ordinary nodes are first updated by self-attention;
-        then a CLS token reads the final node representations.
-
-    Input:
-        h: (B, N, embed_dim)
-        padding_mask: (B, N), optional
-
-    Output:
-        cls: (B, embed_dim)
+    The CLS token is the query.
+    Encoded particle tokens are keys and values.
+    Only the CLS token is updated.
     """
 
     def __init__(
@@ -623,15 +614,12 @@ class CLSPooling(nn.Module):
         embed_dim: int,
         num_heads: int,
         ffn_mult: int = 4,
-        dropout: float = 0.1,
+        dropout: float = 0.0,
     ):
         super().__init__()
 
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
-        nn.init.trunc_normal_(self.cls_token, std=0.02)
-
-        self.query_norm = RMSNorm(embed_dim)
-        self.context_norm = RMSNorm(embed_dim)
+        self.query_norm = nn.LayerNorm(embed_dim)
+        self.context_norm = nn.LayerNorm(embed_dim)
 
         self.attn = nn.MultiheadAttention(
             embed_dim=embed_dim,
@@ -641,22 +629,21 @@ class CLSPooling(nn.Module):
         )
         self.attn_dropout = nn.Dropout(dropout)
 
-        self.ffn_norm = RMSNorm(embed_dim)
-        self.ffn = SwiGLUFFN(
-            dim=embed_dim,
-            mult=ffn_mult,
-            dropout=dropout,
+        self.ffn_norm = nn.LayerNorm(embed_dim)
+        self.ffn = nn.Sequential(
+            nn.Linear(embed_dim, ffn_mult * embed_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(ffn_mult * embed_dim, embed_dim),
+            nn.Dropout(dropout),
         )
 
     def forward(
         self,
+        cls: torch.Tensor,
         h: torch.Tensor,
         padding_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        batch_size = h.size(0)
-
-        cls = self.cls_token.expand(batch_size, -1, -1)
-
         residual = cls
 
         query = self.query_norm(cls)
@@ -671,9 +658,63 @@ class CLSPooling(nn.Module):
         )
 
         cls = residual + self.attn_dropout(cls_out)
+        cls = cls + self.ffn(self.ffn_norm(cls))
 
-        residual = cls
-        cls = residual + self.ffn(self.ffn_norm(cls))
+        return cls
+
+
+class CLSPooling(nn.Module):
+    """
+    Two-block CLS attention pooling module.
+
+    This is closer to the original ParT class-attention setup:
+    particle tokens are first updated by particle attention, then a learnable
+    CLS token reads them through multiple class attention blocks.
+
+    Default:
+        num_class_layers = 2
+        dropout = 0.0
+    """
+
+    def __init__(
+        self,
+        embed_dim: int,
+        num_heads: int,
+        ffn_mult: int = 4,
+        dropout: float = 0.0,
+        num_class_layers: int = 2,
+    ):
+        super().__init__()
+
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        nn.init.trunc_normal_(self.cls_token, std=0.02)
+
+        self.layers = nn.ModuleList(
+            [
+                ClassAttentionBlock(
+                    embed_dim=embed_dim,
+                    num_heads=num_heads,
+                    ffn_mult=ffn_mult,
+                    dropout=dropout,
+                )
+                for _ in range(num_class_layers)
+            ]
+        )
+
+    def forward(
+        self,
+        h: torch.Tensor,
+        padding_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        batch_size = h.size(0)
+        cls = self.cls_token.expand(batch_size, -1, -1)
+
+        for layer in self.layers:
+            cls = layer(
+                cls=cls,
+                h=h,
+                padding_mask=padding_mask,
+            )
 
         return cls.squeeze(dim=1)
 
@@ -785,7 +826,8 @@ class MinimalParticleTransformerRepresentation(nn.Module):
             embed_dim=config.embed_dim,
             num_heads=config.num_heads,
             ffn_mult=config.ffn_mult,
-            dropout=config.dropout,
+            dropout=config.class_dropout,
+            num_class_layers=config.num_class_layers,
         )
 
         self.representation_head = RepresentationHead(

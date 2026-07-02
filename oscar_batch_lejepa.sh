@@ -34,17 +34,20 @@ conda activate jet
 # check pytorch version
 python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 
-python -u scripts/run_train_lejepa_part.py \
-    --background "data/processed/qcd-vs-wjet-pt-200to400/QCD_scaled_scaled.pkl" \
-    --signal "data/processed/qcd-vs-wjet-pt-200to400/WJet_scaled_scaled.pkl" \
-    --embed-dim 128 \
-    --representation-dim 128 \
-    --num-layers 4 \
-    --num-heads 8 \
-    --batch-size 128 \
-    --epochs 100 \
-    --learning-rate 5e-4 \
-    --weight-decay 5e-2 \
-    --precision bf16 \
-    --output-dir "plots/run-lejepa-part"
+# python -u scripts/run_train_lejepa_part.py \
+#     --background "data/processed/qcd-vs-wjet-pt-200to400/QCD_scaled_scaled.pkl" \
+#     --signal "data/processed/qcd-vs-wjet-pt-200to400/WJet_scaled_scaled.pkl" \
+#     --node-features "eta,phi,pt,d0/d0Err,dz/dzErr,charge,mass,log_pt,pdgId_-211,pdgId_-13,pdgId_-11,pdgId_11,pdgId_13,pdgId_22,pdgId_130,pdgId_211" \
+#     --embed-dim 128 \
+#     --representation-dim 128 \
+#     --num-layers 8 \
+#     --num-heads 8 \
+#     --batch-size 128 \
+#     --epochs 100 \
+#     --learning-rate 5e-4 \
+#     --weight-decay 5e-2 \
+#     --precision bf16 \
+#     --output-dir "plots/run-lejepa-part-more-vars"
 
+python -u scripts/run_eval_lejepa_part.py \
+    --run-dir plots/run-lejepa-part-more-vars

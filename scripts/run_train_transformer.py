@@ -216,7 +216,7 @@ class TrainMaskedTransformer:
         self.feature_names = [
             'eta', 'phi', 'pt', 'd0/d0Err', 'dz/dzErr', 'charge', 
             'mass', 'log_pt'
-        ] # Note: 'eta' and 'phi' must be the first two features, as they are used for positional encoding in the transformer model!!
+        ]
         # pdg_features = [
         #     "pdgId_-211",
         #     "pdgId_-13",

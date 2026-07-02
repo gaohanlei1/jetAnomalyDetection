@@ -1218,8 +1218,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num-layers",
         type=int,
-        default=4,
-        help="Number of Transformer encoder layers. Default: 4.",
+        default=8,
+        help="Number of Transformer encoder layers. Default: 8.",
     )
     parser.add_argument(
         "--num-heads",
