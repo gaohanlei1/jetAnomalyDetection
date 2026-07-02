@@ -79,12 +79,12 @@ class ParticleTransformerConfig:
 
     where each node has features ordered as:
 
-        [eta, phi, pt, d0/d0Err, dz/dzErr, mass, charge]
+        "eta,phi,pt,d0/d0Err,dz/dzErr,charge,mass,log_pt,pdgId_-211,pdgId_-13,pdgId_-11,pdgId_11,pdgId_13,pdgId_22,pdgId_130,pdgId_211"
 
     The model produces a representation vector instead of class logits.
     """
 
-    input_dim: int = 7
+    input_dim: int = 16
     embed_dim: int = 128
     num_heads: int = 8
     num_layers: int = 4
@@ -223,7 +223,7 @@ def build_four_vector_from_eta_phi_pt_mass(
             0: eta
             1: phi
             2: pt
-            5: mass
+            6: mass
 
     Output:
         p4: (B, N, 4)
@@ -238,7 +238,7 @@ def build_four_vector_from_eta_phi_pt_mass(
     eta = x[..., 0]
     phi = x[..., 1]
     pt = x[..., 2].clamp(min=eps)
-    mass = x[..., 5].clamp(min=0.0)
+    mass = x[..., 6].clamp(min=0.0)
 
     px = pt * torch.cos(phi)
     py = pt * torch.sin(phi)
@@ -980,6 +980,73 @@ class PtDropAugmentationConfig:
 
 
 # ------------------------------------------------------------
+# Corrupted negative view augmentation config
+# ------------------------------------------------------------
+
+@dataclass
+class CorruptedNegativeAugmentationConfig:
+    """
+    Configuration for generating corrupted negative views for triplet training.
+
+    These views are intentionally not guaranteed to be physically valid jets.
+    The goal is to keep individual feature values mostly realistic while
+    breaking event-level or node-feature joint structure.
+
+    Feature convention for the current node feature list:
+        0: eta
+        1: phi
+        2: pt
+        3: d0/d0Err
+        4: dz/dzErr
+        5: charge
+        6: mass
+        7: log_pt
+        8:15: pdgId one-hot block
+    """
+
+    num_negative_views: int = 4
+    negative_modes: Tuple[str, ...] = (
+        "identity_shuffle",
+        "pt_resample",
+        "eta_phi_shuffle",
+        "batch_mix",
+    )
+
+    min_nodes: int = 4
+    eps: float = 1e-8
+
+    eta_index: int = 0
+    phi_index: int = 1
+    pt_index: int = 2
+    d0_index: int = 3
+    dz_index: int = 4
+    charge_index: int = 5
+    mass_index: int = 6
+    log_pt_index: int = 7
+    pdg_start_index: int = 8
+    pdg_end_index: int = 16
+
+    # Fraction of valid nodes whose selected feature block is corrupted for
+    # within-event shuffles. 1.0 means every valid node receives a shuffled
+    # block from another node in the same event.
+    corrupt_node_frac: float = 1.0
+
+    # In the batch-mix corruption, keep this fraction of nodes from the anchor
+    # event and fill the remaining available slots with nodes from a donor
+    # event in the same batch.
+    batch_mix_anchor_frac: float = 0.5
+
+    # After pt-changing corruptions, renormalize the valid-node pt sum to match
+    # the original event's valid-node pt sum. This does not assume the sum is 1.
+    renormalize_pt_sum: bool = True
+
+    # For corrupted pt/log_pt values, keep the event-level log_pt distribution
+    # on the same scale as the original event by matching the original valid-node
+    # mean and standard deviation. 
+    renormalize_log_pt_stats: bool = True
+
+
+# ------------------------------------------------------------
 # Random pt-drop multi-view augmentation
 # ------------------------------------------------------------
 
@@ -1039,53 +1106,6 @@ class PtDropMultiViewAugmentation(nn.Module):
     def __init__(self, config: PtDropAugmentationConfig):
         super().__init__()
         self.config = config
-
-    def forward(
-        self,
-        x: torch.Tensor,
-        padding_mask: Optional[torch.Tensor] = None,
-    ) -> Tuple[List[torch.Tensor], List[torch.Tensor], List[str]]:
-        if x.ndim != 3:
-            raise ValueError(f"Expected x shape (B, N, F), got {tuple(x.shape)}.")
-
-        batch_size, seq_len, _ = x.shape
-        device = x.device
-
-        if padding_mask is None:
-            padding_mask = torch.zeros(
-                batch_size,
-                seq_len,
-                dtype=torch.bool,
-                device=device,
-            )
-        else:
-            padding_mask = padding_mask.bool()
-
-        views: List[torch.Tensor] = []
-        view_padding_masks: List[torch.Tensor] = []
-        view_types: List[str] = []
-
-        for _ in range(self.config.num_global_views):
-            view_x, view_mask = self._make_view_vectorized(
-                x=x,
-                padding_mask=padding_mask,
-                drop_frac_range=self.config.global_drop_pt_frac_range,
-            )
-            views.append(view_x)
-            view_padding_masks.append(view_mask)
-            view_types.append("global")
-
-        for _ in range(self.config.num_local_views):
-            view_x, view_mask = self._make_view_vectorized(
-                x=x,
-                padding_mask=padding_mask,
-                drop_frac_range=self.config.local_drop_pt_frac_range,
-            )
-            views.append(view_x)
-            view_padding_masks.append(view_mask)
-            view_types.append("local")
-
-        return views, view_padding_masks, view_types
 
     def _make_view_vectorized(
         self,
@@ -1171,6 +1191,538 @@ class PtDropMultiViewAugmentation(nn.Module):
             view_x = x.clone()
 
         return view_x, view_mask
+    
+    def forward(
+        self,
+        x: torch.Tensor,
+        padding_mask: Optional[torch.Tensor] = None,
+    ) -> Tuple[List[torch.Tensor], List[torch.Tensor], List[str]]:
+        if x.ndim != 3:
+            raise ValueError(f"Expected x shape (B, N, F), got {tuple(x.shape)}.")
+
+        batch_size, seq_len, _ = x.shape
+        device = x.device
+
+        if padding_mask is None:
+            padding_mask = torch.zeros(
+                batch_size,
+                seq_len,
+                dtype=torch.bool,
+                device=device,
+            )
+        else:
+            padding_mask = padding_mask.bool()
+
+        views: List[torch.Tensor] = []
+        view_padding_masks: List[torch.Tensor] = []
+        view_types: List[str] = []
+
+        for _ in range(self.config.num_global_views):
+            view_x, view_mask = self._make_view_vectorized(
+                x=x,
+                padding_mask=padding_mask,
+                drop_frac_range=self.config.global_drop_pt_frac_range,
+            )
+            views.append(view_x)
+            view_padding_masks.append(view_mask)
+            view_types.append("global")
+
+        for _ in range(self.config.num_local_views):
+            view_x, view_mask = self._make_view_vectorized(
+                x=x,
+                padding_mask=padding_mask,
+                drop_frac_range=self.config.local_drop_pt_frac_range,
+            )
+            views.append(view_x)
+            view_padding_masks.append(view_mask)
+            view_types.append("local")
+
+        return views, view_padding_masks, view_types
+
+
+# ------------------------------------------------------------
+# Corrupted negative view augmentation
+# ------------------------------------------------------------
+
+class CorruptedNegativeAugmentation(nn.Module):
+    """
+    Generate invalid/corrupted negative views for triplet training.
+
+    Input:
+        x: (B, N, F)
+        padding_mask: optional bool tensor of shape (B, N)
+
+    Output:
+        negative_views:
+            List of tensors, each with shape (B, N, F)
+
+        negative_padding_masks:
+            List of bool masks, each with shape (B, N)
+
+        negative_types:
+            List[str], one mode name per generated negative view
+
+    Implemented corruption modes:
+        identity_shuffle:
+            Within each event, shuffle the identity block jointly:
+                charge, mass, pdgId one-hot.
+
+        pt_resample:
+            Within each event, resample pt values with replacement from that
+            event's valid pt/log_pt set, keeping pt and scaled log_pt bound
+            together. Then renormalize the pt sum to the original event pt sum
+            and match the original event-level log_pt mean/std.
+
+        eta_phi_shuffle:
+            Within each event, shuffle the eta-phi pair jointly across nodes.
+
+        batch_mix:
+            Build a fake jet by concatenating valid nodes from the anchor event
+            and another donor event in the same batch. If the fake jet exceeds
+            the current padded sequence length N, extra nodes are dropped.
+            The resulting pt sum is renormalized to the original anchor event's
+            pt sum, and log_pt is matched to the original anchor event's mean/std.
+    """
+
+    def __init__(self, config: CorruptedNegativeAugmentationConfig):
+        super().__init__()
+        self.config = config
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        padding_mask: Optional[torch.Tensor] = None,
+    ) -> Tuple[List[torch.Tensor], List[torch.Tensor], List[str]]:
+        if x.ndim != 3:
+            raise ValueError(f"Expected x shape (B, N, F), got {tuple(x.shape)}.")
+
+        batch_size, seq_len, _ = x.shape
+        device = x.device
+
+        if padding_mask is None:
+            padding_mask = torch.zeros(
+                batch_size,
+                seq_len,
+                dtype=torch.bool,
+                device=device,
+            )
+        else:
+            padding_mask = padding_mask.bool()
+
+        if len(self.config.negative_modes) == 0:
+            raise ValueError("negative_modes must contain at least one mode.")
+
+        negative_views: List[torch.Tensor] = []
+        negative_padding_masks: List[torch.Tensor] = []
+        negative_types: List[str] = []
+
+        for i in range(self.config.num_negative_views):
+            mode = self.config.negative_modes[i % len(self.config.negative_modes)]
+
+            if mode == "identity_shuffle":
+                neg_x, neg_mask = self._identity_shuffle(x, padding_mask)
+            elif mode == "pt_resample":
+                neg_x, neg_mask = self._pt_resample(x, padding_mask)
+            elif mode == "eta_phi_shuffle":
+                neg_x, neg_mask = self._eta_phi_shuffle(x, padding_mask)
+            elif mode == "batch_mix":
+                neg_x, neg_mask = self._batch_mix(x, padding_mask)
+            else:
+                raise ValueError(f"Unknown negative corruption mode: {mode}")
+
+            negative_views.append(neg_x)
+            negative_padding_masks.append(neg_mask)
+            negative_types.append(mode)
+
+        return negative_views, negative_padding_masks, negative_types
+
+    def _valid_mask(self, padding_mask: torch.Tensor) -> torch.Tensor:
+        return ~padding_mask.bool()
+
+    def _valid_order(self, valid_mask: torch.Tensor) -> torch.Tensor:
+        """
+        Return valid node indices first, padded/invalid positions last.
+
+        Output:
+            order: (B, N)
+        """
+
+        batch_size, seq_len = valid_mask.shape
+        device = valid_mask.device
+        positions = torch.arange(seq_len, device=device).unsqueeze(0).expand(batch_size, seq_len)
+        sortable = positions.masked_fill(~valid_mask, seq_len + positions)
+        return torch.argsort(sortable, dim=1)
+
+    def _random_valid_order(self, valid_mask: torch.Tensor) -> torch.Tensor:
+        """
+        Return a random permutation of valid node indices for every event.
+        Invalid/padded positions are sorted to the end.
+
+        Output:
+            order: (B, N)
+        """
+
+        scores = torch.rand(valid_mask.shape, device=valid_mask.device)
+        scores = scores.masked_fill(~valid_mask, torch.inf)
+        return torch.argsort(scores, dim=1)
+
+    def _target_mask(self, valid_mask: torch.Tensor) -> torch.Tensor:
+        """
+        Vectorized replacement for per-event target-node sampling.
+
+        Selects roughly corrupt_node_frac of valid nodes in each event. Events
+        with <=1 valid node are left unmodified.
+
+        Output:
+            target_mask: (B, N), bool
+        """
+
+        batch_size, seq_len = valid_mask.shape
+        device = valid_mask.device
+
+        num_valid = valid_mask.sum(dim=1)
+        num_target = torch.round(self.config.corrupt_node_frac * num_valid.float()).long()
+        num_target = num_target.clamp(min=1)
+        num_target = torch.minimum(num_target, num_valid)
+        num_target = torch.where(num_valid > 1, num_target, torch.zeros_like(num_target))
+
+        order = self._random_valid_order(valid_mask)
+        positions = torch.arange(seq_len, device=device).unsqueeze(0).expand(batch_size, seq_len)
+        target_sorted = positions < num_target.unsqueeze(1)
+
+        target_mask = torch.zeros(batch_size, seq_len, dtype=torch.bool, device=device)
+        target_mask.scatter_(dim=1, index=order, src=target_sorted)
+        return target_mask & valid_mask
+
+    def _permuted_source_index_for_each_valid_node(self, valid_mask: torch.Tensor) -> torch.Tensor:
+        """
+        For every valid target node, return a source node index from a random
+        same-event valid-node permutation.
+
+        Output:
+            source_idx: (B, N)
+        """
+
+        random_order = self._random_valid_order(valid_mask)
+        valid_rank = valid_mask.long().cumsum(dim=1) - 1
+        valid_rank = valid_rank.clamp(min=0)
+        source_idx = torch.gather(random_order, dim=1, index=valid_rank)
+        return source_idx
+
+    def _sample_valid_source_index_with_replacement(self, valid_mask: torch.Tensor) -> torch.Tensor:
+        """
+        For every target node, sample a same-event valid source node with
+        replacement. This is used by pt_resample.
+
+        Output:
+            source_idx: (B, N)
+        """
+
+        batch_size, seq_len = valid_mask.shape
+        device = valid_mask.device
+
+        valid_order = self._valid_order(valid_mask)
+        num_valid = valid_mask.sum(dim=1).clamp(min=1)
+
+        random_rank = torch.floor(
+            torch.rand(batch_size, seq_len, device=device) * num_valid.unsqueeze(1).float()
+        ).long()
+        random_rank = random_rank.clamp(min=0, max=seq_len - 1)
+
+        source_idx = torch.gather(valid_order, dim=1, index=random_rank)
+        return source_idx
+
+    def _valid_mean_std(
+        self,
+        values: torch.Tensor,
+        valid_mask: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Compute per-event mean/std over valid nodes.
+
+        Input:
+            values: (B, N)
+            valid_mask: (B, N)
+
+        Output:
+            mean: (B, 1)
+            std: (B, 1), population std
+        """
+
+        count = valid_mask.sum(dim=1, keepdim=True).clamp(min=1).to(values.dtype)
+        masked_values = values.masked_fill(~valid_mask, 0.0)
+        mean = masked_values.sum(dim=1, keepdim=True) / count
+
+        centered = (values - mean).masked_fill(~valid_mask, 0.0)
+        var = centered.square().sum(dim=1, keepdim=True) / count
+        std = torch.sqrt(var.clamp(min=0.0))
+
+        return mean, std
+
+    def _renormalize_pt_and_log_pt(
+        self,
+        view_x: torch.Tensor,
+        valid_mask: torch.Tensor,
+        target_pt_sum: torch.Tensor,
+        target_log_pt_mean: torch.Tensor,
+        target_log_pt_std: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Vectorized pt/log_pt post-processing for corrupted views.
+
+        pt:
+            Match each event's valid-node pt sum to target_pt_sum.
+
+        log_pt:
+            Match each event's valid-node log_pt mean/std to the original
+            event statistics, without hard-coding the upstream scaler constants.
+        """
+
+        view_x = view_x.clone()
+        valid_mask = valid_mask.bool()
+
+        pt = view_x[..., self.config.pt_index].clamp(min=self.config.eps)
+
+        if self.config.renormalize_pt_sum:
+            current_sum = pt.masked_fill(~valid_mask, 0.0).sum(dim=1, keepdim=True)
+            scale = target_pt_sum / current_sum.clamp(min=self.config.eps)
+            pt = pt * scale
+            view_x[..., self.config.pt_index] = torch.where(
+                valid_mask,
+                pt,
+                view_x[..., self.config.pt_index],
+            )
+
+        if self.config.renormalize_log_pt_stats:
+            log_pt = view_x[..., self.config.log_pt_index]
+            current_mean, current_std = self._valid_mean_std(log_pt, valid_mask)
+
+            normalized = (log_pt - current_mean) / current_std.clamp(min=self.config.eps)
+            matched = normalized * target_log_pt_std.clamp(min=self.config.eps) + target_log_pt_mean
+
+            # If an event has only one valid node, std matching is undefined.
+            # In that case, set valid log_pt values to the original mean.
+            valid_count = valid_mask.sum(dim=1, keepdim=True)
+            matched = torch.where(valid_count > 1, matched, target_log_pt_mean)
+
+            view_x[..., self.config.log_pt_index] = torch.where(
+                valid_mask,
+                matched,
+                view_x[..., self.config.log_pt_index],
+            )
+
+        return view_x
+
+    def _identity_shuffle(
+        self,
+        x: torch.Tensor,
+        padding_mask: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        view_x = x.clone()
+        view_mask = padding_mask.clone()
+
+        valid_mask = self._valid_mask(padding_mask)
+        target_mask = self._target_mask(valid_mask)
+        source_idx = self._permuted_source_index_for_each_valid_node(valid_mask)
+
+        source_x = torch.gather(
+            x,
+            dim=1,
+            index=source_idx.unsqueeze(-1).expand(-1, -1, x.size(-1)),
+        )
+
+        block_idx = torch.tensor(
+            [self.config.charge_index, self.config.mass_index]
+            + list(range(self.config.pdg_start_index, self.config.pdg_end_index)),
+            device=x.device,
+            dtype=torch.long,
+        )
+
+        updated_block = torch.where(
+            target_mask.unsqueeze(-1),
+            source_x[..., block_idx],
+            view_x[..., block_idx],
+        )
+        view_x[..., block_idx] = updated_block
+
+        return view_x, view_mask
+
+    def _pt_resample(
+        self,
+        x: torch.Tensor,
+        padding_mask: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        view_x = x.clone()
+        view_mask = padding_mask.clone()
+
+        valid_mask = self._valid_mask(padding_mask)
+        target_mask = self._target_mask(valid_mask)
+        source_idx = self._sample_valid_source_index_with_replacement(valid_mask)
+
+        original_pt_sum = x[..., self.config.pt_index].clamp(min=0.0).masked_fill(
+            ~valid_mask,
+            0.0,
+        ).sum(dim=1, keepdim=True)
+        original_log_pt_mean, original_log_pt_std = self._valid_mean_std(
+            x[..., self.config.log_pt_index],
+            valid_mask,
+        )
+
+        source_x = torch.gather(
+            x,
+            dim=1,
+            index=source_idx.unsqueeze(-1).expand(-1, -1, x.size(-1)),
+        )
+
+        # Keep pt and scaled log_pt bound together when resampling.
+        pt_log_pt_idx = torch.tensor(
+            [self.config.pt_index, self.config.log_pt_index],
+            device=x.device,
+            dtype=torch.long,
+        )
+        updated_block = torch.where(
+            target_mask.unsqueeze(-1),
+            source_x[..., pt_log_pt_idx],
+            view_x[..., pt_log_pt_idx],
+        )
+        view_x[..., pt_log_pt_idx] = updated_block
+
+        can_renormalize = torch.isfinite(original_pt_sum) & (original_pt_sum > 0)
+        view_x = self._renormalize_pt_and_log_pt(
+            view_x=view_x,
+            valid_mask=valid_mask & can_renormalize,
+            target_pt_sum=original_pt_sum.clamp(min=self.config.eps),
+            target_log_pt_mean=original_log_pt_mean,
+            target_log_pt_std=original_log_pt_std,
+        )
+
+        return view_x, view_mask
+
+    def _eta_phi_shuffle(
+        self,
+        x: torch.Tensor,
+        padding_mask: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        view_x = x.clone()
+        view_mask = padding_mask.clone()
+
+        valid_mask = self._valid_mask(padding_mask)
+        target_mask = self._target_mask(valid_mask)
+        source_idx = self._permuted_source_index_for_each_valid_node(valid_mask)
+
+        source_x = torch.gather(
+            x,
+            dim=1,
+            index=source_idx.unsqueeze(-1).expand(-1, -1, x.size(-1)),
+        )
+
+        block_idx = torch.tensor(
+            [self.config.eta_index, self.config.phi_index],
+            device=x.device,
+            dtype=torch.long,
+        )
+
+        updated_block = torch.where(
+            target_mask.unsqueeze(-1),
+            source_x[..., block_idx],
+            view_x[..., block_idx],
+        )
+        view_x[..., block_idx] = updated_block
+
+        return view_x, view_mask
+
+    def _batch_mix(
+        self,
+        x: torch.Tensor,
+        padding_mask: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        batch_size, seq_len, feature_dim = x.shape
+        device = x.device
+
+        if batch_size <= 1:
+            return x.clone(), padding_mask.clone()
+
+        valid_mask = self._valid_mask(padding_mask)
+        num_valid = valid_mask.sum(dim=1)
+
+        donor_b = torch.randint(
+            low=0,
+            high=batch_size - 1,
+            size=(batch_size,),
+            device=device,
+        )
+        batch_indices = torch.arange(batch_size, device=device)
+        donor_b = donor_b + (donor_b >= batch_indices).long()
+
+        donor_valid_mask = valid_mask[donor_b]
+        donor_num_valid = donor_valid_mask.sum(dim=1)
+
+        original_pt_sum = x[..., self.config.pt_index].clamp(min=0.0).masked_fill(
+            ~valid_mask,
+            0.0,
+        ).sum(dim=1, keepdim=True)
+        original_log_pt_mean, original_log_pt_std = self._valid_mean_std(
+            x[..., self.config.log_pt_index],
+            valid_mask,
+        )
+
+        num_anchor_keep = torch.round(
+            self.config.batch_mix_anchor_frac * num_valid.float()
+        ).long()
+        num_anchor_keep = num_anchor_keep.clamp(min=1)
+        num_anchor_keep = torch.minimum(num_anchor_keep, num_valid)
+
+        num_donor_keep = (seq_len - num_anchor_keep).clamp(min=0)
+        num_donor_keep = torch.minimum(num_donor_keep, donor_num_valid)
+
+        total_out = num_anchor_keep + num_donor_keep
+        fallback = (
+            (num_valid < self.config.min_nodes)
+            | (donor_num_valid == 0)
+            | (total_out < self.config.min_nodes)
+            | (~torch.isfinite(original_pt_sum.squeeze(1)))
+            | (original_pt_sum.squeeze(1) <= 0)
+        )
+
+        anchor_order = self._random_valid_order(valid_mask)
+        donor_order_all = self._random_valid_order(valid_mask)
+        donor_order = donor_order_all[donor_b]
+
+        positions = torch.arange(seq_len, device=device).unsqueeze(0).expand(batch_size, seq_len)
+        is_anchor = positions < num_anchor_keep.unsqueeze(1)
+        is_valid_out = positions < total_out.unsqueeze(1)
+
+        anchor_rel = positions.clamp(max=seq_len - 1)
+        donor_rel = (positions - num_anchor_keep.unsqueeze(1)).clamp(min=0, max=seq_len - 1)
+
+        anchor_source_idx = torch.gather(anchor_order, dim=1, index=anchor_rel)
+        donor_source_idx = torch.gather(donor_order, dim=1, index=donor_rel)
+
+        source_batch = torch.where(
+            is_anchor,
+            batch_indices.unsqueeze(1).expand(batch_size, seq_len),
+            donor_b.unsqueeze(1).expand(batch_size, seq_len),
+        )
+        source_idx = torch.where(is_anchor, anchor_source_idx, donor_source_idx)
+
+        mixed_x = x[source_batch, source_idx]
+        mixed_x = torch.where(is_valid_out.unsqueeze(-1), mixed_x, torch.zeros_like(mixed_x))
+        mixed_mask = ~is_valid_out
+
+        # For rows that cannot be mixed safely, keep the original event.
+        view_x = torch.where(fallback.view(batch_size, 1, 1), x, mixed_x)
+        view_mask = torch.where(fallback.view(batch_size, 1), padding_mask, mixed_mask)
+
+        view_valid_mask = ~view_mask
+        view_x = self._renormalize_pt_and_log_pt(
+            view_x=view_x,
+            valid_mask=view_valid_mask & (~fallback).unsqueeze(1),
+            target_pt_sum=original_pt_sum.clamp(min=self.config.eps),
+            target_log_pt_mean=original_log_pt_mean,
+            target_log_pt_std=original_log_pt_std,
+        )
+
+        return view_x, view_mask
 
 
 # ------------------------------------------------------------
@@ -1225,6 +1777,36 @@ class LeJEPALossConfig:
 
     normalize_representations_for_invariant: bool = False
     normalize_representations_for_sigreg: bool = False
+
+
+# ------------------------------------------------------------
+# Triplet loss config
+# ------------------------------------------------------------
+
+@dataclass
+class TripletLossConfig:
+    """
+    Configuration for adding a multi-negative triplet objective on top of
+    LeJEPA invariant loss and SIGReg.
+
+    Anchor:
+        Mean of global-view representations, same as LeJEPA invariant anchor.
+
+    Positives:
+        By default, all global views.
+
+    Negatives:
+        Corrupted negative views generated by CorruptedNegativeAugmentation.
+
+    The triplet loss uses all positive-negative pairs:
+
+        mean ReLU(d(anchor, positive) - d(anchor, negative) + margin)
+    """
+
+    triplet_weight: float = 0.1
+    triplet_margin: float = 1.0
+    normalize_representations_for_triplet: bool = False
+    use_global_views_as_positives: bool = True
 
 
 class LeJEPASIGRegLoss(nn.Module):
@@ -1297,6 +1879,10 @@ class LeJEPASIGRegLoss(nn.Module):
                 f"Expected num_global_views to be in [1, {z_views.size(0)}], "
                 f"got {num_global_views}."
             )
+            
+        # Compute SSL/statistical losses in fp32. bf16/fp16 is useful for the encoder
+        # forward pass, but SIGReg and distance losses are numerically sensitive.
+        z_views = z_views.float()
 
         invariant_z = z_views
         if self.config.normalize_representations_for_invariant:
@@ -1326,6 +1912,120 @@ class LeJEPASIGRegLoss(nn.Module):
             "invariant_loss": invariant_loss,
             "sigreg_loss": sigreg_loss,
         }
+
+
+# ------------------------------------------------------------
+# LeJEPA + SIGReg + triplet loss
+# ------------------------------------------------------------
+
+class LeJEPASIGRegTripletLoss(nn.Module):
+    """
+    LeJEPA invariant + SIGReg loss with an additional multi-negative triplet loss.
+
+    Anchor:
+        Mean of global views, identical to the LeJEPA invariant anchor.
+
+    Positives:
+        Global views by default.
+
+    Negatives:
+        Corrupted views generated from the same input batch.
+
+    Input:
+        z_views: (V, B, D)
+        z_negatives: (K, B, D)
+
+    Output:
+        Dictionary containing total_loss, invariant_loss, sigreg_loss,
+        triplet_loss, and diagnostic positive/negative distances.
+    """
+
+    def __init__(
+        self,
+        lejepa_config: LeJEPALossConfig,
+        triplet_config: TripletLossConfig,
+    ):
+        super().__init__()
+        self.lejepa_loss = LeJEPASIGRegLoss(lejepa_config)
+        self.triplet_config = triplet_config
+
+    def forward(
+        self,
+        z_views: torch.Tensor,
+        z_negatives: torch.Tensor,
+        num_global_views: int,
+    ) -> Dict[str, torch.Tensor]:
+        if z_views.ndim != 3:
+            raise ValueError(
+                f"Expected z_views shape (V, B, D), got {tuple(z_views.shape)}."
+            )
+        if z_negatives.ndim != 3:
+            raise ValueError(
+                f"Expected z_negatives shape (K, B, D), got {tuple(z_negatives.shape)}."
+            )
+        if z_views.size(1) != z_negatives.size(1):
+            raise ValueError(
+                f"Batch size mismatch: z_views has B={z_views.size(1)}, "
+                f"z_negatives has B={z_negatives.size(1)}."
+            )
+        if z_views.size(2) != z_negatives.size(2):
+            raise ValueError(
+                f"Representation dimension mismatch: z_views has D={z_views.size(2)}, "
+                f"z_negatives has D={z_negatives.size(2)}."
+            )
+        
+        # Compute loss terms in fp32 even when the encoder forward pass uses autocast.
+        # This avoids reduced-precision quantization in SIGReg and triplet distances.
+        z_views = z_views.float()
+        z_negatives = z_negatives.float()
+
+        base_loss = self.lejepa_loss(
+            z_views=z_views,
+            num_global_views=num_global_views,
+        )
+
+        triplet_views = z_views
+        triplet_negatives = z_negatives
+        if self.triplet_config.normalize_representations_for_triplet:
+            triplet_views = F.normalize(triplet_views, p=2, dim=-1)
+            triplet_negatives = F.normalize(triplet_negatives, p=2, dim=-1)
+
+        anchor = triplet_views[:num_global_views].mean(dim=0)
+
+        if self.triplet_config.use_global_views_as_positives:
+            positives = triplet_views[:num_global_views]
+        else:
+            positives = triplet_views
+
+        negatives = triplet_negatives
+
+        # Shapes:
+        #   anchor:    (B, D)
+        #   positives: (P, B, D)
+        #   negatives: (K, B, D)
+        #
+        # Distances are mean squared distances over representation dimension.
+        d_pos = (positives - anchor.unsqueeze(0)).pow(2).mean(dim=-1)  # (P, B)
+        d_neg = (negatives - anchor.unsqueeze(0)).pow(2).mean(dim=-1)  # (K, B)
+
+        triplet_terms = F.relu(
+            d_pos.unsqueeze(0)
+            - d_neg.unsqueeze(1)
+            + self.triplet_config.triplet_margin
+        )  # (K, P, B)
+        triplet_loss = triplet_terms.mean()
+
+        total_loss = base_loss["total_loss"] + self.triplet_config.triplet_weight * triplet_loss
+
+        output = {
+            **base_loss,
+            "triplet_loss": triplet_loss,
+            "triplet_pos_distance": d_pos.mean(),
+            "triplet_neg_distance": d_neg.mean(),
+            "total_loss": total_loss,
+        }
+
+        return output
 
 
 # ------------------------------------------------------------
@@ -1452,5 +2152,141 @@ class LeJEPAParticleTransformerRepresentation(MinimalParticleTransformerRepresen
             output["views"] = views
             output["view_padding_masks"] = view_padding_masks
             output["view_types"] = view_types
+
+        return output
+
+
+# ------------------------------------------------------------
+# LeJEPA + triplet SSL model
+# ------------------------------------------------------------
+
+class LeJEPATripletParticleTransformerRepresentation(MinimalParticleTransformerRepresentation):
+    """
+    ParticleTransformer representation model with LeJEPA + corrupted-negative triplet training.
+
+    This model uses the same backbone as LeJEPAParticleTransformerRepresentation:
+        NodeEmbedding -> PairwiseAttentionBias -> ParticleTransformerEncoder
+        -> CLSPooling -> RepresentationHead
+
+    Pretraining objective:
+        1. LeJEPA invariant loss:
+            global-view mean anchor matched against all global/local views.
+
+        2. SIGReg:
+            all global/local view representations mixed together.
+
+        3. Multi-negative triplet loss:
+            anchor = global-view mean;
+            positives = global views;
+            negatives = corrupted views.
+
+    During representation extraction, use the inherited forward method.
+    """
+
+    def __init__(
+        self,
+        model_config: ParticleTransformerConfig,
+        augmentation_config: Optional[PtDropAugmentationConfig] = None,
+        negative_augmentation_config: Optional[CorruptedNegativeAugmentationConfig] = None,
+        loss_config: Optional[LeJEPALossConfig] = None,
+        triplet_loss_config: Optional[TripletLossConfig] = None,
+    ):
+        super().__init__(model_config)
+
+        if augmentation_config is None:
+            augmentation_config = PtDropAugmentationConfig()
+        if negative_augmentation_config is None:
+            negative_augmentation_config = CorruptedNegativeAugmentationConfig()
+        if loss_config is None:
+            loss_config = LeJEPALossConfig()
+        if triplet_loss_config is None:
+            triplet_loss_config = TripletLossConfig()
+
+        self.augmentation = PtDropMultiViewAugmentation(augmentation_config)
+        self.negative_augmentation = CorruptedNegativeAugmentation(negative_augmentation_config)
+        self.loss = LeJEPASIGRegTripletLoss(
+            lejepa_config=loss_config,
+            triplet_config=triplet_loss_config,
+        )
+
+    def forward_pretrain(
+        self,
+        x: torch.Tensor,
+        padding_mask: Optional[torch.Tensor] = None,
+        normalize_output: bool = False,
+        return_views: bool = False,
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Pretraining forward pass with positive LeJEPA views and corrupted negatives.
+
+        Input:
+            x: (B, N, F)
+            padding_mask: optional bool tensor of shape (B, N)
+
+        Output dictionary includes:
+            total_loss
+            invariant_loss
+            sigreg_loss
+            triplet_loss
+            triplet_pos_distance
+            triplet_neg_distance
+            z_views: (V, B, D)
+            z_negatives: (K, B, D)
+        """
+
+        views, view_padding_masks, view_types = self.augmentation(
+            x=x,
+            padding_mask=padding_mask,
+        )
+
+        negative_views, negative_padding_masks, negative_types = self.negative_augmentation(
+            x=x,
+            padding_mask=padding_mask,
+        )
+
+        num_views = len(views)
+        num_negative_views = len(negative_views)
+        batch_size = x.size(0)
+
+        batched_views = torch.cat(views, dim=0)
+        batched_view_masks = torch.cat(view_padding_masks, dim=0)
+
+        batched_negatives = torch.cat(negative_views, dim=0)
+        batched_negative_masks = torch.cat(negative_padding_masks, dim=0)
+
+        all_inputs = torch.cat([batched_views, batched_negatives], dim=0)
+        all_masks = torch.cat([batched_view_masks, batched_negative_masks], dim=0)
+
+        all_z = super().forward(
+            all_inputs,
+            padding_mask=all_masks,
+            normalize_output=normalize_output,
+        )
+
+        z_views_flat = all_z[: num_views * batch_size]
+        z_negatives_flat = all_z[num_views * batch_size :]
+
+        z_views = z_views_flat.view(num_views, batch_size, -1)
+        z_negatives = z_negatives_flat.view(num_negative_views, batch_size, -1)
+
+        loss_dict = self.loss(
+            z_views=z_views,
+            z_negatives=z_negatives,
+            num_global_views=self.augmentation.config.num_global_views,
+        )
+
+        output: Dict[str, torch.Tensor] = {
+            **loss_dict,
+            "z_views": z_views,
+            "z_negatives": z_negatives,
+        }
+
+        if return_views:
+            output["views"] = views
+            output["view_padding_masks"] = view_padding_masks
+            output["view_types"] = view_types
+            output["negative_views"] = negative_views
+            output["negative_padding_masks"] = negative_padding_masks
+            output["negative_types"] = negative_types
 
         return output
