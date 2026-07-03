@@ -1,0 +1,134 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 3425984
+##  Job Name : JETANOMALY
+##  Nodelist : gpu3101
+##      CPUs : 1
+##  Mem/Node : 32000 MB
+## Directory : /oscar/home/lwang223/jetAnomalyDetection
+##   Job Started : Thu Jun 25 04:16:38 PM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Thu Jun 25 04:16:38 PM EDT 2026
+Job ID: 3425984
+Node: gpu3101
+==========================================
+
+GPU Information (from host):
+Thu Jun 25 16:16:38 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:21:00.0 Off |                    0 |
+| N/A   27C    P8             32W /  350W |      74MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          182625      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch version: 2.6.0+cu124
+Loaded background rows: 125117
+Loaded signal rows: 4067
+Building background graphs...
+Building signal graphs...
+Particle multiplicity summary:
+count    129170.000000
+mean         20.995425
+std           8.562535
+min           2.000000
+50%          20.000000
+90%          32.000000
+95%          37.000000
+99%          46.000000
+max          86.000000
+dtype: float64
+Feature names: ['eta', 'phi', 'pt', 'd0/d0Err', 'dz/dzErr']
+Example graph.x shape: torch.Size([13, 5])
+Background graphs: 100082 train, 25021 val
+Signal graphs: 4067
+Model Summary:
+JetClassT2TTransformerAE(
+  (feature_embedding): Linear(in_features=5, out_features=4, bias=True)
+  (position_embedding): Sequential(
+    (0): Linear(in_features=2, out_features=4, bias=True)
+    (1): GELU(approximate='none')
+    (2): Linear(in_features=4, out_features=4, bias=True)
+  )
+  (encoder): TransformerEncoder(
+    (layers): ModuleList(
+      (0-3): 4 x TransformerEncoderLayer(
+        (self_attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=4, out_features=4, bias=True)
+        )
+        (linear1): Linear(in_features=4, out_features=16, bias=True)
+        (dropout): Dropout(p=0.1, inplace=False)
+        (linear2): Linear(in_features=16, out_features=4, bias=True)
+        (norm1): LayerNorm((4,), eps=1e-05, elementwise_affine=True)
+        (norm2): LayerNorm((4,), eps=1e-05, elementwise_affine=True)
+        (dropout1): Dropout(p=0.1, inplace=False)
+        (dropout2): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (to_latent): Linear(in_features=4, out_features=2, bias=True)
+  (from_latent): Linear(in_features=2, out_features=4, bias=True)
+  (decoder): TransformerEncoder(
+    (layers): ModuleList(
+      (0-3): 4 x TransformerEncoderLayer(
+        (self_attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=4, out_features=4, bias=True)
+        )
+        (linear1): Linear(in_features=4, out_features=16, bias=True)
+        (dropout): Dropout(p=0.1, inplace=False)
+        (linear2): Linear(in_features=16, out_features=4, bias=True)
+        (norm1): LayerNorm((4,), eps=1e-05, elementwise_affine=True)
+        (norm2): LayerNorm((4,), eps=1e-05, elementwise_affine=True)
+        (dropout1): Dropout(p=0.1, inplace=False)
+        (dropout2): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (reconstruction_head): Linear(in_features=4, out_features=5, bias=True)
+)
+Number of trainable parameters: 2059
+Debug: Epoch 1/10, Mean Val Loss: 0.997484, Val Loss Std: 0.0541103, Val Loss Min: 0.803574, Val Loss Max: 1.15686
+Debug: Epoch 1/10, Mean Train Loss: 1.23502, Train Loss Std: 0.519882, Train Loss Min: 0.882015, Train Loss Max: 6.53795
+Saved new best model to plots/run-cls-t2t-transformer-ae-lixing-h4-l2-4l-8v-10epo/best_model.pth
+Debug: Epoch 2/10, Mean Val Loss: 0.879031, Val Loss Std: 0.0475012, Val Loss Min: 0.712195, Val Loss Max: 1.02948
+Debug: Epoch 2/10, Mean Train Loss: 0.964489, Train Loss Std: 0.0615903, Train Loss Min: 0.781532, Train Loss Max: 1.17868
+Saved new best model to plots/run-cls-t2t-transformer-ae-lixing-h4-l2-4l-8v-10epo/best_model.pth
+Debug: Epoch 3/10, Mean Val Loss: 0.756719, Val Loss Std: 0.0434787, Val Loss Min: 0.610564, Val Loss Max: 0.901779
+Debug: Epoch 3/10, Mean Train Loss: 0.84267, Train Loss Std: 0.0582118, Train Loss Min: 0.657913, Train Loss Max: 1.05214
+Saved new best model to plots/run-cls-t2t-transformer-ae-lixing-h4-l2-4l-8v-10epo/best_model.pth
+Debug: Epoch 4/10, Mean Val Loss: 0.675258, Val Loss Std: 0.0422532, Val Loss Min: 0.538867, Val Loss Max: 0.817702
+Debug: Epoch 4/10, Mean Train Loss: 0.742843, Train Loss Std: 0.0511825, Train Loss Min: 0.598912, Train Loss Max: 0.928643
+Saved new best model to plots/run-cls-t2t-transformer-ae-lixing-h4-l2-4l-8v-10epo/best_model.pth
+Debug: Epoch 5/10, Mean Val Loss: 0.637403, Val Loss Std: 0.0419234, Val Loss Min: 0.511284, Val Loss Max: 0.78084
+Debug: Epoch 5/10, Mean Train Loss: 0.687246, Train Loss Std: 0.0453461, Train Loss Min: 0.559919, Train Loss Max: 0.830817
+Saved new best model to plots/run-cls-t2t-transformer-ae-lixing-h4-l2-4l-8v-10epo/best_model.pth
+Debug: Epoch 6/10, Mean Val Loss: 0.613128, Val Loss Std: 0.0418156, Val Loss Min: 0.493388, Val Loss Max: 0.755603
+Debug: Epoch 6/10, Mean Train Loss: 0.652032, Train Loss Std: 0.0440475, Train Loss Min: 0.511431, Train Loss Max: 0.809742
+Saved new best model to plots/run-cls-t2t-transformer-ae-lixing-h4-l2-4l-8v-10epo/best_model.pth
+Debug: Epoch 7/10, Mean Val Loss: 0.599401, Val Loss Std: 0.0417382, Val Loss Min: 0.482555, Val Loss Max: 0.739509
+Debug: Epoch 7/10, Mean Train Loss: 0.629566, Train Loss Std: 0.043549, Train Loss Min: 0.505184, Train Loss Max: 0.798963
+Saved new best model to plots/run-cls-t2t-transformer-ae-lixing-h4-l2-4l-8v-10epo/best_model.pth
+Debug: Epoch 8/10, Mean Val Loss: 0.592692, Val Loss Std: 0.0416659, Val Loss Min: 0.476567, Val Loss Max: 0.731552
+Debug: Epoch 8/10, Mean Train Loss: 0.617988, Train Loss Std: 0.0434133, Train Loss Min: 0.484965, Train Loss Max: 0.777722
+Saved new best model to plots/run-cls-t2t-transformer-ae-lixing-h4-l2-4l-8v-10epo/best_model.pth
+Debug: Epoch 9/10, Mean Val Loss: 0.58972, Val Loss Std: 0.041621, Val Loss Min: 0.473752, Val Loss Max: 0.727971
+Debug: Epoch 9/10, Mean Train Loss: 0.612377, Train Loss Std: 0.0433679, Train Loss Min: 0.495893, Train Loss Max: 0.77187
+Saved new best model to plots/run-cls-t2t-transformer-ae-lixing-h4-l2-4l-8v-10epo/best_model.pth
+Debug: Epoch 10/10, Mean Val Loss: 0.588795, Val Loss Std: 0.0416024, Val Loss Min: 0.472922, Val Loss Max: 0.726739
+Debug: Epoch 10/10, Mean Train Loss: 0.61027, Train Loss Std: 0.0435024, Train Loss Min: 0.496921, Train Loss Max: 0.769229
+Saved new best model to plots/run-cls-t2t-transformer-ae-lixing-h4-l2-4l-8v-10epo/best_model.pth
+Final AUC: 0.5566756479266047

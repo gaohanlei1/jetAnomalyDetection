@@ -1,0 +1,237 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 3615916
+##  Job Name : JETANOMALY
+##  Nodelist : gpu3101
+##      CPUs : 1
+##  Mem/Node : 32000 MB
+## Directory : /oscar/home/lwang223/jetAnomalyDetection
+##   Job Started : Thu Jul  2 07:07:14 AM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Thu Jul  2 07:07:14 AM EDT 2026
+Job ID: 3615916
+Node: gpu3101
+==========================================
+
+GPU Information (from host):
+Thu Jul  2 07:07:14 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:81:00.0 Off |                    0 |
+| N/A   28C    P8             32W /  350W |      74MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          182625      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch version: 2.6.0+cu124
+Background rows: 125183
+Signal rows: 4067
+Node features: ['eta', 'phi', 'pt', 'd0/d0Err', 'dz/dzErr', 'mass', 'charge']
+Loading background node tensors...
+Loading signal node tensors...
+Background train events: 99979
+Background val events: 24995
+Signal events: 4064
+Example node tensor shape: torch.Size([8, 7])
+Model summary:
+LeJEPAParticleTransformerRepresentation(
+  (node_embedding): NodeEmbedding(
+    (norm): RMSNorm()
+    (proj): Linear(in_features=7, out_features=128, bias=True)
+    (act): SiLU()
+    (dropout): Dropout(p=0.1, inplace=False)
+  )
+  (pairwise_bias): PairwiseAttentionBias(
+    (mlp): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=4, out_features=64, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.1, inplace=False)
+      (4): Linear(in_features=64, out_features=64, bias=True)
+      (5): SiLU()
+      (6): Dropout(p=0.1, inplace=False)
+      (7): Linear(in_features=64, out_features=8, bias=True)
+    )
+  )
+  (encoder): ParticleTransformerEncoder(
+    (layers): ModuleList(
+      (0-3): 4 x ParticleTransformerBlock(
+        (attn_norm): RMSNorm()
+        (self_attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=128, out_features=128, bias=True)
+        )
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (ffn_norm): RMSNorm()
+        (ffn): SwiGLUFFN(
+          (fc1): Linear(in_features=128, out_features=1024, bias=True)
+          (act): SwiGLU()
+          (fc2): Linear(in_features=512, out_features=128, bias=True)
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+      )
+    )
+  )
+  (cls_pooling): CLSPooling(
+    (query_norm): RMSNorm()
+    (context_norm): RMSNorm()
+    (attn): MultiheadAttention(
+      (out_proj): NonDynamicallyQuantizableLinear(in_features=128, out_features=128, bias=True)
+    )
+    (attn_dropout): Dropout(p=0.1, inplace=False)
+    (ffn_norm): RMSNorm()
+    (ffn): SwiGLUFFN(
+      (fc1): Linear(in_features=128, out_features=1024, bias=True)
+      (act): SwiGLU()
+      (fc2): Linear(in_features=512, out_features=128, bias=True)
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (representation_head): RepresentationHead(
+    (net): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=128, out_features=128, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.1, inplace=False)
+      (4): Linear(in_features=128, out_features=128, bias=True)
+    )
+  )
+  (augmentation): PtDropMultiViewAugmentation()
+  (loss): LeJEPASIGRegLoss(
+    (sigreg_loss_fn): SlicingUnivariateTest(
+      (univariate_test): EppsPulley()
+    )
+  )
+)
+Number of trainable parameters: 1359763
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 1 train losses: {'total_loss': 3.7618064361307626, 'invariant_loss': 0.3504051314476315, 'sigreg_loss': 170.5658567774936}
+Epoch 1 val losses: {'total_loss': 1.8349066772023026, 'invariant_loss': 0.5963563751809451, 'sigreg_loss': 61.92602040816327}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 2 train losses: {'total_loss': 1.448622231059672, 'invariant_loss': 0.6208837350920948, 'sigreg_loss': 41.386668797953966}
+Epoch 2 val losses: {'total_loss': 1.2819485758640328, 'invariant_loss': 0.5561234797446095, 'sigreg_loss': 36.29496173469388}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 3 train losses: {'total_loss': 1.0658506988869298, 'invariant_loss': 0.530005110575415, 'sigreg_loss': 26.79096067774936}
+Epoch 3 val losses: {'total_loss': 0.9149885560785022, 'invariant_loss': 0.3940472656062671, 'sigreg_loss': 26.051977040816325}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 4 train losses: {'total_loss': 0.8925871369631394, 'invariant_loss': 0.4591351264654218, 'sigreg_loss': 21.670915920716112}
+Epoch 4 val losses: {'total_loss': 0.7782594649767389, 'invariant_loss': 0.3392796753620615, 'sigreg_loss': 21.946428571428573}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 5 train losses: {'total_loss': 0.7970297205478639, 'invariant_loss': 0.4175502704003888, 'sigreg_loss': 18.973945012787723}
+Epoch 5 val losses: {'total_loss': 0.7004810316222054, 'invariant_loss': 0.28106736703490726, 'sigreg_loss': 20.96970663265306}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 6 train losses: {'total_loss': 0.7310183853520762, 'invariant_loss': 0.3796332156871591, 'sigreg_loss': 17.569733056265985}
+Epoch 6 val losses: {'total_loss': 0.6321550066373787, 'invariant_loss': 0.24829618974911924, 'sigreg_loss': 19.193239795918366}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 7 train losses: {'total_loss': 0.6859542244992902, 'invariant_loss': 0.35237508562519726, 'sigreg_loss': 16.67858855498721}
+Epoch 7 val losses: {'total_loss': 0.5821688879205256, 'invariant_loss': 0.20506130577046044, 'sigreg_loss': 18.850765306122447}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 8 train losses: {'total_loss': 0.6505445006405911, 'invariant_loss': 0.33214703678627455, 'sigreg_loss': 15.920436381074168}
+Epoch 8 val losses: {'total_loss': 0.561775668695265, 'invariant_loss': 0.19226136157403187, 'sigreg_loss': 18.476084183673468}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 9 train losses: {'total_loss': 0.622073973688628, 'invariant_loss': 0.31691567595962367, 'sigreg_loss': 15.259750639386189}
+Epoch 9 val losses: {'total_loss': 0.5300385178047784, 'invariant_loss': 0.19332873730026945, 'sigreg_loss': 16.833545918367346}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 10 train losses: {'total_loss': 0.6022447836978356, 'invariant_loss': 0.30452996538118327, 'sigreg_loss': 14.886269181585678}
+Epoch 10 val losses: {'total_loss': 0.5117805822163212, 'invariant_loss': 0.1726991500781507, 'sigreg_loss': 16.959502551020407}
+Epoch 11 train losses: {'total_loss': 0.5820442138577971, 'invariant_loss': 0.2946032814090819, 'sigreg_loss': 14.37232257033248}
+Epoch 11 val losses: {'total_loss': 0.5169728953315287, 'invariant_loss': 0.1629091981722384, 'sigreg_loss': 17.7015306122449}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 12 train losses: {'total_loss': 0.5653303671828316, 'invariant_loss': 0.2861927142152396, 'sigreg_loss': 13.95816016624041}
+Epoch 12 val losses: {'total_loss': 0.47819514283720327, 'invariant_loss': 0.17520666289694456, 'sigreg_loss': 15.151785714285714}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 13 train losses: {'total_loss': 0.5536650753082217, 'invariant_loss': 0.2791386207618067, 'sigreg_loss': 13.725663363171355}
+Epoch 13 val losses: {'total_loss': 0.47316373580572557, 'invariant_loss': 0.1723924511093266, 'sigreg_loss': 15.037946428571429}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 14 train losses: {'total_loss': 0.5421650314803623, 'invariant_loss': 0.2738238884626752, 'sigreg_loss': 13.41711956521739}
+Epoch 14 val losses: {'total_loss': 0.454988425939667, 'invariant_loss': 0.16201469309780062, 'sigreg_loss': 14.646683673469388}
+Epoch 15 train losses: {'total_loss': 0.5363196428398342, 'invariant_loss': 0.2693509329539126, 'sigreg_loss': 13.348865089514067}
+Epoch 15 val losses: {'total_loss': 0.4649006268199609, 'invariant_loss': 0.16513579855768049, 'sigreg_loss': 14.989158163265307}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 16 train losses: {'total_loss': 0.5284006670689034, 'invariant_loss': 0.266254827932781, 'sigreg_loss': 13.106857416879796}
+Epoch 16 val losses: {'total_loss': 0.44861661445121376, 'invariant_loss': 0.16726696559665155, 'sigreg_loss': 14.066007653061224}
+Epoch 17 train losses: {'total_loss': 0.5211403992627283, 'invariant_loss': 0.2626060921403453, 'sigreg_loss': 12.925631393861893}
+Epoch 17 val losses: {'total_loss': 0.451351741899033, 'invariant_loss': 0.16707738800620547, 'sigreg_loss': 14.209183673469388}
+Epoch 18 train losses: {'total_loss': 0.5167500696066395, 'invariant_loss': 0.259483295442808, 'sigreg_loss': 12.863091432225064}
+Epoch 18 val losses: {'total_loss': 0.45184452421202953, 'invariant_loss': 0.15913486283044426, 'sigreg_loss': 14.63360969387755}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 19 train losses: {'total_loss': 0.5107222610269971, 'invariant_loss': 0.2566511697324036, 'sigreg_loss': 12.702765345268542}
+Epoch 19 val losses: {'total_loss': 0.436748707172822, 'invariant_loss': 0.15218038845579235, 'sigreg_loss': 14.231186224489797}
+Epoch 20 train losses: {'total_loss': 0.5074863570654179, 'invariant_loss': 0.2560858257362605, 'sigreg_loss': 12.569533248081841}
+Epoch 20 val losses: {'total_loss': 0.43999344490620557, 'invariant_loss': 0.15560947620899093, 'sigreg_loss': 14.216836734693878}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 21 train losses: {'total_loss': 0.5059026600530995, 'invariant_loss': 0.25362672005086906, 'sigreg_loss': 12.611852621483376}
+Epoch 21 val losses: {'total_loss': 0.43322415406606635, 'invariant_loss': 0.1629256058712395, 'sigreg_loss': 13.516581632653061}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 22 train losses: {'total_loss': 0.5008270273275692, 'invariant_loss': 0.25175176471319344, 'sigreg_loss': 12.453844309462916}
+Epoch 22 val losses: {'total_loss': 0.42985133917964236, 'invariant_loss': 0.1487308829566654, 'sigreg_loss': 14.05452806122449}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 23 train losses: {'total_loss': 0.4984694565729717, 'invariant_loss': 0.2509957815489501, 'sigreg_loss': 12.373601342710998}
+Epoch 23 val losses: {'total_loss': 0.4275053119172855, 'invariant_loss': 0.15885097427027567, 'sigreg_loss': 13.432397959183673}
+Epoch 24 train losses: {'total_loss': 0.4952932040938331, 'invariant_loss': 0.24960843597531623, 'sigreg_loss': 12.284566815856778}
+Epoch 24 val losses: {'total_loss': 0.43116943492573134, 'invariant_loss': 0.16111502651961482, 'sigreg_loss': 13.501594387755102}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 25 train losses: {'total_loss': 0.49336888604914136, 'invariant_loss': 0.24821048893053513, 'sigreg_loss': 12.257672634271099}
+Epoch 25 val losses: {'total_loss': 0.4264208776306133, 'invariant_loss': 0.15934099986845132, 'sigreg_loss': 13.356505102040817}
+Epoch 26 train losses: {'total_loss': 0.4914843812775429, 'invariant_loss': 0.24751983716359835, 'sigreg_loss': 12.199168797953964}
+Epoch 26 val losses: {'total_loss': 0.4275698675488939, 'invariant_loss': 0.15541784313260293, 'sigreg_loss': 13.607940051020408}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 27 train losses: {'total_loss': 0.49000778855265253, 'invariant_loss': 0.24612941208016842, 'sigreg_loss': 12.193214514066495}
+Epoch 27 val losses: {'total_loss': 0.4240468156581022, 'invariant_loss': 0.14884552454613909, 'sigreg_loss': 13.760841836734693}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 28 train losses: {'total_loss': 0.48753376640474705, 'invariant_loss': 0.2455804159726633, 'sigreg_loss': 12.097945971867007}
+Epoch 28 val losses: {'total_loss': 0.41986566112965956, 'invariant_loss': 0.15732480471535604, 'sigreg_loss': 13.127869897959183}
+Epoch 29 train losses: {'total_loss': 0.48584579041851755, 'invariant_loss': 0.2449220770498371, 'sigreg_loss': 12.046675191815856}
+Epoch 29 val losses: {'total_loss': 0.4262906693074168, 'invariant_loss': 0.16059591385478877, 'sigreg_loss': 13.282525510204081}
+Epoch 30 train losses: {'total_loss': 0.48398223054378536, 'invariant_loss': 0.24448964304631324, 'sigreg_loss': 11.97434462915601}
+Epoch 30 val losses: {'total_loss': 0.4265660147885887, 'invariant_loss': 0.15520620178811403, 'sigreg_loss': 13.568877551020408}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 31 train losses: {'total_loss': 0.4837543363004084, 'invariant_loss': 0.24426549562560324, 'sigreg_loss': 11.975103900255755}
+Epoch 31 val losses: {'total_loss': 0.41156474105557617, 'invariant_loss': 0.15733961282031877, 'sigreg_loss': 12.71109693877551}
+Epoch 32 train losses: {'total_loss': 0.48054652472438714, 'invariant_loss': 0.24337733211114887, 'sigreg_loss': 11.858096227621484}
+Epoch 32 val losses: {'total_loss': 0.4173190266806252, 'invariant_loss': 0.15537606643474833, 'sigreg_loss': 13.096938775510203}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 33 train losses: {'total_loss': 0.4799880093854407, 'invariant_loss': 0.24200647189031782, 'sigreg_loss': 11.898777173913043}
+Epoch 33 val losses: {'total_loss': 0.408188277057239, 'invariant_loss': 0.15109325021657408, 'sigreg_loss': 12.853316326530612}
+Epoch 34 train losses: {'total_loss': 0.4788986314516848, 'invariant_loss': 0.241371033041526, 'sigreg_loss': 11.875919117647058}
+Epoch 34 val losses: {'total_loss': 0.4176767509506673, 'invariant_loss': 0.15452305136286482, 'sigreg_loss': 13.157844387755102}
+Epoch 35 train losses: {'total_loss': 0.4763983140897263, 'invariant_loss': 0.2401563565406348, 'sigreg_loss': 11.81218030690537}
+Epoch 35 val losses: {'total_loss': 0.4123394954569486, 'invariant_loss': 0.157142788361834, 'sigreg_loss': 12.75701530612245}
+Epoch 36 train losses: {'total_loss': 0.4768144157917603, 'invariant_loss': 0.24043384089570521, 'sigreg_loss': 11.817894820971867}
+Epoch 36 val losses: {'total_loss': 0.41006563314977956, 'invariant_loss': 0.14699663510736155, 'sigreg_loss': 13.153698979591837}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 37 train losses: {'total_loss': 0.47569113748762615, 'invariant_loss': 0.23978011226257706, 'sigreg_loss': 11.796075767263428}
+Epoch 37 val losses: {'total_loss': 0.407518630885348, 'invariant_loss': 0.14980578061421307, 'sigreg_loss': 12.884885204081632}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 38 train losses: {'total_loss': 0.4732352309595898, 'invariant_loss': 0.2389695006982445, 'sigreg_loss': 11.712795716112533}
+Epoch 38 val losses: {'total_loss': 0.40173969356989375, 'invariant_loss': 0.1403846632765264, 'sigreg_loss': 13.066964285714286}
+Epoch 39 train losses: {'total_loss': 0.472816047308695, 'invariant_loss': 0.23839733934463442, 'sigreg_loss': 11.72138746803069}
+Epoch 39 val losses: {'total_loss': 0.4067628228542756, 'invariant_loss': 0.15264730892923414, 'sigreg_loss': 12.706313775510203}
+Epoch 40 train losses: {'total_loss': 0.4725393108318529, 'invariant_loss': 0.23835163045188654, 'sigreg_loss': 11.709079283887467}
+Epoch 40 val losses: {'total_loss': 0.4049836179735709, 'invariant_loss': 0.14301574465875722, 'sigreg_loss': 13.097257653061224}
+Epoch 41 train losses: {'total_loss': 0.47228238554409396, 'invariant_loss': 0.23809220788576413, 'sigreg_loss': 11.709159207161125}
+Epoch 41 val losses: {'total_loss': 0.4099185965499099, 'invariant_loss': 0.1552151521021614, 'sigreg_loss': 12.734375}
+Epoch 42 train losses: {'total_loss': 0.47062938490792006, 'invariant_loss': 0.23798709671439416, 'sigreg_loss': 11.631993286445013}
+Epoch 42 val losses: {'total_loss': 0.40368962652829227, 'invariant_loss': 0.14810926904331664, 'sigreg_loss': 12.775829081632653}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 43 train losses: {'total_loss': 0.4701322621625403, 'invariant_loss': 0.23668387263555965, 'sigreg_loss': 11.67275415601023}
+Epoch 43 val losses: {'total_loss': 0.4010652063452468, 'invariant_loss': 0.14941601120695777, 'sigreg_loss': 12.581951530612244}
+Epoch 44 train losses: {'total_loss': 0.46865243680032015, 'invariant_loss': 0.23607071523395035, 'sigreg_loss': 11.628636508951407}
+Epoch 44 val losses: {'total_loss': 0.40360110070632427, 'invariant_loss': 0.14586832013209255, 'sigreg_loss': 12.887755102040817}
+Saved new best model to plots/run-lejepa-part/best_model.pth
+Epoch 45 train losses: {'total_loss': 0.46891163483909937, 'invariant_loss': 0.23639672426768885, 'sigreg_loss': 11.625039961636828}
+Epoch 45 val losses: {'total_loss': 0.39899433860365224, 'invariant_loss': 0.14513293106336983, 'sigreg_loss': 12.692283163265307}
+Epoch 46 train losses: {'total_loss': 0.4657890731111512, 'invariant_loss': 0.23575053518385533, 'sigreg_loss': 11.501998081841432}
+Epoch 46 val losses: {'total_loss': 0.40201034305655226, 'invariant_loss': 0.1493297783771948, 'sigreg_loss': 12.635841836734693}

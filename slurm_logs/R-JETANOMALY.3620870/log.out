@@ -1,0 +1,257 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 3620870
+##  Job Name : JETANOMALY
+##  Nodelist : gpu3102
+##      CPUs : 1
+##  Mem/Node : 32000 MB
+## Directory : /oscar/home/lwang223/jetAnomalyDetection
+##   Job Started : Thu Jul  2 03:05:10 PM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Thu Jul  2 03:05:10 PM EDT 2026
+Job ID: 3620870
+Node: gpu3102
+==========================================
+
+GPU Information (from host):
+Thu Jul  2 15:05:10 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:21:00.0 Off |                    0 |
+| N/A   25C    P8             32W /  350W |      74MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          158297      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch version: 2.6.0+cu124
+Background rows: 125183
+Signal rows: 4067
+Node features: ['eta', 'phi', 'pt', 'd0/d0Err', 'dz/dzErr', 'charge', 'mass', 'log_pt', 'pdgId_-211', 'pdgId_-13', 'pdgId_-11', 'pdgId_11', 'pdgId_13', 'pdgId_22', 'pdgId_130', 'pdgId_211']
+Loading background node tensors...
+Loading signal node tensors...
+Background train events: 99979
+Background val events: 24995
+Signal events: 4064
+Example node tensor shape: torch.Size([8, 16])
+Model summary:
+LeJEPATripletParticleTransformerRepresentation(
+  (node_embedding): NodeEmbedding(
+    (net): Sequential(
+      (0): Linear(in_features=16, out_features=128, bias=True)
+      (1): GELU(approximate='none')
+      (2): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+      (3): Linear(in_features=128, out_features=512, bias=True)
+      (4): GELU(approximate='none')
+      (5): LayerNorm((512,), eps=1e-05, elementwise_affine=True)
+      (6): Linear(in_features=512, out_features=128, bias=True)
+      (7): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (pairwise_bias): PairwiseAttentionBias(
+    (mlp): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=4, out_features=64, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.1, inplace=False)
+      (4): Linear(in_features=64, out_features=64, bias=True)
+      (5): SiLU()
+      (6): Dropout(p=0.1, inplace=False)
+      (7): Linear(in_features=64, out_features=8, bias=True)
+    )
+  )
+  (encoder): ParticleTransformerEncoder(
+    (layers): ModuleList(
+      (0-7): 8 x ParticleTransformerBlock(
+        (attn_norm): RMSNorm()
+        (self_attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=128, out_features=128, bias=True)
+        )
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (ffn_norm): RMSNorm()
+        (ffn): SwiGLUFFN(
+          (fc1): Linear(in_features=128, out_features=1024, bias=True)
+          (act): SwiGLU()
+          (fc2): Linear(in_features=512, out_features=128, bias=True)
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+      )
+    )
+  )
+  (cls_pooling): CLSPooling(
+    (layers): ModuleList(
+      (0-1): 2 x ClassAttentionBlock(
+        (query_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (context_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=128, out_features=128, bias=True)
+        )
+        (attn_dropout): Dropout(p=0.0, inplace=False)
+        (ffn_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (ffn): Sequential(
+          (0): Linear(in_features=128, out_features=512, bias=True)
+          (1): GELU(approximate='none')
+          (2): Dropout(p=0.0, inplace=False)
+          (3): Linear(in_features=512, out_features=128, bias=True)
+          (4): Dropout(p=0.0, inplace=False)
+        )
+      )
+    )
+  )
+  (representation_head): RepresentationHead(
+    (net): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=128, out_features=128, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.1, inplace=False)
+      (4): Linear(in_features=128, out_features=128, bias=True)
+    )
+  )
+  (augmentation): PtDropMultiViewAugmentation()
+  (negative_augmentation): CorruptedNegativeAugmentation()
+  (loss): LeJEPASIGRegTripletLoss(
+    (lejepa_loss): LeJEPASIGRegLoss(
+      (sigreg_loss_fn): SlicingUnivariateTest(
+        (univariate_test): EppsPulley()
+      )
+    )
+  )
+)
+Number of trainable parameters: 2683020
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 1 train losses: {'total_loss': 2.3312618661567073, 'invariant_loss': 0.2955720054695521, 'sigreg_loss': 98.17623081841433, 'triplet_loss': 0.7213861650365698, 'triplet_pos_distance': 0.10715749691528699, 'triplet_neg_distance': 0.41284903780083215}
+Epoch 1 val losses: {'total_loss': 1.238594576716423, 'invariant_loss': 0.28103616757660493, 'sigreg_loss': 45.06186224489796, 'triplet_loss': 0.5631079470016518, 'triplet_pos_distance': 0.09010865132571483, 'triplet_neg_distance': 0.6425227206580493}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 2 train losses: {'total_loss': 0.9062972448747176, 'invariant_loss': 0.28094866814668223, 'sigreg_loss': 28.768502237851663, 'triplet_loss': 0.4997655221111024, 'triplet_pos_distance': 0.09957908729419988, 'triplet_neg_distance': 0.8334349366405126}
+Epoch 2 val losses: {'total_loss': 0.7598138240223028, 'invariant_loss': 0.19170563257470422, 'sigreg_loss': 25.845982142857142, 'triplet_loss': 0.511678217321026, 'triplet_pos_distance': 0.060364318070743155, 'triplet_neg_distance': 0.8610531712064937}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 3 train losses: {'total_loss': 0.7003320181918571, 'invariant_loss': 0.25940304567746797, 'sigreg_loss': 19.804467710997443, 'triplet_loss': 0.44816735828928933, 'triplet_pos_distance': 0.09269861465372393, 'triplet_neg_distance': 1.0156175356234431}
+Epoch 3 val losses: {'total_loss': 0.6223104386305323, 'invariant_loss': 0.17955039783704038, 'sigreg_loss': 19.982302295918366, 'triplet_loss': 0.4309685353417786, 'triplet_pos_distance': 0.056706748199554124, 'triplet_neg_distance': 1.0390673489594946}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 4 train losses: {'total_loss': 0.6165393457540771, 'invariant_loss': 0.25800514962438426, 'sigreg_loss': 16.046575287723787, 'triplet_loss': 0.37601663633380705, 'triplet_pos_distance': 0.09205442104402863, 'triplet_neg_distance': 1.163850805796016}
+Epoch 4 val losses: {'total_loss': 0.578029182188365, 'invariant_loss': 0.19493069613770564, 'sigreg_loss': 17.300542091836736, 'triplet_loss': 0.3700673014533763, 'triplet_pos_distance': 0.060861922629481674, 'triplet_neg_distance': 1.1834249508624175}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 5 train losses: {'total_loss': 0.5652386624261242, 'invariant_loss': 0.25638647173600426, 'sigreg_loss': 13.729219948849105, 'triplet_loss': 0.3424830651649124, 'triplet_pos_distance': 0.09204471798237328, 'triplet_neg_distance': 1.2416679369824013}
+Epoch 5 val losses: {'total_loss': 0.5228909106583012, 'invariant_loss': 0.1825413091146216, 'sigreg_loss': 15.252391581632653, 'triplet_loss': 0.352635032516353, 'triplet_pos_distance': 0.05681214458784278, 'triplet_neg_distance': 1.1996457801789653}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 6 train losses: {'total_loss': 0.5364220047469639, 'invariant_loss': 0.2548279274455117, 'sigreg_loss': 12.518742007672634, 'triplet_loss': 0.31226302428013836, 'triplet_pos_distance': 0.09143882778370777, 'triplet_neg_distance': 1.2971348588728844}
+Epoch 6 val losses: {'total_loss': 0.5023498246256186, 'invariant_loss': 0.1698177393753918, 'sigreg_loss': 14.946747448979592, 'triplet_loss': 0.3366409997854914, 'triplet_pos_distance': 0.05298325814762894, 'triplet_neg_distance': 1.1910328931954441}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 7 train losses: {'total_loss': 0.5129342570786586, 'invariant_loss': 0.2510178883362304, 'sigreg_loss': 11.680167039641944, 'triplet_loss': 0.28329985194346485, 'triplet_pos_distance': 0.09020544674790576, 'triplet_neg_distance': 1.3609722444163563}
+Epoch 7 val losses: {'total_loss': 0.4665268063545227, 'invariant_loss': 0.1831696592271328, 'sigreg_loss': 12.715242346938776, 'triplet_loss': 0.2905229568025287, 'triplet_pos_distance': 0.057738094818683305, 'triplet_neg_distance': 1.3493315419372247}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 8 train losses: {'total_loss': 0.4958044454417265, 'invariant_loss': 0.24644213236506332, 'sigreg_loss': 11.166600063938619, 'triplet_loss': 0.26041074948923665, 'triplet_pos_distance': 0.08836803492873221, 'triplet_neg_distance': 1.429971125272229}
+Epoch 8 val losses: {'total_loss': 0.43600637617768073, 'invariant_loss': 0.19261426364584844, 'sigreg_loss': 10.834661989795919, 'triplet_loss': 0.26699865214070495, 'triplet_pos_distance': 0.060312380158931624, 'triplet_neg_distance': 1.415417496038943}
+Epoch 9 train losses: {'total_loss': 0.4809653270808632, 'invariant_loss': 0.2438195389897927, 'sigreg_loss': 10.651354699488492, 'triplet_loss': 0.24123412772746342, 'triplet_pos_distance': 0.08744440789875167, 'triplet_neg_distance': 1.4976375808801188}
+Epoch 9 val losses: {'total_loss': 0.44289417260763597, 'invariant_loss': 0.16126307601831397, 'sigreg_loss': 12.545758928571429, 'triplet_loss': 0.30704356243415754, 'triplet_pos_distance': 0.049478417366971165, 'triplet_neg_distance': 1.2341688506457271}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 10 train losses: {'total_loss': 0.4688834589536843, 'invariant_loss': 0.24240127939473638, 'sigreg_loss': 10.238930626598465, 'triplet_loss': 0.21697521362158342, 'triplet_pos_distance': 0.08668570642066581, 'triplet_neg_distance': 1.5809711118793244}
+Epoch 10 val losses: {'total_loss': 0.42112579683260043, 'invariant_loss': 0.17017973716161688, 'sigreg_loss': 11.356505102040817, 'triplet_loss': 0.2382053760241489, 'triplet_pos_distance': 0.053730362056925586, 'triplet_neg_distance': 1.4777184870778297}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 11 train losses: {'total_loss': 0.4549892624778211, 'invariant_loss': 0.23979310902869305, 'sigreg_loss': 9.930346867007673, 'triplet_loss': 0.1660679610126921, 'triplet_pos_distance': 0.08614608101413378, 'triplet_neg_distance': 1.7884980228246021}
+Epoch 11 val losses: {'total_loss': 0.4020579394941427, 'invariant_loss': 0.1692693363495019, 'sigreg_loss': 10.802774234693878, 'triplet_loss': 0.16699234829569348, 'triplet_pos_distance': 0.05365893054677515, 'triplet_neg_distance': 1.7194343264005623}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 12 train losses: {'total_loss': 0.43964718869122704, 'invariant_loss': 0.2319054861583978, 'sigreg_loss': 9.768781969309464, 'triplet_loss': 0.12364887426633511, 'triplet_pos_distance': 0.08332190847457827, 'triplet_neg_distance': 2.0188631022067938}
+Epoch 12 val losses: {'total_loss': 0.3941895093540756, 'invariant_loss': 0.15946620968835695, 'sigreg_loss': 11.230070153061224, 'triplet_loss': 0.10108940233001296, 'triplet_pos_distance': 0.050987575602318556, 'triplet_neg_distance': 2.1665776128671608}
+Epoch 13 train losses: {'total_loss': 0.42558350762747743, 'invariant_loss': 0.22597351822706743, 'sigreg_loss': 9.50411604859335, 'triplet_loss': 0.09517475471967626, 'triplet_pos_distance': 0.08062796163684724, 'triplet_neg_distance': 2.2724340614455434}
+Epoch 13 val losses: {'total_loss': 0.4011358332877256, 'invariant_loss': 0.15590070222257352, 'sigreg_loss': 11.869579081632653, 'triplet_loss': 0.07838265804992038, 'triplet_pos_distance': 0.05032680772853141, 'triplet_neg_distance': 2.3185265429165898}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 14 train losses: {'total_loss': 0.41901065115733527, 'invariant_loss': 0.22185728275943595, 'sigreg_loss': 9.419916879795396, 'triplet_loss': 0.08742365173881164, 'triplet_pos_distance': 0.07912853688401791, 'triplet_neg_distance': 2.326490790947624}
+Epoch 14 val losses: {'total_loss': 0.364415564403242, 'invariant_loss': 0.1652230291190196, 'sigreg_loss': 9.49968112244898, 'triplet_loss': 0.09206284651038599, 'triplet_pos_distance': 0.050919157918542624, 'triplet_neg_distance': 2.2274054398342056}
+Epoch 15 train losses: {'total_loss': 0.413419121214191, 'invariant_loss': 0.21959360850893933, 'sigreg_loss': 9.299492487212277, 'triplet_loss': 0.07845925496857795, 'triplet_pos_distance': 0.07775853581421668, 'triplet_neg_distance': 2.3586030649712018}
+Epoch 15 val losses: {'total_loss': 0.3735500672946171, 'invariant_loss': 0.15630437844261832, 'sigreg_loss': 10.561543367346939, 'triplet_loss': 0.05999275168632062, 'triplet_pos_distance': 0.0508566309926005, 'triplet_neg_distance': 2.365853113787515}
+Epoch 16 train losses: {'total_loss': 0.40690670774111054, 'invariant_loss': 0.21548115906050747, 'sigreg_loss': 9.180866368286445, 'triplet_loss': 0.07816185492098027, 'triplet_pos_distance': 0.07631927346596327, 'triplet_neg_distance': 2.3453591737295967}
+Epoch 16 val losses: {'total_loss': 0.36974985274125116, 'invariant_loss': 0.14701096116736226, 'sigreg_loss': 10.762276785714286, 'triplet_loss': 0.07486577696946202, 'triplet_pos_distance': 0.04636554419044025, 'triplet_neg_distance': 2.2312708229434732}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 17 train losses: {'total_loss': 0.40193089823741135, 'invariant_loss': 0.21356601670117634, 'sigreg_loss': 9.035166240409207, 'triplet_loss': 0.07662727711412608, 'triplet_pos_distance': 0.07557132903038694, 'triplet_neg_distance': 2.3076902339830423}
+Epoch 17 val losses: {'total_loss': 0.3549479568491177, 'invariant_loss': 0.15979556047490664, 'sigreg_loss': 9.380261479591837, 'triplet_loss': 0.07530324611508725, 'triplet_pos_distance': 0.04974835569381106, 'triplet_neg_distance': 2.1626292369803606}
+Epoch 18 train losses: {'total_loss': 0.39524761215805093, 'invariant_loss': 0.20950245904876752, 'sigreg_loss': 8.939937659846548, 'triplet_loss': 0.06936805545235686, 'triplet_pos_distance': 0.0743090170471336, 'triplet_neg_distance': 2.3166660509450967}
+Epoch 18 val losses: {'total_loss': 0.361639104783535, 'invariant_loss': 0.13896882682278447, 'sigreg_loss': 10.791613520408163, 'triplet_loss': 0.0685494432834034, 'triplet_pos_distance': 0.04314169820816237, 'triplet_neg_distance': 2.2023336425119515}
+Epoch 19 train losses: {'total_loss': 0.3907086639224416, 'invariant_loss': 0.20759214192171535, 'sigreg_loss': 8.826246803069054, 'triplet_loss': 0.06589735306018149, 'triplet_pos_distance': 0.07361643634679373, 'triplet_neg_distance': 2.361184396554747}
+Epoch 19 val losses: {'total_loss': 0.3592182181927623, 'invariant_loss': 0.1449867478590839, 'sigreg_loss': 10.356186224489797, 'triplet_loss': 0.07105551519412168, 'triplet_pos_distance': 0.04489086942785248, 'triplet_neg_distance': 2.180818024946719}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 20 train losses: {'total_loss': 0.38782218515949174, 'invariant_loss': 0.2054840881958642, 'sigreg_loss': 8.790561061381075, 'triplet_loss': 0.06531243304938764, 'triplet_pos_distance': 0.07243873341880797, 'triplet_neg_distance': 2.338183059259449}
+Epoch 20 val losses: {'total_loss': 0.35037127973473803, 'invariant_loss': 0.14881471145365918, 'sigreg_loss': 9.826530612244898, 'triplet_loss': 0.05075678446007018, 'triplet_pos_distance': 0.047280311166327825, 'triplet_neg_distance': 2.3635912038842024}
+Epoch 21 train losses: {'total_loss': 0.38613948976749657, 'invariant_loss': 0.20328439880743662, 'sigreg_loss': 8.839793797953964, 'triplet_loss': 0.06059187738334432, 'triplet_pos_distance': 0.07192169454263146, 'triplet_neg_distance': 2.4025017669438706}
+Epoch 21 val losses: {'total_loss': 0.3589965466942106, 'invariant_loss': 0.13610610038954385, 'sigreg_loss': 10.88201530612245, 'triplet_loss': 0.05244057773783499, 'triplet_pos_distance': 0.04273756211433483, 'triplet_neg_distance': 2.1225343237117844}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 22 train losses: {'total_loss': 0.38137190123958054, 'invariant_loss': 0.20192349115219874, 'sigreg_loss': 8.681186061381075, 'triplet_loss': 0.05810724927798447, 'triplet_pos_distance': 0.07089768695499739, 'triplet_neg_distance': 2.378490801357552}
+Epoch 22 val losses: {'total_loss': 0.3373354992696217, 'invariant_loss': 0.1438380361591675, 'sigreg_loss': 9.33529974489796, 'triplet_loss': 0.0681458478698469, 'triplet_pos_distance': 0.04439748246792932, 'triplet_neg_distance': 2.179175468123689}
+Epoch 23 train losses: {'total_loss': 0.37981201163338274, 'invariant_loss': 0.2001520792008056, 'sigreg_loss': 8.693654092071611, 'triplet_loss': 0.058005846681935556, 'triplet_pos_distance': 0.0708950358964598, 'triplet_neg_distance': 2.3828080532800815}
+Epoch 23 val losses: {'total_loss': 0.35428182309379386, 'invariant_loss': 0.1365958782179015, 'sigreg_loss': 10.641900510204081, 'triplet_loss': 0.04840160848344771, 'triplet_pos_distance': 0.042512253867652346, 'triplet_neg_distance': 2.1915714740753174}
+Epoch 24 train losses: {'total_loss': 0.37652276357269043, 'invariant_loss': 0.19828323360599215, 'sigreg_loss': 8.628117007672634, 'triplet_loss': 0.056764373922591926, 'triplet_pos_distance': 0.06977293534618814, 'triplet_neg_distance': 2.393731699575244}
+Epoch 24 val losses: {'total_loss': 0.3448260624950029, 'invariant_loss': 0.13397409694687445, 'sigreg_loss': 10.21922831632653, 'triplet_loss': 0.06446469876421046, 'triplet_pos_distance': 0.04087526712338535, 'triplet_neg_distance': 2.1153780075968527}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 25 train losses: {'total_loss': 0.37440193949453054, 'invariant_loss': 0.19780839482308044, 'sigreg_loss': 8.554747442455243, 'triplet_loss': 0.05502164455802392, 'triplet_pos_distance': 0.06970440850252538, 'triplet_neg_distance': 2.3775161666333524}
+Epoch 25 val losses: {'total_loss': 0.3328631004812766, 'invariant_loss': 0.13790318518116765, 'sigreg_loss': 9.448820153061224, 'triplet_loss': 0.059402619046634256, 'triplet_pos_distance': 0.04256784578557221, 'triplet_neg_distance': 2.146660548691847}
+Epoch 26 train losses: {'total_loss': 0.3728534375005366, 'invariant_loss': 0.19672689360121023, 'sigreg_loss': 8.53716432225064, 'triplet_loss': 0.053817061912220764, 'triplet_pos_distance': 0.06946003864354947, 'triplet_neg_distance': 2.380320018514648}
+Epoch 26 val losses: {'total_loss': 0.3329942573089989, 'invariant_loss': 0.13942470321697847, 'sigreg_loss': 9.386798469387756, 'triplet_loss': 0.058353768737644564, 'triplet_pos_distance': 0.04243183371667959, 'triplet_neg_distance': 2.261990340388551}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 27 train losses: {'total_loss': 0.370466524949464, 'invariant_loss': 0.19624936096656048, 'sigreg_loss': 8.44281489769821, 'triplet_loss': 0.05343654904933765, 'triplet_pos_distance': 0.06845374679778848, 'triplet_neg_distance': 2.4049007508455946}
+Epoch 27 val losses: {'total_loss': 0.3294028332647012, 'invariant_loss': 0.1439609942311535, 'sigreg_loss': 9.003667091836734, 'triplet_loss': 0.05383143375380611, 'triplet_pos_distance': 0.04356205395936054, 'triplet_neg_distance': 2.193047355632393}
+Epoch 28 train losses: {'total_loss': 0.3677450799385605, 'invariant_loss': 0.19353561453959522, 'sigreg_loss': 8.435541879795396, 'triplet_loss': 0.05484563542668091, 'triplet_pos_distance': 0.06794430971945949, 'triplet_neg_distance': 2.3822624189469517}
+Epoch 28 val losses: {'total_loss': 0.3328658381895143, 'invariant_loss': 0.14807657817644732, 'sigreg_loss': 9.012914540816327, 'triplet_loss': 0.045287743277315586, 'triplet_pos_distance': 0.04633722620617066, 'triplet_neg_distance': 2.10221287912252}
+Epoch 29 train losses: {'total_loss': 0.36616685430107215, 'invariant_loss': 0.19272251343330765, 'sigreg_loss': 8.414122442455243, 'triplet_loss': 0.051502748699787326, 'triplet_pos_distance': 0.06756531240423318, 'triplet_neg_distance': 2.405007177606568}
+Epoch 29 val losses: {'total_loss': 0.33116125117759315, 'invariant_loss': 0.1333444647643031, 'sigreg_loss': 9.645886479591837, 'triplet_loss': 0.049083220924497864, 'triplet_pos_distance': 0.04198141388443052, 'triplet_neg_distance': 2.187062348638262}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 30 train losses: {'total_loss': 0.36451751325289, 'invariant_loss': 0.19198638675234203, 'sigreg_loss': 8.37292199488491, 'triplet_loss': 0.05057523036590013, 'triplet_pos_distance': 0.06747073425299219, 'triplet_neg_distance': 2.3998883544941387}
+Epoch 30 val losses: {'total_loss': 0.32621815717037844, 'invariant_loss': 0.13295236188082063, 'sigreg_loss': 9.441645408163266, 'triplet_loss': 0.04440460099401523, 'triplet_pos_distance': 0.04077903860799816, 'triplet_neg_distance': 2.213794540385811}
+Epoch 31 train losses: {'total_loss': 0.3620968596709659, 'invariant_loss': 0.19113503630889955, 'sigreg_loss': 8.299872122762148, 'triplet_loss': 0.049636798139061314, 'triplet_pos_distance': 0.06711983976080595, 'triplet_neg_distance': 2.408613117454607}
+Epoch 31 val losses: {'total_loss': 0.32735234134051266, 'invariant_loss': 0.14008085433469744, 'sigreg_loss': 9.086894132653061, 'triplet_loss': 0.05526228449592481, 'triplet_pos_distance': 0.04230316199970489, 'triplet_neg_distance': 2.152182181270755}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 32 train losses: {'total_loss': 0.3615025843653228, 'invariant_loss': 0.19107047811417324, 'sigreg_loss': 8.276634430946292, 'triplet_loss': 0.049147498536654906, 'triplet_pos_distance': 0.0668569620212783, 'triplet_neg_distance': 2.3687227583297377}
+Epoch 32 val losses: {'total_loss': 0.31979362225654173, 'invariant_loss': 0.13908450100190786, 'sigreg_loss': 8.813775510204081, 'triplet_loss': 0.04439587930302915, 'triplet_pos_distance': 0.04333666038262297, 'triplet_neg_distance': 2.25140864873419}
+Epoch 33 train losses: {'total_loss': 0.35911092539425093, 'invariant_loss': 0.18993236267429484, 'sigreg_loss': 8.217511189258312, 'triplet_loss': 0.04829459686470611, 'triplet_pos_distance': 0.06663005900047624, 'triplet_neg_distance': 2.4287164601523554}
+Epoch 33 val losses: {'total_loss': 0.32357303509298635, 'invariant_loss': 0.13554638270668837, 'sigreg_loss': 9.166772959183673, 'triplet_loss': 0.04701953811799081, 'triplet_pos_distance': 0.04161477289447675, 'triplet_neg_distance': 2.1987428665161133}
+Epoch 34 train losses: {'total_loss': 0.3579924812021158, 'invariant_loss': 0.18944167191415187, 'sigreg_loss': 8.193334398976981, 'triplet_loss': 0.04689363540028748, 'triplet_pos_distance': 0.06609606508480008, 'triplet_neg_distance': 2.3835622550886306}
+Epoch 34 val losses: {'total_loss': 0.3201959342980871, 'invariant_loss': 0.13465035714361132, 'sigreg_loss': 9.042410714285714, 'triplet_loss': 0.04687196864955583, 'triplet_pos_distance': 0.04142620585554717, 'triplet_neg_distance': 2.1299499589569715}
+Epoch 35 train losses: {'total_loss': 0.35651818653354256, 'invariant_loss': 0.18872970409329284, 'sigreg_loss': 8.15449168797954, 'triplet_loss': 0.04691302539337703, 'triplet_pos_distance': 0.06581982613429237, 'triplet_neg_distance': 2.434167210708189}
+Epoch 35 val losses: {'total_loss': 0.32038457159485134, 'invariant_loss': 0.13488896814536075, 'sigreg_loss': 9.05420918367347, 'triplet_loss': 0.04395573185186605, 'triplet_pos_distance': 0.04108500239268249, 'triplet_neg_distance': 2.277642646614386}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 36 train losses: {'total_loss': 0.3556291233853001, 'invariant_loss': 0.18837197071603498, 'sigreg_loss': 8.124880115089514, 'triplet_loss': 0.047462857978613784, 'triplet_pos_distance': 0.06551157183888014, 'triplet_neg_distance': 2.454332024849894}
+Epoch 36 val losses: {'total_loss': 0.31757956925703557, 'invariant_loss': 0.14395223922875464, 'sigreg_loss': 8.48453443877551, 'triplet_loss': 0.03904750279378982, 'triplet_pos_distance': 0.04371332779184592, 'triplet_neg_distance': 2.2991664044711055}
+Epoch 37 train losses: {'total_loss': 0.353799666094658, 'invariant_loss': 0.18786761063672697, 'sigreg_loss': 8.066236413043478, 'triplet_loss': 0.04591938915669613, 'triplet_pos_distance': 0.06565310955142883, 'triplet_neg_distance': 2.4243832686368156}
+Epoch 37 val losses: {'total_loss': 0.31922814189171306, 'invariant_loss': 0.13517695209201502, 'sigreg_loss': 8.990593112244898, 'triplet_loss': 0.04264040130703729, 'triplet_pos_distance': 0.04138256122871321, 'triplet_neg_distance': 2.2186264432206446}
+Epoch 38 train losses: {'total_loss': 0.3530849483235718, 'invariant_loss': 0.18801065303785416, 'sigreg_loss': 8.030131074168798, 'triplet_loss': 0.04471595511507348, 'triplet_pos_distance': 0.06534372164827326, 'triplet_neg_distance': 2.4244752570491315}
+Epoch 38 val losses: {'total_loss': 0.318732813456837, 'invariant_loss': 0.12940837408663058, 'sigreg_loss': 9.236288265306122, 'triplet_loss': 0.04579739958732104, 'triplet_pos_distance': 0.03898137754627636, 'triplet_neg_distance': 2.173235233949155}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 39 train losses: {'total_loss': 0.3495164592476452, 'invariant_loss': 0.186225587240113, 'sigreg_loss': 7.939777813299233, 'triplet_loss': 0.04485197151389421, 'triplet_pos_distance': 0.06515637931921293, 'triplet_neg_distance': 2.4489426747002563}
+Epoch 39 val losses: {'total_loss': 0.31697269270614703, 'invariant_loss': 0.13372856226502633, 'sigreg_loss': 8.950892857142858, 'triplet_loss': 0.04229259274291749, 'triplet_pos_distance': 0.04125811793480297, 'triplet_neg_distance': 2.2601372490123826}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 40 train losses: {'total_loss': 0.3497894828581749, 'invariant_loss': 0.18638732695899657, 'sigreg_loss': 7.948649296675192, 'triplet_loss': 0.04438507972556688, 'triplet_pos_distance': 0.06490523704444356, 'triplet_neg_distance': 2.4414975170589166}
+Epoch 40 val losses: {'total_loss': 0.31547416275253104, 'invariant_loss': 0.13304820896259376, 'sigreg_loss': 8.89014668367347, 'triplet_loss': 0.045969100478960544, 'triplet_pos_distance': 0.04025233894282458, 'triplet_neg_distance': 2.227710349219186}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 41 train losses: {'total_loss': 0.3498373740850507, 'invariant_loss': 0.18658814308664684, 'sigreg_loss': 7.939977621483376, 'triplet_loss': 0.04449800566753463, 'triplet_pos_distance': 0.06484237026966289, 'triplet_neg_distance': 2.4343592651054986}
+Epoch 41 val losses: {'total_loss': 0.31118733922437747, 'invariant_loss': 0.13510919430730295, 'sigreg_loss': 8.59438775510204, 'triplet_loss': 0.04188194441400012, 'triplet_pos_distance': 0.04234185069799423, 'triplet_neg_distance': 2.2353951018683764}
+Epoch 42 train losses: {'total_loss': 0.34906480348933383, 'invariant_loss': 0.1861353222938145, 'sigreg_loss': 7.92659047314578, 'triplet_loss': 0.044004163326090556, 'triplet_pos_distance': 0.06483176574492089, 'triplet_neg_distance': 2.4513710365271018}
+Epoch 42 val losses: {'total_loss': 0.313061638450136, 'invariant_loss': 0.1328598763793707, 'sigreg_loss': 8.790497448979592, 'triplet_loss': 0.044005807793262054, 'triplet_pos_distance': 0.04056241217886611, 'triplet_neg_distance': 2.237824559211731}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 43 train losses: {'total_loss': 0.3477871379126673, 'invariant_loss': 0.1858282723199681, 'sigreg_loss': 7.882752557544757, 'triplet_loss': 0.04293970383889497, 'triplet_pos_distance': 0.06465724385474496, 'triplet_neg_distance': 2.475319852914347}
+Epoch 43 val losses: {'total_loss': 0.3090277498169821, 'invariant_loss': 0.13637208550864335, 'sigreg_loss': 8.425382653061224, 'triplet_loss': 0.04128876327042829, 'triplet_pos_distance': 0.041151703962562035, 'triplet_neg_distance': 2.2870185229243063}
+Epoch 44 train losses: {'total_loss': 0.34743736286068816, 'invariant_loss': 0.185942287487752, 'sigreg_loss': 7.859434942455243, 'triplet_loss': 0.043047257713363755, 'triplet_pos_distance': 0.06500137358656168, 'triplet_neg_distance': 2.463437577647626}
+Epoch 44 val losses: {'total_loss': 0.3118330142935928, 'invariant_loss': 0.13303659023831085, 'sigreg_loss': 8.71938775510204, 'triplet_loss': 0.04365419148828606, 'triplet_pos_distance': 0.04081077044069463, 'triplet_neg_distance': 2.2377480730718498}
+Epoch 45 train losses: {'total_loss': 0.345871954241677, 'invariant_loss': 0.18486754742958356, 'sigreg_loss': 7.836397058823529, 'triplet_loss': 0.04270492756710676, 'triplet_pos_distance': 0.06456514355033408, 'triplet_neg_distance': 2.4834777848494936}
+Epoch 45 val losses: {'total_loss': 0.3105385621287385, 'invariant_loss': 0.13275500938144266, 'sigreg_loss': 8.685586734693878, 'triplet_loss': 0.04084970841032206, 'triplet_pos_distance': 0.04130302695557475, 'triplet_neg_distance': 2.272845999318726}
+Epoch 46 train losses: {'total_loss': 0.3452837044549415, 'invariant_loss': 0.18535811454057693, 'sigreg_loss': 7.782249040920716, 'triplet_loss': 0.042687680024434536, 'triplet_pos_distance': 0.06461830166123254, 'triplet_neg_distance': 2.48835701741221}
+Epoch 46 val losses: {'total_loss': 0.3091006210568, 'invariant_loss': 0.13110843137362782, 'sigreg_loss': 8.676977040816327, 'triplet_loss': 0.04463010742234028, 'triplet_pos_distance': 0.03963989199956461, 'triplet_neg_distance': 2.266252630827378}
+Saved new best model to plots/run-lejepa-trip-part/best_model.pth
+Epoch 47 train losses: {'total_loss': 0.344617684783838, 'invariant_loss': 0.1846754848194854, 'sigreg_loss': 7.784307065217392, 'triplet_loss': 0.042541586065097996, 'triplet_pos_distance': 0.06402949897377082, 'triplet_neg_distance': 2.494696177789927}
+Epoch 47 val losses: {'total_loss': 0.3085727566967205, 'invariant_loss': 0.13396182838751344, 'sigreg_loss': 8.518654336734693, 'triplet_loss': 0.04240628904948125, 'triplet_pos_distance': 0.04044907397533558, 'triplet_neg_distance': 2.2912000429873562}
+Epoch 48 train losses: {'total_loss': 0.3441704276882474, 'invariant_loss': 0.18493392470928713, 'sigreg_loss': 7.749800191815857, 'triplet_loss': 0.04234677187317168, 'triplet_pos_distance': 0.06430290547935553, 'triplet_neg_distance': 2.5033506401969343}
+Epoch 48 val losses: {'total_loss': 0.3102941300187792, 'invariant_loss': 0.13255997712970996, 'sigreg_loss': 8.674266581632653, 'triplet_loss': 0.04254800979314106, 'triplet_pos_distance': 0.04033161232209936, 'triplet_neg_distance': 2.276074453276031}
+Epoch 49 train losses: {'total_loss': 0.3443079986764342, 'invariant_loss': 0.18458052446394016, 'sigreg_loss': 7.775455562659847, 'triplet_loss': 0.0421114200595147, 'triplet_pos_distance': 0.06438396231311819, 'triplet_neg_distance': 2.495139091520968}
+Epoch 49 val losses: {'total_loss': 0.3091615347229705, 'invariant_loss': 0.13455992378294468, 'sigreg_loss': 8.521364795918368, 'triplet_loss': 0.041515943689309824, 'triplet_pos_distance': 0.04083830134334917, 'triplet_neg_distance': 2.28636384983452}
+Epoch 50 train losses: {'total_loss': 0.34533891950726814, 'invariant_loss': 0.18542221203789383, 'sigreg_loss': 7.787503996163683, 'triplet_loss': 0.04174341785881068, 'triplet_pos_distance': 0.06482101268971058, 'triplet_neg_distance': 2.4979860270419696}
+Epoch 50 val losses: {'total_loss': 0.3088242480037164, 'invariant_loss': 0.13260505785595397, 'sigreg_loss': 8.60076530612245, 'triplet_loss': 0.04194714323313413, 'triplet_pos_distance': 0.041553725583516825, 'triplet_neg_distance': 2.278555003964171}

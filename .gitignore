@@ -20,7 +20,6 @@ dist/
 
 # Logs and debug files
 *.log
-*.out
 *.prof
 
 # Jupyter Notebook checkpoints
