@@ -60,6 +60,8 @@ import torch
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
+from sklearn.metrics import roc_auc_score
+from visualize.plot_metrics import plot_anomaly_score, plot_roc_curve
 
 import constants as c
 from helpers import helpers_main
@@ -925,29 +927,241 @@ class TrainLeJEPATripletParticleTransformer:
 
         return np.concatenate(latents, axis=0)
 
-    def plot_latent_space_for_epoch(
+    def collect_evaluation_latents(
         self,
+        bg_train_loader: DataLoader,
         bg_val_loader: DataLoader,
         signal_loader: DataLoader,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Collect all latent arrays needed by both latent-space plotting and
+        Mahalanobis/ROC evaluation exactly once.
+        """
+
+        logging.info("Collecting background train latents...")
+        bg_train_latents = self.collect_representations(bg_train_loader)
+
+        logging.info("Collecting background validation latents...")
+        bg_val_latents = self.collect_representations(bg_val_loader)
+
+        logging.info("Collecting signal latents...")
+        signal_latents = self.collect_representations(signal_loader)
+
+        logging.info(f"Background train latents: {bg_train_latents.shape}")
+        logging.info(f"Background val latents: {bg_val_latents.shape}")
+        logging.info(f"Signal latents: {signal_latents.shape}")
+
+        return bg_train_latents, bg_val_latents, signal_latents
+
+    def fit_mahalanobis_background(
+        self,
+        bg_train_latents: np.ndarray,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Fit a Gaussian background model from background train latents.
+
+        Returns:
+            mean: (D,)
+            precision: (D, D)
+        """
+
+        if bg_train_latents.ndim != 2:
+            raise ValueError(
+                f"Expected bg_train_latents shape (N, D), got {bg_train_latents.shape}."
+            )
+
+        mean = bg_train_latents.mean(axis=0)
+        centered = bg_train_latents - mean
+        cov = np.cov(centered, rowvar=False)
+
+        if cov.ndim == 0:
+            cov = np.asarray([[float(cov)]], dtype=np.float64)
+
+        cov = np.asarray(cov, dtype=np.float64)
+        cov = cov + self.args.mahalanobis_cov_eps * np.eye(cov.shape[0], dtype=np.float64)
+        precision = np.linalg.pinv(cov)
+
+        return mean.astype(np.float64), precision.astype(np.float64)
+
+    @staticmethod
+    def mahalanobis_scores(
+        latents: np.ndarray,
+        mean: np.ndarray,
+        precision: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Compute per-event Mahalanobis distance scores.
+
+        No batch averaging is performed. Output shape is (N,).
+        """
+
+        latents = np.asarray(latents, dtype=np.float64)
+        centered = latents - mean
+        scores = np.einsum("nd,dd,nd->n", centered, precision, centered)
+        return scores.astype(np.float64)
+
+    @staticmethod
+    def compute_auc(background_scores: np.ndarray, signal_scores: np.ndarray) -> float:
+        y_true = np.concatenate(
+            [
+                np.zeros(len(background_scores), dtype=np.int64),
+                np.ones(len(signal_scores), dtype=np.int64),
+            ]
+        )
+        y_score = np.concatenate([background_scores, signal_scores])
+        return float(roc_auc_score(y_true, y_score))
+
+    def evaluate_mahalanobis_for_epoch(
+        self,
+        bg_train_latents: np.ndarray,
+        bg_val_latents: np.ndarray,
+        signal_latents: np.ndarray,
         epoch: int,
     ) -> None:
         """
-        Plot background validation and signal full-jet representations.
+        Evaluate Mahalanobis anomaly scores from already-collected latents.
+
+        The background-only Gaussian model is fit on background train latents.
+        ROC/AUC is reported for both:
+            - background train vs signal
+            - background validation vs signal
         """
 
-        bg_latents = self.collect_representations(bg_val_loader)
-        sg_latents = self.collect_representations(signal_loader)
+        mahal_dir = os.path.join(self.output_dir, "mahalanobis_eval", f"epoch_{epoch:04d}")
+        os.makedirs(mahal_dir, exist_ok=True)
+
+        np.save(os.path.join(mahal_dir, "background_train_latents.npy"), bg_train_latents)
+        np.save(os.path.join(mahal_dir, "background_val_latents.npy"), bg_val_latents)
+        np.save(os.path.join(mahal_dir, "signal_latents.npy"), signal_latents)
+
+        mean, precision = self.fit_mahalanobis_background(bg_train_latents)
+
+        background_train_scores = self.mahalanobis_scores(
+            bg_train_latents,
+            mean,
+            precision,
+        )
+        background_val_scores = self.mahalanobis_scores(
+            bg_val_latents,
+            mean,
+            precision,
+        )
+        signal_scores = self.mahalanobis_scores(
+            signal_latents,
+            mean,
+            precision,
+        )
+
+        auc_bgtrain_vs_signal = self.compute_auc(background_train_scores, signal_scores)
+        auc_bgval_vs_signal = self.compute_auc(background_val_scores, signal_scores)
+
+        np.save(
+            os.path.join(mahal_dir, "background_train_mahalanobis_scores.npy"),
+            background_train_scores,
+        )
+        np.save(
+            os.path.join(mahal_dir, "background_val_mahalanobis_scores.npy"),
+            background_val_scores,
+        )
+        np.save(
+            os.path.join(mahal_dir, "signal_mahalanobis_scores.npy"),
+            signal_scores,
+        )
+
+        metrics = {
+            "epoch": int(epoch),
+            "auc_bgtrain_vs_signal": float(auc_bgtrain_vs_signal),
+            "auc_bgval_vs_signal": float(auc_bgval_vs_signal),
+            "background_train_score_mean": float(np.mean(background_train_scores)),
+            "background_val_score_mean": float(np.mean(background_val_scores)),
+            "signal_score_mean": float(np.mean(signal_scores)),
+            "background_train_score_median": float(np.median(background_train_scores)),
+            "background_val_score_median": float(np.median(background_val_scores)),
+            "signal_score_median": float(np.median(signal_scores)),
+            "mahalanobis_cov_eps": float(self.args.mahalanobis_cov_eps),
+            "background_train_latent_shape": list(bg_train_latents.shape),
+            "background_val_latent_shape": list(bg_val_latents.shape),
+            "signal_latent_shape": list(signal_latents.shape),
+        }
+
+        metrics_path = os.path.join(mahal_dir, "mahalanobis_metrics.json")
+        with open(metrics_path, "w") as f:
+            json.dump(metrics, f, indent=2)
+
+        plot_anomaly_score(
+            background_val_scores,
+            signal_scores,
+            background_label="QCD (Val)",
+            signal_label="WJet",
+            save_path=os.path.join(mahal_dir, "bgval-vs-signal-mahalanobis-score.png"),
+        )
+
+        plot_anomaly_score(
+            background_train_scores,
+            signal_scores,
+            background_label="QCD (Train)",
+            signal_label="WJet",
+            save_path=os.path.join(mahal_dir, "bgtrain-vs-signal-mahalanobis-score.png"),
+        )
+
+        plot_roc_curve(
+            background_val_scores,
+            signal_scores,
+            background_label="QCD (Val)",
+            signal_label="WJet",
+            savepath=os.path.join(mahal_dir, "roc-bgval-vs-signal-mahalanobis.png"),
+            examples=False,
+            loss_fn=torch.nn.MSELoss(reduction="mean"),
+        )
+
+        plot_roc_curve(
+            background_train_scores,
+            signal_scores,
+            background_label="QCD (Train)",
+            signal_label="WJet",
+            savepath=os.path.join(mahal_dir, "roc-bgtrain-vs-signal-mahalanobis.png"),
+            examples=False,
+            loss_fn=torch.nn.MSELoss(reduction="mean"),
+        )
+
+        latest_dir = os.path.join(self.output_dir, "mahalanobis_eval", "latest")
+        os.makedirs(latest_dir, exist_ok=True)
+
+        latest_metrics_path = os.path.join(latest_dir, "mahalanobis_metrics.json")
+        with open(latest_metrics_path, "w") as f:
+            json.dump(metrics, f, indent=2)
+
+        logging.info(f"Mahalanobis metrics saved to {metrics_path}")
+        logging.info(f"Mahalanobis AUC, QCD train vs WJet: {auc_bgtrain_vs_signal:.6f}")
+        logging.info(f"Mahalanobis AUC, QCD val vs WJet: {auc_bgval_vs_signal:.6f}")
+
+        print(f"Mahalanobis AUC, QCD train vs WJet: {auc_bgtrain_vs_signal:.6f}")
+        print(f"Mahalanobis AUC, QCD val vs WJet: {auc_bgval_vs_signal:.6f}")
+        
+    def plot_latent_space_for_epoch(
+        self,
+        bg_val_latents: np.ndarray,
+        signal_latents: np.ndarray,
+        epoch: int,
+    ) -> None:
+        """
+        Plot background validation and signal full-jet representations from
+        already-collected latents.
+        """
+
+        bg_plot_latents = bg_val_latents
+        sg_plot_latents = signal_latents
 
         if self.args.max_latent_plot_points is not None:
             max_points = self.args.max_latent_plot_points
-            if len(bg_latents) > max_points:
-                bg_indices = np.random.choice(len(bg_latents), max_points, replace=False)
-                bg_latents = bg_latents[bg_indices]
-            if len(sg_latents) > max_points:
-                sg_indices = np.random.choice(len(sg_latents), max_points, replace=False)
-                sg_latents = sg_latents[sg_indices]
+            if len(bg_plot_latents) > max_points:
+                bg_indices = np.random.choice(len(bg_plot_latents), max_points, replace=False)
+                bg_plot_latents = bg_plot_latents[bg_indices]
+            if len(sg_plot_latents) > max_points:
+                sg_indices = np.random.choice(len(sg_plot_latents), max_points, replace=False)
+                sg_plot_latents = sg_plot_latents[sg_indices]
 
-        bg_2d, sg_2d, x_label, y_label = reduce_to_2d(bg_latents, sg_latents)
+        bg_2d, sg_2d, x_label, y_label = reduce_to_2d(bg_plot_latents, sg_plot_latents)
 
         output_path = os.path.join(
             self.latent_plot_dir,
@@ -1164,11 +1378,25 @@ class TrainLeJEPATripletParticleTransformer:
                 self.args.latent_plot_every > 0
                 and (epoch % self.args.latent_plot_every == 0 or epoch == self.args.epochs)
             ):
-                self.plot_latent_space_for_epoch(
+                bg_train_latents, bg_val_latents, signal_latents = self.collect_evaluation_latents(
+                    bg_train_loader=train_loader,
                     bg_val_loader=bg_val_loader,
                     signal_loader=signal_loader,
+                )
+
+                self.plot_latent_space_for_epoch(
+                    bg_val_latents=bg_val_latents,
+                    signal_latents=signal_latents,
                     epoch=epoch,
                 )
+
+                if not self.args.no_mahalanobis_eval:
+                    self.evaluate_mahalanobis_for_epoch(
+                        bg_train_latents=bg_train_latents,
+                        bg_val_latents=bg_val_latents,
+                        signal_latents=signal_latents,
+                        epoch=epoch,
+                    )
 
             logging.info(f"Train losses: {mean_train}")
             logging.info(f"Validation losses: {mean_val}")
@@ -1177,8 +1405,21 @@ class TrainLeJEPATripletParticleTransformer:
             print(f"Epoch {epoch} val losses: {mean_val}")
 
         # Final full-jet representation arrays for downstream inspection.
-        bg_val_latents = self.collect_representations(bg_val_loader)
-        sg_latents = self.collect_representations(signal_loader)
+        # Reuse the last evaluation latents when the final epoch already ran
+        # latent-space/Mahalanobis evaluation. Otherwise collect them once here.
+        if (
+            self.args.latent_plot_every > 0
+            and (self.args.epochs % self.args.latent_plot_every == 0)
+        ):
+            bg_train_latents, bg_val_latents, sg_latents = self.collect_evaluation_latents(
+                bg_train_loader=train_loader,
+                bg_val_loader=bg_val_loader,
+                signal_loader=signal_loader,
+            )
+            np.save(os.path.join(self.output_dir, "background_train_latents.npy"), bg_train_latents)
+        else:
+            bg_val_latents = self.collect_representations(bg_val_loader)
+            sg_latents = self.collect_representations(signal_loader)
 
         np.save(os.path.join(self.output_dir, "background_val_latents.npy"), bg_val_latents)
         np.save(os.path.join(self.output_dir, "signal_latents.npy"), sg_latents)
@@ -1215,6 +1456,8 @@ class TrainLeJEPATripletParticleTransformer:
             "sigreg_weight": self.args.sigreg_weight,
             "epps_pulley_num_points": self.args.epps_pulley_num_points,
             "num_slices": self.args.num_slices,
+            "mahalanobis_eval": not self.args.no_mahalanobis_eval,
+            "mahalanobis_cov_eps": self.args.mahalanobis_cov_eps,
             "triplet_weight": self.args.triplet_weight,
             "triplet_margin": self.args.triplet_margin,
             "normalize_triplet_representations": self.args.normalize_triplet_representations,
@@ -1624,6 +1867,17 @@ if __name__ == "__main__":
         type=int,
         default=1,
         help="Plot full-jet latent space every N epochs. Use 0 to disable. Default: 1.",
+    )
+    parser.add_argument(
+        "--no-mahalanobis-eval",
+        action="store_true",
+        help="Disable Mahalanobis anomaly-score and ROC evaluation during latent plotting epochs.",
+    )
+    parser.add_argument(
+        "--mahalanobis-cov-eps",
+        type=float,
+        default=1e-4,
+        help="Diagonal regularization added to the background latent covariance. Default: 1e-4.",
     )
     parser.add_argument(
         "--num-augmentation-plot-samples",
