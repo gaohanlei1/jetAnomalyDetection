@@ -1350,7 +1350,7 @@ class CorruptedNegativeAugmentation(nn.Module):
         batch_size, seq_len = valid_mask.shape
         device = valid_mask.device
         positions = torch.arange(seq_len, device=device).unsqueeze(0).expand(batch_size, seq_len)
-        sortable = positions.masked_fill(~valid_mask, seq_len + positions)
+        sortable = torch.where(valid_mask, positions, seq_len + positions)
         return torch.argsort(sortable, dim=1)
 
     def _random_valid_order(self, valid_mask: torch.Tensor) -> torch.Tensor:
