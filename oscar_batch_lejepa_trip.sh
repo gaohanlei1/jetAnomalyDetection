@@ -51,4 +51,4 @@ python -u scripts/run_train_lejepa_trip_part.py \
   --num-global-views 2 \
   --num-local-views 3 \
   --num-negative-views 4 \
-  --output-dir "plots/run-lejepa-trip-part-m2-all-aug"
+  --output-dir "plots/run-lejepa-trip-part-prob-aug"
