@@ -71,7 +71,7 @@ from models.part import (
     LeJEPALossConfig,
     LeJEPATripletParticleTransformerRepresentation,
     ParticleTransformerConfig,
-    PtDropAugmentationConfig,
+    MultiViewAugmentationConfig,
     TripletLossConfig,
 )
 from visualize.plot_latent_space import reduce_to_2d, plot_latent_space
@@ -777,7 +777,7 @@ class TrainLeJEPATripletParticleTransformer:
             eps=self.args.eps,
         )
 
-        augmentation_config = PtDropAugmentationConfig(
+        augmentation_config = MultiViewAugmentationConfig(
             num_global_views=self.args.num_global_views,
             num_local_views=self.args.num_local_views,
             global_drop_pt_frac_range=(
