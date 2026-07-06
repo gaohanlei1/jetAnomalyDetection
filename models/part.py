@@ -2302,12 +2302,6 @@ class LeJEPAParticleTransformerRepresentation(MinimalParticleTransformerRepresen
 
         num_views = len(views)
         batch_size = x.size(0)
-        
-        for i in range(num_views): # apply random rotation to all views
-            views[i], _ = self.augmentation_rotation(
-                x=views[i],
-                padding_mask=view_padding_masks[i],
-            )
 
         batched_views = torch.cat(views, dim=0) # shape: (num_views * B, N, F)
         batched_view_masks = torch.cat(view_padding_masks, dim=0)
@@ -2431,17 +2425,6 @@ class LeJEPATripletParticleTransformerRepresentation(MinimalParticleTransformerR
         num_views = len(views)
         num_negative_views = len(negative_views)
         batch_size = x.size(0)
-        
-        for i in range(num_views): # apply random rotation to all views and negatives
-            views[i], _ = self.augmentation_rotation(
-                x=views[i],
-                padding_mask=view_padding_masks[i],
-            )
-        for i in range(num_negative_views):
-            negative_views[i], _ = self.augmentation_rotation(
-                x=negative_views[i],
-                padding_mask=negative_padding_masks[i],
-            )
 
         batched_views = torch.cat(views, dim=0)
         batched_view_masks = torch.cat(view_padding_masks, dim=0)
