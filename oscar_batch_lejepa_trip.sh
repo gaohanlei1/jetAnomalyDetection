@@ -47,9 +47,8 @@ python -u scripts/run_train_lejepa_trip_part.py \
   --weight-decay 5e-2 \
   --precision bf16 \
   --triplet-weight 0.1 \
-  --triplet-margin 2.0 \
+  --triplet-margin 1.0 \
   --num-global-views 2 \
   --num-local-views 3 \
   --num-negative-views 4 \
-  --negative-modes "identity_shuffle,pt_resample,eta_phi_shuffle,batch_mix" \
   --output-dir "plots/run-lejepa-trip-part-m2-all-aug"

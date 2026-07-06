@@ -36,8 +36,9 @@ python -u scripts/run_train_lejepa_trip_part.py \
   --precision bf16 \
   --triplet-weight 0.1 \
   --triplet-margin 1.0 \
+  --num-global-views 2 \
+  --num-local-views 3 \
   --num-negative-views 4 \
-  --negative-modes "identity_shuffle,pt_resample,eta_phi_shuffle,batch_mix" \
   --output-dir "plots/run-lejepa-trip-part"
 """
 
@@ -507,16 +508,21 @@ class TrainLeJEPATripletParticleTransformer:
             )
             plt.close(fig)
 
-    def plot_augmentation_samples(self) -> None:
+    def plot_augmentation_samples(self, train_loader: DataLoader) -> None:
         """
         Plot original background jets and their augmented views before training.
 
-        Each saved figure corresponds to one randomly selected background event.
-        The subplots show:
+        Augmentations are generated from the actual training DataLoader batches,
+        so visualization uses the same batch size, shuffling, collation, and
+        padding behavior as training. This is important for batch_mix, which
+        requires multiple events in the same batch to provide donor jets.
+
+        Each saved figure corresponds to one event selected from a real training
+        batch. The subplots show:
             - original full jet
             - all global pt-drop views
             - all local pt-drop views
-            - all negative views (if negative_augmentation is implemented)
+            - all negative views
 
         Plot convention:
             x-axis: phi
@@ -527,58 +533,103 @@ class TrainLeJEPATripletParticleTransformer:
         if not hasattr(self, "model"):
             raise RuntimeError("Model must be built before plotting augmentation samples.")
 
-        if len(self.bg_train_nodes) == 0:
-            logging.warning("No background training nodes available for augmentation plots.")
-            return
-
         os.makedirs(self.augmentation_plot_dir, exist_ok=True)
 
-        num_samples = min(self.args.num_augmentation_plot_samples, len(self.bg_train_nodes))
+        num_samples = min(
+            self.args.num_augmentation_plot_samples,
+            len(self.bg_train_dataset),
+        )
         if num_samples <= 0:
             return
 
-        sample_indices = random.sample(range(len(self.bg_train_nodes)), k=num_samples)
+        self.model.eval()
+        num_plotted = 0
 
-        for plot_idx, sample_idx in enumerate(sample_indices):
-            x_single = self.bg_train_nodes[sample_idx]
-            padding_mask_single = torch.zeros(
-                1,
-                x_single.size(0),
-                dtype=torch.bool,
-            )
-            x_batch = x_single.unsqueeze(0)
+        with torch.no_grad():
+            for batch_idx, batch in enumerate(train_loader):
+                x_batch = batch["x"].to(DEVICE, non_blocking=True)
+                padding_mask_batch = batch["padding_mask"].to(DEVICE, non_blocking=True)
 
-            views, view_padding_masks, view_types = self.model.augmentation(
-                x=x_batch,
-                padding_mask=padding_mask_single,
-            )
-
-            panels = [(x_batch[0], padding_mask_single[0], "original")]
-            for view_i, (view_x, view_mask, view_type) in enumerate(
-                zip(views, view_padding_masks, view_types),
-                start=1,
-            ):
-                panels.append((view_x[0], view_mask[0], f"{view_i}: {view_type}"))
-
-            if hasattr(self.model, "negative_augmentation"):
-                negative_views, negative_padding_masks, negative_types = self.model.negative_augmentation(
+                views, view_padding_masks, view_types = self.model.augmentation(
                     x=x_batch,
-                    padding_mask=padding_mask_single,
+                    padding_mask=padding_mask_batch,
                 )
-                for neg_i, (neg_x, neg_mask, neg_type) in enumerate(
-                    zip(negative_views, negative_padding_masks, negative_types),
-                    start=1,
-                ):
-                    panels.append((neg_x[0], neg_mask[0], f"neg {neg_i}: {neg_type}"))
 
-            output_path = os.path.join(
-                self.augmentation_plot_dir,
-                f"augmentation_sample_{plot_idx + 1:02d}_event_{sample_idx:06d}.png",
-            )
-            self._plot_single_augmentation_panel(
-                panels=panels,
-                output_path=output_path,
-                title=f"Background event {sample_idx}: original and pt-drop views",
+                negative_views, negative_padding_masks, negative_types = (
+                    self.model.negative_augmentation(
+                        x=x_batch,
+                        padding_mask=padding_mask_batch,
+                    )
+                )
+
+                remaining = num_samples - num_plotted
+                if remaining <= 0:
+                    break
+
+                rows_this_batch = min(remaining, x_batch.size(0))
+                selected_rows = random.sample(
+                    range(x_batch.size(0)),
+                    k=rows_this_batch,
+                )
+
+                for row_idx in selected_rows:
+                    panels = [
+                        (
+                            x_batch[row_idx],
+                            padding_mask_batch[row_idx],
+                            "original",
+                        )
+                    ]
+
+                    for view_i, (view_x, view_mask, view_type) in enumerate(
+                        zip(views, view_padding_masks, view_types),
+                        start=1,
+                    ):
+                        panels.append(
+                            (
+                                view_x[row_idx],
+                                view_mask[row_idx],
+                                f"{view_i}: {view_type}",
+                            )
+                        )
+
+                    for neg_i, (neg_x, neg_mask, neg_type) in enumerate(
+                        zip(negative_views, negative_padding_masks, negative_types),
+                        start=1,
+                    ):
+                        panels.append(
+                            (
+                                neg_x[row_idx],
+                                neg_mask[row_idx],
+                                f"neg {neg_i}: {neg_type}",
+                            )
+                        )
+
+                    output_path = os.path.join(
+                        self.augmentation_plot_dir,
+                        f"augmentation_sample_{num_plotted + 1:02d}_"
+                        f"batch_{batch_idx:04d}_row_{row_idx:03d}.png",
+                    )
+
+                    self._plot_single_augmentation_panel(
+                        panels=panels,
+                        output_path=output_path,
+                        title=(
+                            f"Training batch {batch_idx}, row {row_idx}: "
+                            "original and augmented views"
+                        ),
+                    )
+
+                    num_plotted += 1
+                    if num_plotted >= num_samples:
+                        break
+
+                if num_plotted >= num_samples:
+                    break
+
+        if num_plotted < num_samples:
+            logging.warning(
+                f"Requested {num_samples} augmentation plots but only produced {num_plotted}."
             )
 
     def _plot_single_augmentation_panel(
@@ -744,19 +795,18 @@ class TrainLeJEPATripletParticleTransformer:
             zero_dropped_features=not self.args.keep_dropped_features,
         )
 
-        negative_modes = tuple(
-            item.strip()
-            for item in self.args.negative_modes.split(",")
-            if item.strip()
-        )
-        if len(negative_modes) == 0:
-            raise ValueError("--negative-modes must contain at least one mode.")
-
         negative_augmentation_config = CorruptedNegativeAugmentationConfig(
             num_negative_views=self.args.num_negative_views,
-            negative_modes=negative_modes,
+
+            batch_mix_prob=self.args.batch_mix_prob,
+            pt_resample_prob=self.args.pt_resample_prob,
+            node_eta_phi_rotation_prob=self.args.node_eta_phi_rotation_prob,
+            eta_phi_shuffle_prob=self.args.eta_phi_shuffle_prob,
+            identity_shuffle_prob=self.args.identity_shuffle_prob,
+
             min_nodes=self.args.min_nodes,
             eps=self.args.eps,
+
             eta_index=self.node_feature_names.index("eta"),
             phi_index=self.node_feature_names.index("phi"),
             pt_index=self.node_feature_names.index("pt"),
@@ -767,6 +817,7 @@ class TrainLeJEPATripletParticleTransformer:
             log_pt_index=self.node_feature_names.index("log_pt"),
             pdg_start_index=self.node_feature_names.index("pdgId_-211"),
             pdg_end_index=self.node_feature_names.index("pdgId_211") + 1,
+
             corrupt_node_frac=self.args.corrupt_node_frac,
             batch_mix_anchor_frac=self.args.batch_mix_anchor_frac,
             renormalize_pt_sum=self.args.renormalize_negative_pt_sum,
@@ -1183,7 +1234,7 @@ class TrainLeJEPATripletParticleTransformer:
 
         train_loader, bg_val_loader, signal_loader = self.make_dataloaders()
         self.build_model()
-        self.plot_augmentation_samples()
+        self.plot_augmentation_samples(train_loader)
 
         optimizer = torch.optim.AdamW(
             self.model.parameters(),
@@ -1463,11 +1514,11 @@ class TrainLeJEPATripletParticleTransformer:
             "normalize_triplet_representations": self.args.normalize_triplet_representations,
             "use_all_views_as_triplet_positives": self.args.use_all_views_as_triplet_positives,
             "num_negative_views": self.args.num_negative_views,
-            "negative_modes": [
-                item.strip()
-                for item in self.args.negative_modes.split(",")
-                if item.strip()
-            ],
+            "batch_mix_prob": self.args.batch_mix_prob,
+            "pt_resample_prob": self.args.pt_resample_prob,
+            "node_eta_phi_rotation_prob": self.args.node_eta_phi_rotation_prob,
+            "eta_phi_shuffle_prob": self.args.eta_phi_shuffle_prob,
+            "identity_shuffle_prob": self.args.identity_shuffle_prob,
             "corrupt_node_frac": self.args.corrupt_node_frac,
             "batch_mix_anchor_frac": self.args.batch_mix_anchor_frac,
             "renormalize_negative_pt_sum": self.args.renormalize_negative_pt_sum,
@@ -1747,14 +1798,34 @@ if __name__ == "__main__":
         help="Number of corrupted negative views generated per batch. Default: 4.",
     )
     parser.add_argument(
-        "--negative-modes",
-        type=str,
-        default="identity_shuffle,pt_resample,eta_phi_shuffle,batch_mix",
-        help=(
-            "Comma-separated corrupted negative modes. Supported: "
-            "identity_shuffle, pt_resample, eta_phi_shuffle, batch_mix. "
-            "Default: identity_shuffle,pt_resample,eta_phi_shuffle,batch_mix."
-        ),
+        "--batch-mix-prob",
+        type=float,
+        default=0.45,
+        help="Probability of sampling batch_mix for a negative view. Default: 0.45.",
+    )
+    parser.add_argument(
+        "--pt-resample-prob",
+        type=float,
+        default=0.25,
+        help="Probability of sampling pt_resample for a negative view. Default: 0.25.",
+    )
+    parser.add_argument(
+        "--node-eta-phi-rotation-prob",
+        type=float,
+        default=0.20,
+        help="Probability of sampling independent node-level eta-phi rotation. Default: 0.20.",
+    )
+    parser.add_argument(
+        "--eta-phi-shuffle-prob",
+        type=float,
+        default=0.05,
+        help="Probability of sampling eta_phi_shuffle for a negative view. Default: 0.05.",
+    )
+    parser.add_argument(
+        "--identity-shuffle-prob",
+        type=float,
+        default=0.05,
+        help="Probability of sampling identity_shuffle for a negative view. Default: 0.05.",
     )
     parser.add_argument(
         "--corrupt-node-frac",

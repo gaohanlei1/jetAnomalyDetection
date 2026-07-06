@@ -21,7 +21,7 @@ model_config = ParticleTransformerConfig(
     use_internal_autocast=False,
 )
 
-augmentation_config = PtDropAugmentationConfig(
+augmentation_config = MultiViewAugmentationConfig(
     num_global_views=2,
     num_local_views=6,
     global_drop_pt_frac_range=(0.0, 0.70),
@@ -927,7 +927,7 @@ class MinimalParticleTransformerRepresentation(nn.Module):
 # ------------------------------------------------------------
 
 @dataclass
-class PtDropAugmentationConfig:
+class MultiViewAugmentationConfig:
     """
     Configuration for random pt-drop multi-view augmentation.
 
@@ -1002,15 +1002,23 @@ class CorruptedNegativeAugmentationConfig:
         6: mass
         7: log_pt
         8:15: pdgId one-hot block
+
+    Default corruption sampling probabilities:
+        45% batch_mix
+        25% pt_resample
+        20% node_eta_phi_rotation
+         5% eta_phi_shuffle
+         5% identity_shuffle
     """
 
     num_negative_views: int = 4
-    negative_modes: Tuple[str, ...] = (
-        "identity_shuffle",
-        "pt_resample",
-        "eta_phi_shuffle",
-        "batch_mix",
-    )
+    # Each generated negative view independently samples one corruption mode
+    # according to these probabilities. The probabilities must sum to 1.
+    batch_mix_prob: float = 0.45
+    pt_resample_prob: float = 0.25
+    node_eta_phi_rotation_prob: float = 0.20
+    eta_phi_shuffle_prob: float = 0.05
+    identity_shuffle_prob: float = 0.05
 
     min_nodes: int = 4
     eps: float = 1e-8
@@ -1042,17 +1050,17 @@ class CorruptedNegativeAugmentationConfig:
 
     # For corrupted pt/log_pt values, keep the event-level log_pt distribution
     # on the same scale as the original event by matching the original valid-node
-    # mean and standard deviation. 
+    # mean and standard deviation.
     renormalize_log_pt_stats: bool = True
 
 
 # ------------------------------------------------------------
-# Random pt-drop multi-view augmentation
+# Random pt-drop + rotation multi-view augmentation
 # ------------------------------------------------------------
 
-class PtDropMultiViewAugmentation(nn.Module):
+class MultiViewAugmentation(nn.Module):
     """
-    Vectorized multi-view random node dropping augmentation.
+    Vectorized multi-view random node dropping + rotation augmentation.
 
     Submodule role:
         Used inside LeJEPAParticleTransformerRepresentation as:
@@ -1086,28 +1094,55 @@ class PtDropMultiViewAugmentation(nn.Module):
         This implementation uses an exponential-race / Gumbel-style weighted
         random permutation:
 
-            score_i = -log(u_i) / weight_i
-            weight_i = 1 / pt_i ** pt_drop_power
+            score_i = -log(u_i) * pt_i ** pt_drop_power
 
         Nodes with larger weights, i.e. lower pt, tend to get smaller scores
         and therefore appear earlier in the drop order. We then drop nodes in
         that order until the cumulative dropped pt reaches the sampled target,
         while preserving at least min_nodes valid nodes.
-
-    Important:
-        This is not bitwise equivalent to repeated multinomial sampling, but it
-        implements the same intended stochastic policy: weighted sampling
-        without replacement, biased toward dropping low-pt nodes first.
+        
+        Additionally, each event is randomly rotated by a angle in [0, 2pi), 
+        treating the eta-phi plane as a 2D Cartesian plane. 
 
     This preserves the original sequence length N. It does not physically
     shrink the tensor. Dropped nodes are masked out.
     """
 
-    def __init__(self, config: PtDropAugmentationConfig):
+    def __init__(self, config: MultiViewAugmentationConfig):
         super().__init__()
         self.config = config
 
-    def _make_view_vectorized(
+    def _random_rotation(
+        self,
+        x: torch.Tensor,
+        padding_mask: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        batch_size = x.size(0)
+        device = x.device
+        valid_mask = ~padding_mask  # shape: (B, N)
+        
+        # Sample random rotation angles for each event in the batch
+        theta = torch.rand(batch_size, 1, device=device, dtype=torch.float32) * 2 * math.pi # shape: (B, 1)
+        cos_theta = torch.cos(theta)
+        sin_theta = torch.sin(theta)
+
+        # Extract eta and phi coordinates
+        eta = x[..., 0].float() # shape: (B, N)
+        phi = x[..., 1].float() # shape: (B, N)
+
+        # Apply rotation
+        rotated_eta = cos_theta * eta - sin_theta * phi
+        rotated_phi = sin_theta * eta + cos_theta * phi
+
+        # Combine rotated coordinates with other features
+        rotated_x = x.clone()
+        
+        rotated_x[..., 0] = torch.where(valid_mask, rotated_eta, x[..., 0])
+        rotated_x[..., 1] = torch.where(valid_mask, rotated_phi, x[..., 1])
+
+        return rotated_x, padding_mask
+
+    def _drop_nodes(
         self,
         x: torch.Tensor,
         padding_mask: torch.Tensor,
@@ -1218,28 +1253,30 @@ class PtDropMultiViewAugmentation(nn.Module):
         view_types: List[str] = []
 
         for _ in range(self.config.num_global_views):
-            view_x, view_mask = self._make_view_vectorized(
+            view_x, view_mask = self._drop_nodes(
                 x=x,
                 padding_mask=padding_mask,
                 drop_frac_range=self.config.global_drop_pt_frac_range,
             )
+            view_x, _ = self._random_rotation(view_x, view_mask)
             views.append(view_x)
             view_padding_masks.append(view_mask)
             view_types.append("global")
 
         for _ in range(self.config.num_local_views):
-            view_x, view_mask = self._make_view_vectorized(
+            view_x, view_mask = self._drop_nodes(
                 x=x,
                 padding_mask=padding_mask,
                 drop_frac_range=self.config.local_drop_pt_frac_range,
             )
+            view_x, _ = self._random_rotation(view_x, view_mask)
             views.append(view_x)
             view_padding_masks.append(view_mask)
             view_types.append("local")
 
         return views, view_padding_masks, view_types
 
-
+    
 # ------------------------------------------------------------
 # Corrupted negative view augmentation
 # ------------------------------------------------------------
@@ -1273,6 +1310,12 @@ class CorruptedNegativeAugmentation(nn.Module):
             together. Then renormalize the pt sum to the original event pt sum
             and match the original event-level log_pt mean/std.
 
+        node_eta_phi_rotation:
+            Treat each valid node's eta-phi pair as a 2D Cartesian vector,
+            convert it to polar form, and independently rotate every valid node
+            by its own random angle sampled uniformly from [0, 2pi). The radial
+            distance sqrt(eta^2 + phi^2) is preserved for each node.
+
         eta_phi_shuffle:
             Within each event, shuffle the eta-phi pair jointly across nodes.
 
@@ -1282,11 +1325,53 @@ class CorruptedNegativeAugmentation(nn.Module):
             the current padded sequence length N, extra nodes are dropped.
             The resulting pt sum is renormalized to the original anchor event's
             pt sum, and log_pt is matched to the original anchor event's mean/std.
+
+    Important:
+        Every negative view is also rotated (event-level) randomly by an angle 
+        in [0, 2pi), treating the eta-phi plane as a 2D Cartesian plane. This is
+        done after the corruption mode is applied. This follows the same rotation 
+        convention as the multi-view augmentation.
     """
 
     def __init__(self, config: CorruptedNegativeAugmentationConfig):
         super().__init__()
         self.config = config
+
+        self._mode_names = (
+            "batch_mix",
+            "pt_resample",
+            "node_eta_phi_rotation",
+            "eta_phi_shuffle",
+            "identity_shuffle",
+        )
+
+        mode_probabilities = torch.tensor(
+            [
+                config.batch_mix_prob,
+                config.pt_resample_prob,
+                config.node_eta_phi_rotation_prob,
+                config.eta_phi_shuffle_prob,
+                config.identity_shuffle_prob,
+            ],
+            dtype=torch.float32,
+        )
+
+        if torch.any(mode_probabilities < 0):
+            raise ValueError(
+                f"Corruption probabilities must be non-negative, got {mode_probabilities.tolist()}."
+            )
+
+        probability_sum = float(mode_probabilities.sum().item())
+        if not math.isclose(probability_sum, 1.0, rel_tol=1e-6, abs_tol=1e-6):
+            raise ValueError(
+                f"Corruption probabilities must sum to 1.0, got {probability_sum:.8f}."
+            )
+
+        self.register_buffer(
+            "_mode_probabilities",
+            mode_probabilities,
+            persistent=False,
+        )
 
     def forward(
         self,
@@ -1309,33 +1394,70 @@ class CorruptedNegativeAugmentation(nn.Module):
         else:
             padding_mask = padding_mask.bool()
 
-        if len(self.config.negative_modes) == 0:
-            raise ValueError("negative_modes must contain at least one mode.")
-
         negative_views: List[torch.Tensor] = []
         negative_padding_masks: List[torch.Tensor] = []
         negative_types: List[str] = []
 
-        for i in range(self.config.num_negative_views):
-            mode = self.config.negative_modes[i % len(self.config.negative_modes)]
+        sampled_mode_indices = torch.multinomial(
+            self._mode_probabilities,
+            num_samples=self.config.num_negative_views,
+            replacement=True,
+        )
+
+        for mode_index in sampled_mode_indices.tolist():
+            mode = self._mode_names[mode_index]
 
             if mode == "identity_shuffle":
                 neg_x, neg_mask = self._identity_shuffle(x, padding_mask)
             elif mode == "pt_resample":
                 neg_x, neg_mask = self._pt_resample(x, padding_mask)
+            elif mode == "node_eta_phi_rotation":
+                neg_x, neg_mask = self._node_eta_phi_rotation(x, padding_mask)
             elif mode == "eta_phi_shuffle":
                 neg_x, neg_mask = self._eta_phi_shuffle(x, padding_mask)
             elif mode == "batch_mix":
                 neg_x, neg_mask = self._batch_mix(x, padding_mask)
             else:
-                raise ValueError(f"Unknown negative corruption mode: {mode}")
+                raise RuntimeError(f"Unexpected negative corruption mode: {mode}")
 
+            neg_x, _ = self._random_rotation(neg_x, neg_mask)
+            
             negative_views.append(neg_x)
             negative_padding_masks.append(neg_mask)
             negative_types.append(mode)
 
         return negative_views, negative_padding_masks, negative_types
 
+    def _random_rotation( # Copied from MultiViewAugmentation
+        self,
+        x: torch.Tensor,
+        padding_mask: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        batch_size = x.size(0)
+        device = x.device
+        valid_mask = ~padding_mask  # shape: (B, N)
+        
+        # Sample random rotation angles for each event in the batch
+        theta = torch.rand(batch_size, 1, device=device, dtype=torch.float32) * 2 * math.pi # shape: (B, 1)
+        cos_theta = torch.cos(theta)
+        sin_theta = torch.sin(theta)
+
+        # Extract eta and phi coordinates
+        eta = x[..., 0].float() # shape: (B, N)
+        phi = x[..., 1].float() # shape: (B, N)
+
+        # Apply rotation
+        rotated_eta = cos_theta * eta - sin_theta * phi
+        rotated_phi = sin_theta * eta + cos_theta * phi
+
+        # Combine rotated coordinates with other features
+        rotated_x = x.clone()
+        
+        rotated_x[..., 0] = torch.where(valid_mask, rotated_eta, x[..., 0])
+        rotated_x[..., 1] = torch.where(valid_mask, rotated_phi, x[..., 1])
+
+        return rotated_x, padding_mask
+    
     def _valid_mask(self, padding_mask: torch.Tensor) -> torch.Tensor:
         return ~padding_mask.bool()
 
@@ -1652,7 +1774,7 @@ class CorruptedNegativeAugmentation(nn.Module):
             device=device,
         )
         batch_indices = torch.arange(batch_size, device=device)
-        donor_b = donor_b + (donor_b >= batch_indices).long()
+        donor_b = donor_b + (donor_b >= batch_indices).long() # index-shift to make sure donor is not myself
 
         donor_valid_mask = valid_mask[donor_b]
         donor_num_valid = donor_valid_mask.sum(dim=1)
@@ -1682,7 +1804,7 @@ class CorruptedNegativeAugmentation(nn.Module):
             | (total_out < self.config.min_nodes)
             | (~torch.isfinite(original_pt_sum.squeeze(1)))
             | (original_pt_sum.squeeze(1) <= 0)
-        )
+        ) # shape: (B,)
 
         anchor_order = self._random_valid_order(valid_mask)
         donor_order_all = self._random_valid_order(valid_mask)
@@ -1692,7 +1814,7 @@ class CorruptedNegativeAugmentation(nn.Module):
         is_anchor = positions < num_anchor_keep.unsqueeze(1)
         is_valid_out = positions < total_out.unsqueeze(1)
 
-        anchor_rel = positions.clamp(max=seq_len - 1)
+        anchor_rel = positions
         donor_rel = (positions - num_anchor_keep.unsqueeze(1)).clamp(min=0, max=seq_len - 1)
 
         anchor_source_idx = torch.gather(anchor_order, dim=1, index=anchor_rel)
@@ -1720,6 +1842,62 @@ class CorruptedNegativeAugmentation(nn.Module):
             target_pt_sum=original_pt_sum.clamp(min=self.config.eps),
             target_log_pt_mean=original_log_pt_mean,
             target_log_pt_std=original_log_pt_std,
+        )
+
+        return view_x, view_mask
+    
+    def _node_eta_phi_rotation(
+        self,
+        x: torch.Tensor,
+        padding_mask: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Independently rotate every valid node in the eta-phi plane.
+
+        Each node is treated as a 2D Cartesian vector:
+
+            eta = r cos(alpha)
+            phi = r sin(alpha)
+
+        and receives its own independent random angle theta ~ Uniform(0, 2pi):
+
+            alpha' = alpha + theta
+
+        This preserves each node's radius sqrt(eta^2 + phi^2), while changing
+        its angular position independently of every other node in the event.
+        Padded nodes are left unchanged.
+        """
+
+        view_x = x.clone()
+        view_mask = padding_mask.clone()
+
+        valid_mask = self._valid_mask(padding_mask)
+
+        eta = x[..., self.config.eta_index].float()
+        phi = x[..., self.config.phi_index].float()
+
+        radius = torch.sqrt(eta.square() + phi.square())
+        angle = torch.atan2(phi, eta)
+
+        theta = torch.rand(
+            eta.shape,
+            device=x.device,
+            dtype=torch.float32,
+        ) * (2.0 * math.pi)
+
+        rotated_angle = angle + theta
+        rotated_eta = radius * torch.cos(rotated_angle)
+        rotated_phi = radius * torch.sin(rotated_angle)
+
+        view_x[..., self.config.eta_index] = torch.where(
+            valid_mask,
+            rotated_eta.to(dtype=x.dtype),
+            x[..., self.config.eta_index],
+        )
+        view_x[..., self.config.phi_index] = torch.where(
+            valid_mask,
+            rotated_phi.to(dtype=x.dtype),
+            x[..., self.config.phi_index],
         )
 
         return view_x, view_mask
@@ -2041,7 +2219,7 @@ class LeJEPAParticleTransformerRepresentation(MinimalParticleTransformerRepresen
 
     Added members:
         self.augmentation:
-            PtDropMultiViewAugmentation
+            MultiViewAugmentation
 
         self.loss:
             LeJEPASIGRegLoss
@@ -2063,18 +2241,18 @@ class LeJEPAParticleTransformerRepresentation(MinimalParticleTransformerRepresen
     def __init__(
         self,
         model_config: ParticleTransformerConfig,
-        augmentation_config: Optional[PtDropAugmentationConfig] = None,
+        augmentation_config: Optional[MultiViewAugmentationConfig] = None,
         loss_config: Optional[LeJEPALossConfig] = None,
     ):
         super().__init__(model_config)
 
         if augmentation_config is None:
-            augmentation_config = PtDropAugmentationConfig()
+            augmentation_config = MultiViewAugmentationConfig()
 
         if loss_config is None:
             loss_config = LeJEPALossConfig()
 
-        self.augmentation = PtDropMultiViewAugmentation(augmentation_config)
+        self.augmentation = MultiViewAugmentation(augmentation_config)
         self.loss = LeJEPASIGRegLoss(loss_config)
 
     def forward_pretrain(
@@ -2124,8 +2302,14 @@ class LeJEPAParticleTransformerRepresentation(MinimalParticleTransformerRepresen
 
         num_views = len(views)
         batch_size = x.size(0)
+        
+        for i in range(num_views): # apply random rotation to all views
+            views[i], _ = self.augmentation_rotation(
+                x=views[i],
+                padding_mask=view_padding_masks[i],
+            )
 
-        batched_views = torch.cat(views, dim=0)
+        batched_views = torch.cat(views, dim=0) # shape: (num_views * B, N, F)
         batched_view_masks = torch.cat(view_padding_masks, dim=0)
 
         batched_z = super().forward(
@@ -2186,7 +2370,7 @@ class LeJEPATripletParticleTransformerRepresentation(MinimalParticleTransformerR
     def __init__(
         self,
         model_config: ParticleTransformerConfig,
-        augmentation_config: Optional[PtDropAugmentationConfig] = None,
+        augmentation_config: Optional[MultiViewAugmentationConfig] = None,
         negative_augmentation_config: Optional[CorruptedNegativeAugmentationConfig] = None,
         loss_config: Optional[LeJEPALossConfig] = None,
         triplet_loss_config: Optional[TripletLossConfig] = None,
@@ -2194,7 +2378,7 @@ class LeJEPATripletParticleTransformerRepresentation(MinimalParticleTransformerR
         super().__init__(model_config)
 
         if augmentation_config is None:
-            augmentation_config = PtDropAugmentationConfig()
+            augmentation_config = MultiViewAugmentationConfig()
         if negative_augmentation_config is None:
             negative_augmentation_config = CorruptedNegativeAugmentationConfig()
         if loss_config is None:
@@ -2202,7 +2386,7 @@ class LeJEPATripletParticleTransformerRepresentation(MinimalParticleTransformerR
         if triplet_loss_config is None:
             triplet_loss_config = TripletLossConfig()
 
-        self.augmentation = PtDropMultiViewAugmentation(augmentation_config)
+        self.augmentation = MultiViewAugmentation(augmentation_config)
         self.negative_augmentation = CorruptedNegativeAugmentation(negative_augmentation_config)
         self.loss = LeJEPASIGRegTripletLoss(
             lejepa_config=loss_config,
@@ -2247,6 +2431,17 @@ class LeJEPATripletParticleTransformerRepresentation(MinimalParticleTransformerR
         num_views = len(views)
         num_negative_views = len(negative_views)
         batch_size = x.size(0)
+        
+        for i in range(num_views): # apply random rotation to all views and negatives
+            views[i], _ = self.augmentation_rotation(
+                x=views[i],
+                padding_mask=view_padding_masks[i],
+            )
+        for i in range(num_negative_views):
+            negative_views[i], _ = self.augmentation_rotation(
+                x=negative_views[i],
+                padding_mask=negative_padding_masks[i],
+            )
 
         batched_views = torch.cat(views, dim=0)
         batched_view_masks = torch.cat(view_padding_masks, dim=0)
@@ -2254,9 +2449,9 @@ class LeJEPATripletParticleTransformerRepresentation(MinimalParticleTransformerR
         batched_negatives = torch.cat(negative_views, dim=0)
         batched_negative_masks = torch.cat(negative_padding_masks, dim=0)
 
-        all_inputs = torch.cat([batched_views, batched_negatives], dim=0)
-        all_masks = torch.cat([batched_view_masks, batched_negative_masks], dim=0)
-
+        all_inputs = torch.cat([batched_views, batched_negatives], dim=0) # shape: (num_views * B + num_negative_views * B, N, F)
+        all_masks = torch.cat([batched_view_masks, batched_negative_masks], dim=0) # shape: (num_views * B + num_negative_views * B, N)
+        
         all_z = super().forward(
             all_inputs,
             padding_mask=all_masks,
