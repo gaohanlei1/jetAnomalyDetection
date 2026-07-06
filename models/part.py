@@ -1297,7 +1297,9 @@ class CorruptedNegativeAugmentation(nn.Module):
             List of bool masks, each with shape (B, N)
 
         negative_types:
-            List[str], one mode name per generated negative view
+            List[List[str]]. Outer length is num_negative_views; each inner
+            list has length B and stores the independently sampled corruption
+            mode for every event in that negative view.
 
     Implemented corruption modes:
         identity_shuffle:
@@ -1377,7 +1379,7 @@ class CorruptedNegativeAugmentation(nn.Module):
         self,
         x: torch.Tensor,
         padding_mask: Optional[torch.Tensor] = None,
-    ) -> Tuple[List[torch.Tensor], List[torch.Tensor], List[str]]:
+    ) -> Tuple[List[torch.Tensor], List[torch.Tensor], List[List[str]]]:
         if x.ndim != 3:
             raise ValueError(f"Expected x shape (B, N, F), got {tuple(x.shape)}.")
 
@@ -1396,35 +1398,63 @@ class CorruptedNegativeAugmentation(nn.Module):
 
         negative_views: List[torch.Tensor] = []
         negative_padding_masks: List[torch.Tensor] = []
-        negative_types: List[str] = []
+        negative_types: List[List[str]] = []
 
+        # Independently sample one corruption mode for every event and every
+        # negative view. Shape: (B, K), where K = num_negative_views.
         sampled_mode_indices = torch.multinomial(
             self._mode_probabilities,
-            num_samples=self.config.num_negative_views,
+            num_samples=batch_size * self.config.num_negative_views,
             replacement=True,
-        )
+        ).view(batch_size, self.config.num_negative_views)
 
-        for mode_index in sampled_mode_indices.tolist():
-            mode = self._mode_names[mode_index]
+        for view_index in range(self.config.num_negative_views):
+            event_mode_indices = sampled_mode_indices[:, view_index]  # (B,)
 
-            if mode == "identity_shuffle":
-                neg_x, neg_mask = self._identity_shuffle(x, padding_mask)
-            elif mode == "pt_resample":
-                neg_x, neg_mask = self._pt_resample(x, padding_mask)
-            elif mode == "node_eta_phi_rotation":
-                neg_x, neg_mask = self._node_eta_phi_rotation(x, padding_mask)
-            elif mode == "eta_phi_shuffle":
-                neg_x, neg_mask = self._eta_phi_shuffle(x, padding_mask)
-            elif mode == "batch_mix":
-                neg_x, neg_mask = self._batch_mix(x, padding_mask)
-            else:
-                raise RuntimeError(f"Unexpected negative corruption mode: {mode}")
+            # Start from the uncorrupted batch, then overwrite only the rows
+            # assigned to each corruption mode. This keeps the mode sampling
+            # event-specific while avoiding Python loops over individual events.
+            neg_x = x.clone()
+            neg_mask = padding_mask.clone()
 
+            for mode_index, mode in enumerate(self._mode_names):
+                event_selector = event_mode_indices == mode_index  # (B,)
+                if not torch.any(event_selector):
+                    continue
+
+                if mode == "identity_shuffle":
+                    candidate_x, candidate_mask = self._identity_shuffle(x, padding_mask)
+                elif mode == "pt_resample":
+                    candidate_x, candidate_mask = self._pt_resample(x, padding_mask)
+                elif mode == "node_eta_phi_rotation":
+                    candidate_x, candidate_mask = self._node_eta_phi_rotation(x, padding_mask)
+                elif mode == "eta_phi_shuffle":
+                    candidate_x, candidate_mask = self._eta_phi_shuffle(x, padding_mask)
+                elif mode == "batch_mix":
+                    candidate_x, candidate_mask = self._batch_mix(x, padding_mask)
+                else:
+                    raise RuntimeError(f"Unexpected negative corruption mode: {mode}")
+
+                neg_x = torch.where(
+                    event_selector.view(batch_size, 1, 1),
+                    candidate_x,
+                    neg_x,
+                )
+                neg_mask = torch.where(
+                    event_selector.view(batch_size, 1),
+                    candidate_mask,
+                    neg_mask,
+                )
+
+            # Apply one additional event-level rigid rotation to every event in
+            # the completed negative view, matching the positive-view convention.
             neg_x, _ = self._random_rotation(neg_x, neg_mask)
-            
+
             negative_views.append(neg_x)
             negative_padding_masks.append(neg_mask)
-            negative_types.append(mode)
+            negative_types.append(
+                [self._mode_names[index] for index in event_mode_indices.tolist()]
+            )
 
         return negative_views, negative_padding_masks, negative_types
 
