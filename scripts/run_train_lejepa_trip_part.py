@@ -682,10 +682,15 @@ class TrainLeJEPATripletParticleTransformer:
         eta_pad = max(0.05, 0.05 * (eta_max - eta_min + 1e-8))
         phi_pad = max(0.05, 0.05 * (phi_max - phi_min + 1e-8))
 
+        shared_eta_min = eta_min - eta_pad
+        shared_eta_max = eta_max + eta_pad
+        shared_phi_min = phi_min - phi_pad
+        shared_phi_max = phi_max + phi_pad
+
         fig, axes = plt.subplots(
             num_rows,
             num_cols,
-            figsize=(5 * num_cols, 4.5 * num_rows),
+            figsize=(5 * num_cols, 5 * num_rows),
             squeeze=False,
         )
         axes_flat = axes.flatten()
@@ -714,19 +719,21 @@ class TrainLeJEPATripletParticleTransformer:
             ax.set_title(f"{panel_title} ({len(pt)} nodes)")
             ax.set_xlabel("Phi")
             ax.set_ylabel("Eta")
-            ax.set_xlim(phi_min - phi_pad, phi_max + phi_pad)
-            ax.set_ylim(eta_min - eta_pad, eta_max + eta_pad)
-            ax.set_aspect("equal", adjustable="box")
+            ax.set_xlim(shared_phi_min, shared_phi_max)
+            ax.set_ylim(shared_eta_min, shared_eta_max)
+            ax.set_box_aspect(1)
             ax.grid(False)
 
         for ax in axes_flat[num_panels:]:
             ax.axis("off")
 
-        if last_scatter is not None:
-            fig.colorbar(last_scatter, ax=axes_flat[:num_panels].tolist(), label="pt")
-
         fig.suptitle(title)
-        fig.tight_layout()
+        fig.tight_layout(rect=[0.0, 0.0, 0.92, 0.96])
+
+        if last_scatter is not None:
+            colorbar_ax = fig.add_axes([0.94, 0.10, 0.018, 0.80])
+            fig.colorbar(last_scatter, cax=colorbar_ax, label="pt")
+
         fig.savefig(output_path)
         plt.close(fig)
 
