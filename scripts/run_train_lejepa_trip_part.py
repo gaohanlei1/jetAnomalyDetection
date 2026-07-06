@@ -593,15 +593,16 @@ class TrainLeJEPATripletParticleTransformer:
                             )
                         )
 
-                    for neg_i, (neg_x, neg_mask, neg_type) in enumerate(
+                    for neg_i, (neg_x, neg_mask, neg_types_for_view) in enumerate(
                         zip(negative_views, negative_padding_masks, negative_types),
                         start=1,
                     ):
+                        event_neg_type = neg_types_for_view[row_idx]
                         panels.append(
                             (
                                 neg_x[row_idx],
                                 neg_mask[row_idx],
-                                f"neg {neg_i}: {neg_type}",
+                                f"neg {neg_i}: {event_neg_type}",
                             )
                         )
 
