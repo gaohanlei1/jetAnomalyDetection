@@ -303,10 +303,10 @@ def pairwise_physics_features(
     log_kt = torch.log1p(pt_min * delta_r)
     log_z = torch.log1p(pt_min / (pt_i + pt_j).clamp(min=eps))
 
-    p4 = build_four_vector_from_eta_phi_pt_mass(x, eps=eps)
-    p4_i = p4.unsqueeze(2)
-    p4_j = p4.unsqueeze(1)
-    p4_ij = p4_i + p4_j
+    p4 = build_four_vector_from_eta_phi_pt_mass(x, eps=eps) # shape: (B, N, 4), 4 == [px, py, pz, E]
+    p4_i = p4.unsqueeze(2) # shape: (B, N, 1, 4)
+    p4_j = p4.unsqueeze(1) # shape: (B, 1, N, 4)
+    p4_ij = p4_i + p4_j # Add all pairs of four-vectors, shape: (B, N, N, 4)
 
     px = p4_ij[..., 0]
     py = p4_ij[..., 1]
@@ -1365,7 +1365,7 @@ class MultiViewAugmentation(nn.Module):
                 padding_mask=padding_mask,
                 drop_frac_range=self.config.global_drop_pt_frac_range,
             )
-            view_x, _ = self._random_rotation(view_x, view_mask)
+            # view_x, _ = self._random_rotation(view_x, view_mask)
             views.append(view_x)
             view_padding_masks.append(view_mask)
             view_types.append("global")
@@ -1376,7 +1376,7 @@ class MultiViewAugmentation(nn.Module):
                 padding_mask=padding_mask,
                 drop_frac_range=self.config.local_drop_pt_frac_range,
             )
-            view_x, _ = self._random_rotation(view_x, view_mask)
+            # view_x, _ = self._random_rotation(view_x, view_mask)
             views.append(view_x)
             view_padding_masks.append(view_mask)
             view_types.append("local")
@@ -1472,9 +1472,7 @@ class CorruptedNegativeAugmentation(nn.Module):
 
         probability_sum = float(mode_probabilities.sum().item())
         if not math.isclose(probability_sum, 1.0, rel_tol=1e-6, abs_tol=1e-6):
-            raise ValueError(
-                f"Corruption probabilities must sum to 1.0, got {probability_sum:.8f}."
-            )
+            mode_probabilities /= probability_sum
 
         self.register_buffer(
             "_mode_probabilities",

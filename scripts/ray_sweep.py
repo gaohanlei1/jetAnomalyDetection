@@ -164,7 +164,6 @@ from torch_geometric.loader import DataLoader
 
 # Add parent directory to import local project modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-import constants as c
 from helpers import helpers_main
 
 from models.autoencoder import JetGraphAutoencoder

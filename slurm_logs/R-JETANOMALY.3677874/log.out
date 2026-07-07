@@ -1,0 +1,570 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 3677874
+##  Job Name : JETANOMALY
+##  Nodelist : gpu3102
+##      CPUs : 1
+##  Mem/Node : 32000 MB
+## Directory : /oscar/home/lwang223/jetAnomalyDetection
+##   Job Started : Mon Jul  6 09:12:05 AM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Mon Jul  6 09:12:05 AM EDT 2026
+Job ID: 3677874
+Node: gpu3102
+==========================================
+
+GPU Information (from host):
+Mon Jul  6 09:12:05 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:81:00.0 Off |                    0 |
+| N/A   51C    P0             68W /  350W |      74MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          158297      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch version: 2.6.0+cu124
+Background rows: 125183
+Signal rows: 4067
+Node features: ['eta', 'phi', 'pt', 'd0/d0Err', 'dz/dzErr', 'charge', 'mass', 'log_pt', 'pdgId_-211', 'pdgId_-13', 'pdgId_-11', 'pdgId_11', 'pdgId_13', 'pdgId_22', 'pdgId_130', 'pdgId_211']
+Loading background node tensors...
+Loading signal node tensors...
+Background train events: 99979
+Background val events: 24995
+Signal events: 4064
+Example node tensor shape: torch.Size([8, 16])
+Model summary:
+LeJEPATripletParticleTransformerRepresentation(
+  (node_embedding): NodeEmbedding(
+    (net): Sequential(
+      (0): Linear(in_features=16, out_features=128, bias=True)
+      (1): GELU(approximate='none')
+      (2): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+      (3): Linear(in_features=128, out_features=512, bias=True)
+      (4): GELU(approximate='none')
+      (5): LayerNorm((512,), eps=1e-05, elementwise_affine=True)
+      (6): Linear(in_features=512, out_features=128, bias=True)
+      (7): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (pairwise_bias): PairwiseAttentionBias(
+    (mlp): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=4, out_features=64, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.1, inplace=False)
+      (4): Linear(in_features=64, out_features=64, bias=True)
+      (5): SiLU()
+      (6): Dropout(p=0.1, inplace=False)
+      (7): Linear(in_features=64, out_features=8, bias=True)
+    )
+  )
+  (encoder): ParticleTransformerEncoder(
+    (layers): ModuleList(
+      (0-7): 8 x ParticleTransformerBlock(
+        (attn_norm): RMSNorm()
+        (self_attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=128, out_features=128, bias=True)
+        )
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (ffn_norm): RMSNorm()
+        (ffn): SwiGLUFFN(
+          (fc1): Linear(in_features=128, out_features=1024, bias=True)
+          (act): SwiGLU()
+          (fc2): Linear(in_features=512, out_features=128, bias=True)
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+      )
+    )
+  )
+  (cls_pooling): CLSPooling(
+    (layers): ModuleList(
+      (0-1): 2 x ClassAttentionBlock(
+        (query_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (context_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=128, out_features=128, bias=True)
+        )
+        (attn_dropout): Dropout(p=0.0, inplace=False)
+        (ffn_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (ffn): Sequential(
+          (0): Linear(in_features=128, out_features=512, bias=True)
+          (1): GELU(approximate='none')
+          (2): Dropout(p=0.0, inplace=False)
+          (3): Linear(in_features=512, out_features=128, bias=True)
+          (4): Dropout(p=0.0, inplace=False)
+        )
+      )
+    )
+  )
+  (representation_head): RepresentationHead(
+    (net): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=128, out_features=128, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.1, inplace=False)
+      (4): Linear(in_features=128, out_features=128, bias=True)
+    )
+  )
+  (augmentation): MultiViewAugmentation()
+  (negative_augmentation): CorruptedNegativeAugmentation()
+  (loss): LeJEPASIGRegTripletLoss(
+    (lejepa_loss): LeJEPASIGRegLoss(
+      (sigreg_loss_fn): SlicingUnivariateTest(
+        (univariate_test): EppsPulley()
+      )
+    )
+  )
+)
+Number of trainable parameters: 2683020
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.555298
+Mahalanobis AUC, QCD val vs WJet: 0.552289
+Epoch 1 train losses: {'total_loss': 2.3330288567506443, 'invariant_loss': 0.28913438233220595, 'sigreg_loss': 98.6100543478261, 'triplet_loss': 0.7175584640496832, 'triplet_pos_distance': 0.08912962950739886, 'triplet_neg_distance': 0.3994738694156527}
+Epoch 1 val losses: {'total_loss': 1.2233920559591176, 'invariant_loss': 0.2571177951687453, 'sigreg_loss': 45.724489795918366, 'triplet_loss': 0.5179821970511456, 'triplet_pos_distance': 0.064920716367814, 'triplet_neg_distance': 0.670823721253142}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.543499
+Mahalanobis AUC, QCD val vs WJet: 0.544011
+Epoch 2 train losses: {'total_loss': 0.8722552215427999, 'invariant_loss': 0.2588546078490174, 'sigreg_loss': 28.561980498721226, 'triplet_loss': 0.4215088560224494, 'triplet_pos_distance': 0.078779046240327, 'triplet_neg_distance': 0.9147194997428933}
+Epoch 2 val losses: {'total_loss': 0.7510540643516852, 'invariant_loss': 0.17103084967452653, 'sigreg_loss': 26.946109693877553, 'triplet_loss': 0.41174960653392634, 'triplet_pos_distance': 0.04234369243590199, 'triplet_neg_distance': 0.9651714158909661}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.553678
+Mahalanobis AUC, QCD val vs WJet: 0.553180
+Epoch 3 train losses: {'total_loss': 0.665606902040484, 'invariant_loss': 0.2368454274237918, 'sigreg_loss': 19.556685581841432, 'triplet_loss': 0.3761510166441998, 'triplet_pos_distance': 0.07420681473677573, 'triplet_neg_distance': 1.0945479955972004}
+Epoch 3 val losses: {'total_loss': 0.579280504158565, 'invariant_loss': 0.16783866757641033, 'sigreg_loss': 18.661670918367346, 'triplet_loss': 0.3820064577217005, 'triplet_pos_distance': 0.04054717736660826, 'triplet_neg_distance': 1.1055017791840496}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.557348
+Mahalanobis AUC, QCD val vs WJet: 0.557496
+Epoch 4 train losses: {'total_loss': 0.5871211276639758, 'invariant_loss': 0.2328173664715284, 'sigreg_loss': 15.926550511508951, 'triplet_loss': 0.35774549655139903, 'triplet_pos_distance': 0.0732564971784649, 'triplet_neg_distance': 1.1628643631782678}
+Epoch 4 val losses: {'total_loss': 0.5240383871964046, 'invariant_loss': 0.14787118954165857, 'sigreg_loss': 16.890465561224488, 'triplet_loss': 0.38341341228509435, 'triplet_pos_distance': 0.035336508406136106, 'triplet_neg_distance': 1.0706991851329803}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.555237
+Mahalanobis AUC, QCD val vs WJet: 0.556350
+Epoch 5 train losses: {'total_loss': 0.5452195850708296, 'invariant_loss': 0.23188943766495762, 'sigreg_loss': 13.910645780051151, 'triplet_loss': 0.3513908559632728, 'triplet_pos_distance': 0.07253043247324883, 'triplet_neg_distance': 1.172388332884025}
+Epoch 5 val losses: {'total_loss': 0.5225967498762267, 'invariant_loss': 0.1548839472614381, 'sigreg_loss': 16.550382653061224, 'triplet_loss': 0.3671790347719679, 'triplet_pos_distance': 0.03728025121975462, 'triplet_neg_distance': 1.1250281908682414}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.554266
+Mahalanobis AUC, QCD val vs WJet: 0.554951
+Epoch 6 train losses: {'total_loss': 0.5128523320188303, 'invariant_loss': 0.22912273670325195, 'sigreg_loss': 12.48705242966752, 'triplet_loss': 0.3397185967477691, 'triplet_pos_distance': 0.07216794557316834, 'triplet_neg_distance': 1.179840142388478}
+Epoch 6 val losses: {'total_loss': 0.4887327705414928, 'invariant_loss': 0.14533685714158476, 'sigreg_loss': 15.310586734693878, 'triplet_loss': 0.37158864523683277, 'triplet_pos_distance': 0.03401154477377327, 'triplet_neg_distance': 1.054836937359401}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.553481
+Mahalanobis AUC, QCD val vs WJet: 0.554968
+Epoch 7 train losses: {'total_loss': 0.4910055383315782, 'invariant_loss': 0.22406813738596104, 'sigreg_loss': 11.682005274936062, 'triplet_loss': 0.332998154832579, 'triplet_pos_distance': 0.07029015563733285, 'triplet_neg_distance': 1.191808165644136}
+Epoch 7 val losses: {'total_loss': 0.44695325895231597, 'invariant_loss': 0.1505062935151616, 'sigreg_loss': 13.07796556122449, 'triplet_loss': 0.3487768606567869, 'triplet_pos_distance': 0.03568547238994922, 'triplet_neg_distance': 1.1221048114251118}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.561019
+Mahalanobis AUC, QCD val vs WJet: 0.561491
+Epoch 8 train losses: {'total_loss': 0.4748576758691417, 'invariant_loss': 0.2190097646258981, 'sigreg_loss': 11.164162404092071, 'triplet_loss': 0.32557267644216337, 'triplet_pos_distance': 0.06775893141870457, 'triplet_neg_distance': 1.2049570557711375}
+Epoch 8 val losses: {'total_loss': 0.4379064463535134, 'invariant_loss': 0.15222241991788757, 'sigreg_loss': 12.565529336734693, 'triplet_loss': 0.3434872452397736, 'triplet_pos_distance': 0.0359725356957286, 'triplet_neg_distance': 1.0850232742270645}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.557298
+Mahalanobis AUC, QCD val vs WJet: 0.556777
+Epoch 9 train losses: {'total_loss': 0.45805236967780705, 'invariant_loss': 0.2158267882169055, 'sigreg_loss': 10.505834398976981, 'triplet_loss': 0.32082941594636044, 'triplet_pos_distance': 0.06710450477478906, 'triplet_neg_distance': 1.2088727385491667}
+Epoch 9 val losses: {'total_loss': 0.4098172596826845, 'invariant_loss': 0.1444409369890179, 'sigreg_loss': 11.561543367346939, 'triplet_loss': 0.34105393336135514, 'triplet_pos_distance': 0.034846584550200066, 'triplet_neg_distance': 1.1147181118021205}
+Mahalanobis AUC, QCD train vs WJet: 0.557864
+Mahalanobis AUC, QCD val vs WJet: 0.560688
+Epoch 10 train losses: {'total_loss': 0.448461605383612, 'invariant_loss': 0.21334175622600424, 'sigreg_loss': 10.17303388746803, 'triplet_loss': 0.31656420265164825, 'triplet_pos_distance': 0.06580965622992771, 'triplet_neg_distance': 1.2242849219180738}
+Epoch 10 val losses: {'total_loss': 0.4350739504609789, 'invariant_loss': 0.1373665500052121, 'sigreg_loss': 13.12484056122449, 'triplet_loss': 0.351789975348784, 'triplet_pos_distance': 0.03337210197742952, 'triplet_neg_distance': 1.0699991462182026}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.555505
+Mahalanobis AUC, QCD val vs WJet: 0.556459
+Epoch 11 train losses: {'total_loss': 0.44255096482498874, 'invariant_loss': 0.2119065572500534, 'sigreg_loss': 9.962915601023019, 'triplet_loss': 0.31393186119206423, 'triplet_pos_distance': 0.06493879516449426, 'triplet_neg_distance': 1.23128212336689}
+Epoch 11 val losses: {'total_loss': 0.39047966836666576, 'invariant_loss': 0.16019190954310553, 'sigreg_loss': 9.93670280612245, 'triplet_loss': 0.3155230508775127, 'triplet_pos_distance': 0.038034854542311966, 'triplet_neg_distance': 1.2348428697002178}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.550635
+Mahalanobis AUC, QCD val vs WJet: 0.551395
+Epoch 12 train losses: {'total_loss': 0.4332795490694168, 'invariant_loss': 0.2100013408552655, 'sigreg_loss': 9.60553868286445, 'triplet_loss': 0.31169505108652823, 'triplet_pos_distance': 0.06480686312250773, 'triplet_neg_distance': 1.2354345684466155}
+Epoch 12 val losses: {'total_loss': 0.39022225035088404, 'invariant_loss': 0.1507380693314635, 'sigreg_loss': 10.357461734693878, 'triplet_loss': 0.3233584011999928, 'triplet_pos_distance': 0.03532722893608164, 'triplet_neg_distance': 1.1950667616055937}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.552197
+Mahalanobis AUC, QCD val vs WJet: 0.552733
+Epoch 13 train losses: {'total_loss': 0.4259948372231115, 'invariant_loss': 0.20778845930876938, 'sigreg_loss': 9.368406329923273, 'triplet_loss': 0.30816893885507607, 'triplet_pos_distance': 0.0642301788615525, 'triplet_neg_distance': 1.2511510519725282}
+Epoch 13 val losses: {'total_loss': 0.3881480683173452, 'invariant_loss': 0.1477745785092821, 'sigreg_loss': 10.418845663265307, 'triplet_loss': 0.3199697133837914, 'triplet_pos_distance': 0.03563711911021751, 'triplet_neg_distance': 1.1868374822091083}
+Mahalanobis AUC, QCD train vs WJet: 0.559576
+Mahalanobis AUC, QCD val vs WJet: 0.561226
+Epoch 14 train losses: {'total_loss': 0.41958602203432555, 'invariant_loss': 0.20554103685157074, 'sigreg_loss': 9.168158567774936, 'triplet_loss': 0.306785133317151, 'triplet_pos_distance': 0.06313937705229311, 'triplet_neg_distance': 1.2653408238040211}
+Epoch 14 val losses: {'total_loss': 0.394483426243675, 'invariant_loss': 0.14023303202524476, 'sigreg_loss': 11.075255102040817, 'triplet_loss': 0.3274010831908304, 'triplet_pos_distance': 0.033218200009658326, 'triplet_neg_distance': 1.1321497340591586}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.557387
+Mahalanobis AUC, QCD val vs WJet: 0.557963
+Epoch 15 train losses: {'total_loss': 0.4170370814974046, 'invariant_loss': 0.20554526569440845, 'sigreg_loss': 9.054707480818415, 'triplet_loss': 0.3040190863106257, 'triplet_pos_distance': 0.06297835484242348, 'triplet_neg_distance': 1.2732790707017454}
+Epoch 15 val losses: {'total_loss': 0.3761241512030971, 'invariant_loss': 0.14835032858714767, 'sigreg_loss': 9.831313775510203, 'triplet_loss': 0.31135984282104334, 'triplet_pos_distance': 0.03566555232189748, 'triplet_neg_distance': 1.2135547867843084}
+Mahalanobis AUC, QCD train vs WJet: 0.558472
+Mahalanobis AUC, QCD val vs WJet: 0.559436
+Epoch 16 train losses: {'total_loss': 0.4126266800152981, 'invariant_loss': 0.2047768066568143, 'sigreg_loss': 8.897598305626598, 'triplet_loss': 0.2989757970509017, 'triplet_pos_distance': 0.06252278890603644, 'triplet_neg_distance': 1.2912791069511258}
+Epoch 16 val losses: {'total_loss': 0.3807730790303678, 'invariant_loss': 0.13934606933320054, 'sigreg_loss': 10.456473214285714, 'triplet_loss': 0.32278211460429795, 'triplet_pos_distance': 0.03403148503156797, 'triplet_neg_distance': 1.211922673546538}
+Mahalanobis AUC, QCD train vs WJet: 0.570667
+Mahalanobis AUC, QCD val vs WJet: 0.570319
+Epoch 17 train losses: {'total_loss': 0.40776231107504474, 'invariant_loss': 0.20417246390181734, 'sigreg_loss': 8.824448529411764, 'triplet_loss': 0.2709802501951642, 'triplet_pos_distance': 0.06289543867435145, 'triplet_neg_distance': 1.4406076017243172}
+Epoch 17 val losses: {'total_loss': 0.3764746043146873, 'invariant_loss': 0.14430461896165292, 'sigreg_loss': 10.352997448979592, 'triplet_loss': 0.2508143464825591, 'triplet_pos_distance': 0.03497171503662759, 'triplet_neg_distance': 1.475417393810895}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.568152
+Mahalanobis AUC, QCD val vs WJet: 0.567933
+Epoch 18 train losses: {'total_loss': 0.40180973285604316, 'invariant_loss': 0.20566722127558934, 'sigreg_loss': 8.678428708439897, 'triplet_loss': 0.2256102183514544, 'triplet_pos_distance': 0.0642080286713055, 'triplet_neg_distance': 1.659236055505855}
+Epoch 18 val losses: {'total_loss': 0.3638653955897506, 'invariant_loss': 0.14169847223983736, 'sigreg_loss': 10.002710459183673, 'triplet_loss': 0.22141012336526597, 'triplet_pos_distance': 0.03517333628153618, 'triplet_neg_distance': 1.6024690957701937}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.568123
+Mahalanobis AUC, QCD val vs WJet: 0.569547
+Epoch 19 train losses: {'total_loss': 0.39847627144945247, 'invariant_loss': 0.20542214359240155, 'sigreg_loss': 8.584678708439897, 'triplet_loss': 0.21360825754873589, 'triplet_pos_distance': 0.06404635895167471, 'triplet_neg_distance': 1.6970682663990713}
+Epoch 19 val losses: {'total_loss': 0.3597520256072891, 'invariant_loss': 0.1389787796200538, 'sigreg_loss': 9.784438775510203, 'triplet_loss': 0.25087060315572485, 'triplet_pos_distance': 0.03327149271546882, 'triplet_neg_distance': 1.4584853734288896}
+Mahalanobis AUC, QCD train vs WJet: 0.564020
+Mahalanobis AUC, QCD val vs WJet: 0.565511
+Epoch 20 train losses: {'total_loss': 0.3934048662328964, 'invariant_loss': 0.2038016889596839, 'sigreg_loss': 8.46463395140665, 'triplet_loss': 0.20312567672613638, 'triplet_pos_distance': 0.06344708919887194, 'triplet_neg_distance': 1.7286889034768809}
+Epoch 20 val losses: {'total_loss': 0.36260340499634647, 'invariant_loss': 0.13773435038723508, 'sigreg_loss': 9.99984056122449, 'triplet_loss': 0.24865564217372815, 'triplet_pos_distance': 0.033122366902475456, 'triplet_neg_distance': 1.4553970439093453}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.551887
+Mahalanobis AUC, QCD val vs WJet: 0.551692
+Epoch 21 train losses: {'total_loss': 0.39298380903728175, 'invariant_loss': 0.20285431880627752, 'sigreg_loss': 8.506553708439897, 'triplet_loss': 0.19989696184120825, 'triplet_pos_distance': 0.06344936581333276, 'triplet_neg_distance': 1.7176232351671399}
+Epoch 21 val losses: {'total_loss': 0.35352250979262956, 'invariant_loss': 0.14969899277297818, 'sigreg_loss': 9.153061224489797, 'triplet_loss': 0.2079278225345271, 'triplet_pos_distance': 0.03628842306456396, 'triplet_neg_distance': 1.5953589148667393}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.558058
+Mahalanobis AUC, QCD val vs WJet: 0.556898
+Epoch 22 train losses: {'total_loss': 0.39046752677701624, 'invariant_loss': 0.20275192040845255, 'sigreg_loss': 8.41156489769821, 'triplet_loss': 0.19478360647359466, 'triplet_pos_distance': 0.06316757681862929, 'triplet_neg_distance': 1.7207558845620021}
+Epoch 22 val losses: {'total_loss': 0.35035379717544635, 'invariant_loss': 0.14307916152994243, 'sigreg_loss': 9.263711734693878, 'triplet_loss': 0.22019230445124666, 'triplet_pos_distance': 0.03545768800837805, 'triplet_neg_distance': 1.5228183105283855}
+Mahalanobis AUC, QCD train vs WJet: 0.547067
+Mahalanobis AUC, QCD val vs WJet: 0.546921
+Epoch 23 train losses: {'total_loss': 0.3889405013197828, 'invariant_loss': 0.20242884985702422, 'sigreg_loss': 8.360094309462916, 'triplet_loss': 0.1931528239165578, 'triplet_pos_distance': 0.06263769467068298, 'triplet_neg_distance': 1.727335812643056}
+Epoch 23 val losses: {'total_loss': 0.3516249366256656, 'invariant_loss': 0.14904064396206212, 'sigreg_loss': 9.204878826530612, 'triplet_loss': 0.18497275895610146, 'triplet_pos_distance': 0.03684034610015093, 'triplet_neg_distance': 1.6095784251787224}
+Mahalanobis AUC, QCD train vs WJet: 0.553249
+Mahalanobis AUC, QCD val vs WJet: 0.553165
+Epoch 24 train losses: {'total_loss': 0.38493970169893005, 'invariant_loss': 0.20156470682386243, 'sigreg_loss': 8.23673273657289, 'triplet_loss': 0.1864563117799399, 'triplet_pos_distance': 0.06203726015013197, 'triplet_neg_distance': 1.7402487514573899}
+Epoch 24 val losses: {'total_loss': 0.3534610923759791, 'invariant_loss': 0.1394657819170733, 'sigreg_loss': 9.550063775510203, 'triplet_loss': 0.22977688900974333, 'triplet_pos_distance': 0.0330775530761754, 'triplet_neg_distance': 1.4822028911843592}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.550225
+Mahalanobis AUC, QCD val vs WJet: 0.549807
+Epoch 25 train losses: {'total_loss': 0.384293494626994, 'invariant_loss': 0.20084247347491477, 'sigreg_loss': 8.24792199488491, 'triplet_loss': 0.18475019665020506, 'triplet_pos_distance': 0.06238584535772843, 'triplet_neg_distance': 1.7362398892412405}
+Epoch 25 val losses: {'total_loss': 0.3427400111543889, 'invariant_loss': 0.14798031013687046, 'sigreg_loss': 8.769132653061224, 'triplet_loss': 0.19394484200343795, 'triplet_pos_distance': 0.036970569847189654, 'triplet_neg_distance': 1.5619663085256303}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.543276
+Mahalanobis AUC, QCD val vs WJet: 0.542019
+Epoch 26 train losses: {'total_loss': 0.3841929457071797, 'invariant_loss': 0.20049480198289427, 'sigreg_loss': 8.26826246803069, 'triplet_loss': 0.18327521360324472, 'triplet_pos_distance': 0.06251257170668191, 'triplet_neg_distance': 1.7235549942916617}
+Epoch 26 val losses: {'total_loss': 0.3396665306419742, 'invariant_loss': 0.15248300241572516, 'sigreg_loss': 8.458067602040817, 'triplet_loss': 0.1801400257616627, 'triplet_pos_distance': 0.03952981376716373, 'triplet_neg_distance': 1.6487799627440316}
+Mahalanobis AUC, QCD train vs WJet: 0.545313
+Mahalanobis AUC, QCD val vs WJet: 0.545866
+Epoch 27 train losses: {'total_loss': 0.3821900930169903, 'invariant_loss': 0.20055536586610254, 'sigreg_loss': 8.167599104859335, 'triplet_loss': 0.18274674821845102, 'triplet_pos_distance': 0.062173225247608425, 'triplet_neg_distance': 1.7228754065225802}
+Epoch 27 val losses: {'total_loss': 0.34050900367449743, 'invariant_loss': 0.1454749420969462, 'sigreg_loss': 8.823820153061224, 'triplet_loss': 0.18565229531757685, 'triplet_pos_distance': 0.036234826818868825, 'triplet_neg_distance': 1.5691661883373649}
+Mahalanobis AUC, QCD train vs WJet: 0.534701
+Mahalanobis AUC, QCD val vs WJet: 0.534908
+Epoch 28 train losses: {'total_loss': 0.3798862435018925, 'invariant_loss': 0.19927498082751813, 'sigreg_loss': 8.129455722506394, 'triplet_loss': 0.18017350732708526, 'triplet_pos_distance': 0.06175800005588537, 'triplet_neg_distance': 1.7302127770145836}
+Epoch 28 val losses: {'total_loss': 0.34513676425023954, 'invariant_loss': 0.15027305419195672, 'sigreg_loss': 8.865114795918368, 'triplet_loss': 0.17580244431690295, 'triplet_pos_distance': 0.03746466785289195, 'triplet_neg_distance': 1.599649793639475}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.523941
+Mahalanobis AUC, QCD val vs WJet: 0.524167
+Epoch 29 train losses: {'total_loss': 0.37979429434327516, 'invariant_loss': 0.19985493476433522, 'sigreg_loss': 8.115768861892583, 'triplet_loss': 0.17635168802097936, 'triplet_pos_distance': 0.061521579561483526, 'triplet_neg_distance': 1.7328789456726035}
+Epoch 29 val losses: {'total_loss': 0.33742583740730675, 'invariant_loss': 0.1510762513748237, 'sigreg_loss': 8.478316326530612, 'triplet_loss': 0.16796408939574445, 'triplet_pos_distance': 0.0390770936251751, 'triplet_neg_distance': 1.6003396675294759}
+Mahalanobis AUC, QCD train vs WJet: 0.520415
+Mahalanobis AUC, QCD val vs WJet: 0.520813
+Epoch 30 train losses: {'total_loss': 0.3792520115899918, 'invariant_loss': 0.19998237686922482, 'sigreg_loss': 8.087795716112533, 'triplet_loss': 0.17513666420107912, 'triplet_pos_distance': 0.0615339553188485, 'triplet_neg_distance': 1.7489259578382876}
+Epoch 30 val losses: {'total_loss': 0.3442988988696312, 'invariant_loss': 0.14285700376696733, 'sigreg_loss': 9.216198979591837, 'triplet_loss': 0.17113228929134047, 'triplet_pos_distance': 0.03599070425962611, 'triplet_neg_distance': 1.535005818216168}
+Mahalanobis AUC, QCD train vs WJet: 0.535015
+Mahalanobis AUC, QCD val vs WJet: 0.533324
+Epoch 31 train losses: {'total_loss': 0.37718521820767154, 'invariant_loss': 0.1988985967986724, 'sigreg_loss': 8.05894341432225, 'triplet_loss': 0.1709074111431456, 'triplet_pos_distance': 0.06171311764403835, 'triplet_neg_distance': 1.739509838926213}
+Epoch 31 val losses: {'total_loss': 0.34262130607147606, 'invariant_loss': 0.14369229147476809, 'sigreg_loss': 8.997289540816327, 'triplet_loss': 0.18977441030497455, 'triplet_pos_distance': 0.03465858857356468, 'triplet_neg_distance': 1.5256051183963308}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.530414
+Mahalanobis AUC, QCD val vs WJet: 0.530030
+Epoch 32 train losses: {'total_loss': 0.37584796162974804, 'invariant_loss': 0.19842860954420646, 'sigreg_loss': 8.022937979539641, 'triplet_loss': 0.16952147560618114, 'triplet_pos_distance': 0.061477291352494294, 'triplet_neg_distance': 1.7616479169682164}
+Epoch 32 val losses: {'total_loss': 0.3336377861548443, 'invariant_loss': 0.1449061559931356, 'sigreg_loss': 8.584024234693878, 'triplet_loss': 0.17050944603219323, 'triplet_pos_distance': 0.03591731350336756, 'triplet_neg_distance': 1.5756865277582286}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.512183
+Mahalanobis AUC, QCD val vs WJet: 0.512695
+Epoch 33 train losses: {'total_loss': 0.37440985525050735, 'invariant_loss': 0.1981537938308533, 'sigreg_loss': 7.976982097186701, 'triplet_loss': 0.16726706913479453, 'triplet_pos_distance': 0.06125258579087989, 'triplet_neg_distance': 1.755303806356152}
+Epoch 33 val losses: {'total_loss': 0.33301870676935935, 'invariant_loss': 0.15431520878812488, 'sigreg_loss': 8.11798469387755, 'triplet_loss': 0.16317593868897887, 'triplet_pos_distance': 0.03867412147549342, 'triplet_neg_distance': 1.5834491228570744}
+Mahalanobis AUC, QCD train vs WJet: 0.557631
+Mahalanobis AUC, QCD val vs WJet: 0.557244
+Epoch 34 train losses: {'total_loss': 0.37455530258853115, 'invariant_loss': 0.19792547387540188, 'sigreg_loss': 8.01238810741688, 'triplet_loss': 0.16379291502296772, 'triplet_pos_distance': 0.060984485437307515, 'triplet_neg_distance': 1.7591301771381018}
+Epoch 34 val losses: {'total_loss': 0.3502847658736365, 'invariant_loss': 0.134689330256411, 'sigreg_loss': 9.650031887755102, 'triplet_loss': 0.2255742647209946, 'triplet_pos_distance': 0.032079632973716576, 'triplet_neg_distance': 1.391864380057977}
+Mahalanobis AUC, QCD train vs WJet: 0.541646
+Mahalanobis AUC, QCD val vs WJet: 0.541655
+Epoch 35 train losses: {'total_loss': 0.3740019066940488, 'invariant_loss': 0.19807088220744487, 'sigreg_loss': 7.985533887468031, 'triplet_loss': 0.16198114757342716, 'triplet_pos_distance': 0.061314464239475064, 'triplet_neg_distance': 1.756341987558643}
+Epoch 35 val losses: {'total_loss': 0.33580626927468243, 'invariant_loss': 0.14294367644707767, 'sigreg_loss': 8.67123724489796, 'triplet_loss': 0.19403168057300607, 'triplet_pos_distance': 0.03408281556425654, 'triplet_neg_distance': 1.4737379934106554}
+Mahalanobis AUC, QCD train vs WJet: 0.529469
+Mahalanobis AUC, QCD val vs WJet: 0.529962
+Epoch 36 train losses: {'total_loss': 0.37180062606359077, 'invariant_loss': 0.1977865006536474, 'sigreg_loss': 7.888566975703325, 'triplet_loss': 0.16238711888680374, 'triplet_pos_distance': 0.06117933619853176, 'triplet_neg_distance': 1.7505181895192627}
+Epoch 36 val losses: {'total_loss': 0.33813050480521456, 'invariant_loss': 0.1427865038264771, 'sigreg_loss': 8.855229591836734, 'triplet_loss': 0.182523606231018, 'triplet_pos_distance': 0.03474498162882365, 'triplet_neg_distance': 1.498289366765898}
+Mahalanobis AUC, QCD train vs WJet: 0.545082
+Mahalanobis AUC, QCD val vs WJet: 0.543657
+Epoch 37 train losses: {'total_loss': 0.3717381874542407, 'invariant_loss': 0.197216529885064, 'sigreg_loss': 7.9335837595907925, 'triplet_loss': 0.15847731795152434, 'triplet_pos_distance': 0.06038251023529969, 'triplet_neg_distance': 1.758502306078401}
+Epoch 37 val losses: {'total_loss': 0.3412072057170527, 'invariant_loss': 0.13737501021550627, 'sigreg_loss': 9.15593112244898, 'triplet_loss': 0.2071675843730265, 'triplet_pos_distance': 0.03338660057444049, 'triplet_neg_distance': 1.4590307212605769}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.516682
+Mahalanobis AUC, QCD val vs WJet: 0.516890
+Epoch 38 train losses: {'total_loss': 0.37089704140982666, 'invariant_loss': 0.19695857948506884, 'sigreg_loss': 7.905970268542199, 'triplet_loss': 0.15810261223741504, 'triplet_pos_distance': 0.060738419227854674, 'triplet_neg_distance': 1.7487559256041447}
+Epoch 38 val losses: {'total_loss': 0.3329446606185971, 'invariant_loss': 0.1450841562556369, 'sigreg_loss': 8.587691326530612, 'triplet_loss': 0.16112554191174555, 'triplet_pos_distance': 0.03685712705993531, 'triplet_neg_distance': 1.5065888354972916}
+Mahalanobis AUC, QCD train vs WJet: 0.520399
+Mahalanobis AUC, QCD val vs WJet: 0.519913
+Epoch 39 train losses: {'total_loss': 0.3697386497960371, 'invariant_loss': 0.19674415472904436, 'sigreg_loss': 7.864330242966752, 'triplet_loss': 0.1569300123092616, 'triplet_pos_distance': 0.06071245608865605, 'triplet_neg_distance': 1.7516349128749975}
+Epoch 39 val losses: {'total_loss': 0.3369598818980918, 'invariant_loss': 0.14347742471311772, 'sigreg_loss': 8.834661989795919, 'triplet_loss': 0.1678443125316075, 'triplet_pos_distance': 0.0351184022099692, 'triplet_neg_distance': 1.5601469035051307}
+Mahalanobis AUC, QCD train vs WJet: 0.547204
+Mahalanobis AUC, QCD val vs WJet: 0.547212
+Epoch 40 train losses: {'total_loss': 0.36810421619726263, 'invariant_loss': 0.19600845587527965, 'sigreg_loss': 7.830183024296675, 'triplet_loss': 0.15483604961305933, 'triplet_pos_distance': 0.06026573741184476, 'triplet_neg_distance': 1.7720386116096125}
+Epoch 40 val losses: {'total_loss': 0.33946211590450637, 'invariant_loss': 0.1342411016931339, 'sigreg_loss': 9.25063775510204, 'triplet_loss': 0.20202277600765228, 'triplet_pos_distance': 0.03216911767780477, 'triplet_neg_distance': 1.4390076812432737}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.526152
+Mahalanobis AUC, QCD val vs WJet: 0.524585
+Epoch 41 train losses: {'total_loss': 0.3679215626795883, 'invariant_loss': 0.19568961449062733, 'sigreg_loss': 7.8393742007672635, 'triplet_loss': 0.15446833369638913, 'triplet_pos_distance': 0.06030228595389887, 'triplet_neg_distance': 1.7677502305916204}
+Epoch 41 val losses: {'total_loss': 0.3328953430968888, 'invariant_loss': 0.1419542478967686, 'sigreg_loss': 8.708705357142858, 'triplet_loss': 0.16786617774288265, 'triplet_pos_distance': 0.03507666205227071, 'triplet_neg_distance': 1.5097678036105877}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.526861
+Mahalanobis AUC, QCD val vs WJet: 0.526307
+Epoch 42 train losses: {'total_loss': 0.36751845216049867, 'invariant_loss': 0.1957038650122445, 'sigreg_loss': 7.8399936061381075, 'triplet_loss': 0.1503009742311657, 'triplet_pos_distance': 0.06044802644654461, 'triplet_neg_distance': 1.7660116400865034}
+Epoch 42 val losses: {'total_loss': 0.3294958200077621, 'invariant_loss': 0.14553422724105874, 'sigreg_loss': 8.388552295918368, 'triplet_loss': 0.16139822650928887, 'triplet_pos_distance': 0.0358128705613163, 'triplet_neg_distance': 1.5134177481641575}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.518366
+Mahalanobis AUC, QCD val vs WJet: 0.518402
+Epoch 43 train losses: {'total_loss': 0.36812076361283014, 'invariant_loss': 0.19562309250578552, 'sigreg_loss': 7.868166560102302, 'triplet_loss': 0.1514248011819542, 'triplet_pos_distance': 0.059937621750261474, 'triplet_neg_distance': 1.7609564594905396}
+Epoch 43 val losses: {'total_loss': 0.323672352396712, 'invariant_loss': 0.1458766882744979, 'sigreg_loss': 8.131536989795919, 'triplet_loss': 0.1518305897788734, 'triplet_pos_distance': 0.0367358583405766, 'triplet_neg_distance': 1.539012176649911}
+Mahalanobis AUC, QCD train vs WJet: 0.528571
+Mahalanobis AUC, QCD val vs WJet: 0.529188
+Epoch 44 train losses: {'total_loss': 0.36717603269897764, 'invariant_loss': 0.19594640578226666, 'sigreg_loss': 7.805986253196931, 'triplet_loss': 0.150882696347011, 'triplet_pos_distance': 0.06027092511677529, 'triplet_neg_distance': 1.759570822234044}
+Epoch 44 val losses: {'total_loss': 0.32481695635586366, 'invariant_loss': 0.1431767130460666, 'sigreg_loss': 8.190688775510203, 'triplet_loss': 0.17826866024002738, 'triplet_pos_distance': 0.034432318194636276, 'triplet_neg_distance': 1.4825363645748215}
+Mahalanobis AUC, QCD train vs WJet: 0.533514
+Mahalanobis AUC, QCD val vs WJet: 0.532648
+Epoch 45 train losses: {'total_loss': 0.3646307600581128, 'invariant_loss': 0.1941772266993742, 'sigreg_loss': 7.771639226342711, 'triplet_loss': 0.15010255661881183, 'triplet_pos_distance': 0.05960545666001337, 'triplet_neg_distance': 1.7689543979247209}
+Epoch 45 val losses: {'total_loss': 0.33145552934432515, 'invariant_loss': 0.13796914213013892, 'sigreg_loss': 8.823979591836734, 'triplet_loss': 0.17022539257090918, 'triplet_pos_distance': 0.03405992720010025, 'triplet_neg_distance': 1.5005888744276397}
+Mahalanobis AUC, QCD train vs WJet: 0.545803
+Mahalanobis AUC, QCD val vs WJet: 0.544516
+Epoch 46 train losses: {'total_loss': 0.36338236884159203, 'invariant_loss': 0.19434484595532917, 'sigreg_loss': 7.705922314578005, 'triplet_loss': 0.1491110654419188, 'triplet_pos_distance': 0.05957642345763076, 'triplet_neg_distance': 1.7737809501950392}
+Epoch 46 val losses: {'total_loss': 0.33855349935439166, 'invariant_loss': 0.13183165793972357, 'sigreg_loss': 9.352838010204081, 'triplet_loss': 0.19710121151744103, 'triplet_pos_distance': 0.032460895271933805, 'triplet_neg_distance': 1.399080864628967}
+Mahalanobis AUC, QCD train vs WJet: 0.531089
+Mahalanobis AUC, QCD val vs WJet: 0.531461
+Epoch 47 train losses: {'total_loss': 0.36392166435032547, 'invariant_loss': 0.1945323130816145, 'sigreg_loss': 7.726003037084399, 'triplet_loss': 0.14864567489079808, 'triplet_pos_distance': 0.059591245573118824, 'triplet_neg_distance': 1.7656460883062515}
+Epoch 47 val losses: {'total_loss': 0.3278817916098906, 'invariant_loss': 0.14222155043817297, 'sigreg_loss': 8.467315051020408, 'triplet_loss': 0.16346223774004956, 'triplet_pos_distance': 0.03459214335497545, 'triplet_neg_distance': 1.5140607843593674}
+Mahalanobis AUC, QCD train vs WJet: 0.530091
+Mahalanobis AUC, QCD val vs WJet: 0.530259
+Epoch 48 train losses: {'total_loss': 0.3629921116030125, 'invariant_loss': 0.1947922245468325, 'sigreg_loss': 7.682145140664962, 'triplet_loss': 0.14551760725048193, 'triplet_pos_distance': 0.059369023989342976, 'triplet_neg_distance': 1.7758830744592125}
+Epoch 48 val losses: {'total_loss': 0.3300318999253974, 'invariant_loss': 0.13763152252958746, 'sigreg_loss': 8.767538265306122, 'triplet_loss': 0.17010249760077925, 'triplet_pos_distance': 0.03427168860917493, 'triplet_neg_distance': 1.4591182829165945}
+Mahalanobis AUC, QCD train vs WJet: 0.513490
+Mahalanobis AUC, QCD val vs WJet: 0.514138
+Epoch 49 train losses: {'total_loss': 0.36143879295157655, 'invariant_loss': 0.19321945313450015, 'sigreg_loss': 7.677229859335038, 'triplet_loss': 0.1467111894999014, 'triplet_pos_distance': 0.05936609490124314, 'triplet_neg_distance': 1.7808021479250524}
+Epoch 49 val losses: {'total_loss': 0.3349221290982499, 'invariant_loss': 0.1360320753741021, 'sigreg_loss': 9.17904974489796, 'triplet_loss': 0.15313740310316182, 'triplet_pos_distance': 0.034217232999829005, 'triplet_neg_distance': 1.5082244964278475}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.525065
+Mahalanobis AUC, QCD val vs WJet: 0.525007
+Epoch 50 train losses: {'total_loss': 0.3622167300613945, 'invariant_loss': 0.19418677779109886, 'sigreg_loss': 7.678148976982097, 'triplet_loss': 0.14446139792004203, 'triplet_pos_distance': 0.05969968412662177, 'triplet_neg_distance': 1.7766614784974881}
+Epoch 50 val losses: {'total_loss': 0.3222595374194943, 'invariant_loss': 0.13947186714076265, 'sigreg_loss': 8.386479591836734, 'triplet_loss': 0.15053094877880446, 'triplet_pos_distance': 0.03497828713295107, 'triplet_neg_distance': 1.5338969717220383}
+Mahalanobis AUC, QCD train vs WJet: 0.524401
+Mahalanobis AUC, QCD val vs WJet: 0.523754
+Epoch 51 train losses: {'total_loss': 0.3611544084823345, 'invariant_loss': 0.1938900071603563, 'sigreg_loss': 7.646199648337596, 'triplet_loss': 0.14334960683913486, 'triplet_pos_distance': 0.05952943931512363, 'triplet_neg_distance': 1.7742190806152265}
+Epoch 51 val losses: {'total_loss': 0.3265060943608381, 'invariant_loss': 0.13686266849387665, 'sigreg_loss': 8.6484375, 'triplet_loss': 0.1666730008639243, 'triplet_pos_distance': 0.03349441213875401, 'triplet_neg_distance': 1.485994638228903}
+Mahalanobis AUC, QCD train vs WJet: 0.520617
+Mahalanobis AUC, QCD val vs WJet: 0.520862
+Epoch 52 train losses: {'total_loss': 0.36082714990429254, 'invariant_loss': 0.19349397084368464, 'sigreg_loss': 7.648257672634271, 'triplet_loss': 0.14365025462053926, 'triplet_pos_distance': 0.05956075595849005, 'triplet_neg_distance': 1.7710887080873066}
+Epoch 52 val losses: {'total_loss': 0.3280639072157899, 'invariant_loss': 0.13788534195295402, 'sigreg_loss': 8.787149234693878, 'triplet_loss': 0.14432188385755432, 'triplet_pos_distance': 0.035575523886981666, 'triplet_neg_distance': 1.5076210529220349}
+Mahalanobis AUC, QCD train vs WJet: 0.523924
+Mahalanobis AUC, QCD val vs WJet: 0.524640
+Epoch 53 train losses: {'total_loss': 0.35945305990441073, 'invariant_loss': 0.1923090324682348, 'sigreg_loss': 7.639506074168798, 'triplet_loss': 0.14341964228245455, 'triplet_pos_distance': 0.05884928173383178, 'triplet_neg_distance': 1.7658131371068833}
+Epoch 53 val losses: {'total_loss': 0.3287470895720988, 'invariant_loss': 0.13507050826993525, 'sigreg_loss': 8.878985969387756, 'triplet_loss': 0.16126553858725393, 'triplet_pos_distance': 0.0336900367686639, 'triplet_neg_distance': 1.4808500786216892}
+Mahalanobis AUC, QCD train vs WJet: 0.516268
+Mahalanobis AUC, QCD val vs WJet: 0.516855
+Epoch 54 train losses: {'total_loss': 0.3594248180499162, 'invariant_loss': 0.19291535606774526, 'sigreg_loss': 7.615049552429667, 'triplet_loss': 0.1423501776497992, 'triplet_pos_distance': 0.058989707099469116, 'triplet_neg_distance': 1.7659119472784155}
+Epoch 54 val losses: {'total_loss': 0.3294303903014076, 'invariant_loss': 0.13600889087787696, 'sigreg_loss': 8.911511479591837, 'triplet_loss': 0.1517392914666205, 'triplet_pos_distance': 0.0336516019032926, 'triplet_neg_distance': 1.4643897329057967}
+Mahalanobis AUC, QCD train vs WJet: 0.535648
+Mahalanobis AUC, QCD val vs WJet: 0.535722
+Epoch 55 train losses: {'total_loss': 0.3594077920822231, 'invariant_loss': 0.1929692058535793, 'sigreg_loss': 7.623901054987212, 'triplet_loss': 0.13966205930504041, 'triplet_pos_distance': 0.05951502055520444, 'triplet_neg_distance': 1.7761794487228784}
+Epoch 55 val losses: {'total_loss': 0.3257603668132607, 'invariant_loss': 0.13484568665830457, 'sigreg_loss': 8.672991071428571, 'triplet_loss': 0.17465221912276988, 'triplet_pos_distance': 0.03277127949368893, 'triplet_neg_distance': 1.4413839073813692}
+Mahalanobis AUC, QCD train vs WJet: 0.526330
+Mahalanobis AUC, QCD val vs WJet: 0.524969
+Epoch 56 train losses: {'total_loss': 0.35826899656249434, 'invariant_loss': 0.19282696445655945, 'sigreg_loss': 7.564298273657289, 'triplet_loss': 0.14164130683140377, 'triplet_pos_distance': 0.0590990027865333, 'triplet_neg_distance': 1.7724684004283622}
+Epoch 56 val losses: {'total_loss': 0.3264454708871793, 'invariant_loss': 0.13856593823554564, 'sigreg_loss': 8.629783163265307, 'triplet_loss': 0.15247195388893692, 'triplet_pos_distance': 0.03445692190292234, 'triplet_neg_distance': 1.488988719424423}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.517686
+Mahalanobis AUC, QCD val vs WJet: 0.518860
+Epoch 57 train losses: {'total_loss': 0.35808755316392843, 'invariant_loss': 0.19204074973264312, 'sigreg_loss': 7.6051790281329925, 'triplet_loss': 0.13943445502454058, 'triplet_pos_distance': 0.05892476469964322, 'triplet_neg_distance': 1.7820867226861627}
+Epoch 57 val losses: {'total_loss': 0.32210637416158405, 'invariant_loss': 0.13752899227701887, 'sigreg_loss': 8.50749362244898, 'triplet_loss': 0.14433784273510075, 'triplet_pos_distance': 0.03449064247994399, 'triplet_neg_distance': 1.5072158952148593}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.532439
+Mahalanobis AUC, QCD val vs WJet: 0.532806
+Epoch 58 train losses: {'total_loss': 0.3575571383661626, 'invariant_loss': 0.1917496601600781, 'sigreg_loss': 7.587595907928389, 'triplet_loss': 0.1405440743755349, 'triplet_pos_distance': 0.0587667916113001, 'triplet_neg_distance': 1.778149436044571}
+Epoch 58 val losses: {'total_loss': 0.31839514736618313, 'invariant_loss': 0.14099371615721254, 'sigreg_loss': 7.983099489795919, 'triplet_loss': 0.1772598586216265, 'triplet_pos_distance': 0.033523717220416485, 'triplet_neg_distance': 1.4825064716290455}
+Mahalanobis AUC, QCD train vs WJet: 0.537478
+Mahalanobis AUC, QCD val vs WJet: 0.536884
+Epoch 59 train losses: {'total_loss': 0.3562525508882445, 'invariant_loss': 0.19120307304822576, 'sigreg_loss': 7.565656969309463, 'triplet_loss': 0.13734737067195155, 'triplet_pos_distance': 0.05871683203369912, 'triplet_neg_distance': 1.7821970013401391}
+Epoch 59 val losses: {'total_loss': 0.3248167708516121, 'invariant_loss': 0.14279787383061282, 'sigreg_loss': 8.26482780612245, 'triplet_loss': 0.16730709951751085, 'triplet_pos_distance': 0.034829133133194884, 'triplet_neg_distance': 1.4791152404279124}
+Mahalanobis AUC, QCD train vs WJet: 0.519911
+Mahalanobis AUC, QCD val vs WJet: 0.521518
+Epoch 60 train losses: {'total_loss': 0.35580495148516067, 'invariant_loss': 0.19144873202914167, 'sigreg_loss': 7.525895140664962, 'triplet_loss': 0.1384008626556, 'triplet_pos_distance': 0.05860766847058178, 'triplet_neg_distance': 1.7622644134494654}
+Epoch 60 val losses: {'total_loss': 0.3236504498184944, 'invariant_loss': 0.14334931798583392, 'sigreg_loss': 8.337213010204081, 'triplet_loss': 0.1353813592268496, 'triplet_pos_distance': 0.03601761126168528, 'triplet_neg_distance': 1.5247822403907776}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.525223
+Mahalanobis AUC, QCD val vs WJet: 0.527344
+Epoch 61 train losses: {'total_loss': 0.35647954545972294, 'invariant_loss': 0.19145747836288587, 'sigreg_loss': 7.572730179028133, 'triplet_loss': 0.13569957913492647, 'triplet_pos_distance': 0.05870608635761244, 'triplet_neg_distance': 1.7850505970323178}
+Epoch 61 val losses: {'total_loss': 0.3175722330200429, 'invariant_loss': 0.14371458250953226, 'sigreg_loss': 8.005261479591837, 'triplet_loss': 0.13768661637999574, 'triplet_pos_distance': 0.03633147957069533, 'triplet_neg_distance': 1.5332987095628465}
+Mahalanobis AUC, QCD train vs WJet: 0.536864
+Mahalanobis AUC, QCD val vs WJet: 0.537408
+Epoch 62 train losses: {'total_loss': 0.35480671377895434, 'invariant_loss': 0.19102959582567824, 'sigreg_loss': 7.504835358056266, 'triplet_loss': 0.1367621189340606, 'triplet_pos_distance': 0.05867200279536912, 'triplet_neg_distance': 1.7905175475513233}
+Epoch 62 val losses: {'total_loss': 0.3258684019044954, 'invariant_loss': 0.1340501469997119, 'sigreg_loss': 8.777104591836734, 'triplet_loss': 0.16238790666874575, 'triplet_pos_distance': 0.0329909405994172, 'triplet_neg_distance': 1.4636260441371374}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.522244
+Mahalanobis AUC, QCD val vs WJet: 0.524624
+Epoch 63 train losses: {'total_loss': 0.35544171952225667, 'invariant_loss': 0.1917705269306517, 'sigreg_loss': 7.514346227621483, 'triplet_loss': 0.1339358128607273, 'triplet_pos_distance': 0.05847139105372264, 'triplet_neg_distance': 1.7858834524288811}
+Epoch 63 val losses: {'total_loss': 0.31633213572964375, 'invariant_loss': 0.14194878266782177, 'sigreg_loss': 8.033163265306122, 'triplet_loss': 0.13701451246683694, 'triplet_pos_distance': 0.03650749049016407, 'triplet_neg_distance': 1.5458497216506881}
+Mahalanobis AUC, QCD train vs WJet: 0.543361
+Mahalanobis AUC, QCD val vs WJet: 0.542285
+Epoch 64 train losses: {'total_loss': 0.3547881200261738, 'invariant_loss': 0.19112012249505733, 'sigreg_loss': 7.521459398976982, 'triplet_loss': 0.1324240341020362, 'triplet_pos_distance': 0.05839214474915543, 'triplet_neg_distance': 1.7893338272028871}
+Epoch 64 val losses: {'total_loss': 0.3200416520846133, 'invariant_loss': 0.13569809302535593, 'sigreg_loss': 8.395727040816327, 'triplet_loss': 0.16412175180656569, 'triplet_pos_distance': 0.03250700784657074, 'triplet_neg_distance': 1.445856714127015}
+Mahalanobis AUC, QCD train vs WJet: 0.529706
+Mahalanobis AUC, QCD val vs WJet: 0.529691
+Epoch 65 train losses: {'total_loss': 0.35240731714174267, 'invariant_loss': 0.18969367313034394, 'sigreg_loss': 7.478700447570333, 'triplet_loss': 0.13132863812853612, 'triplet_pos_distance': 0.058172628678895937, 'triplet_neg_distance': 1.8074018447600362}
+Epoch 65 val losses: {'total_loss': 0.32108495384454727, 'invariant_loss': 0.13625045189139795, 'sigreg_loss': 8.503188775510203, 'triplet_loss': 0.14758167834002145, 'triplet_pos_distance': 0.033854064997285604, 'triplet_neg_distance': 1.511973760565933}
+Mahalanobis AUC, QCD train vs WJet: 0.523757
+Mahalanobis AUC, QCD val vs WJet: 0.524406
+Epoch 66 train losses: {'total_loss': 0.3534937077547278, 'invariant_loss': 0.19172124654207084, 'sigreg_loss': 7.435981457800511, 'triplet_loss': 0.1305085585245391, 'triplet_pos_distance': 0.05898571190664835, 'triplet_neg_distance': 1.793452882705747}
+Epoch 66 val losses: {'total_loss': 0.3212196834537448, 'invariant_loss': 0.13479045630261607, 'sigreg_loss': 8.50079719387755, 'triplet_loss': 0.16390260293775674, 'triplet_pos_distance': 0.0321697147601113, 'triplet_neg_distance': 1.4736002367369982}
+Mahalanobis AUC, QCD train vs WJet: 0.525148
+Mahalanobis AUC, QCD val vs WJet: 0.525711
+Epoch 67 train losses: {'total_loss': 0.3519170308280784, 'invariant_loss': 0.18991150541226273, 'sigreg_loss': 7.448449488491049, 'triplet_loss': 0.13030414672001547, 'triplet_pos_distance': 0.05816071898774113, 'triplet_neg_distance': 1.8159094583957702}
+Epoch 67 val losses: {'total_loss': 0.31850618063187114, 'invariant_loss': 0.1403158794024161, 'sigreg_loss': 8.188456632653061, 'triplet_loss': 0.1441927217707342, 'triplet_pos_distance': 0.034403428216749916, 'triplet_neg_distance': 1.5336775195841887}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.517917
+Mahalanobis AUC, QCD val vs WJet: 0.521032
+Epoch 68 train losses: {'total_loss': 0.3515294126766112, 'invariant_loss': 0.19026917516423003, 'sigreg_loss': 7.420796035805626, 'triplet_loss': 0.12830851583377176, 'triplet_pos_distance': 0.05825192453649343, 'triplet_neg_distance': 1.815439820899378}
+Epoch 68 val losses: {'total_loss': 0.3150454840185691, 'invariant_loss': 0.14236850831277517, 'sigreg_loss': 7.985650510204081, 'triplet_loss': 0.12946723010010866, 'triplet_pos_distance': 0.03511991551412003, 'triplet_neg_distance': 1.5436739258620205}
+Mahalanobis AUC, QCD train vs WJet: 0.532710
+Mahalanobis AUC, QCD val vs WJet: 0.533596
+Epoch 69 train losses: {'total_loss': 0.3514129702773545, 'invariant_loss': 0.19017203070242386, 'sigreg_loss': 7.419557225063938, 'triplet_loss': 0.12837778432937838, 'triplet_pos_distance': 0.05813918548071628, 'triplet_neg_distance': 1.8079146050736117}
+Epoch 69 val losses: {'total_loss': 0.3179897581588249, 'invariant_loss': 0.1390867864294928, 'sigreg_loss': 8.223692602040817, 'triplet_loss': 0.14374609105288982, 'triplet_pos_distance': 0.03503697510922746, 'triplet_neg_distance': 1.4983667950240933}
+Mahalanobis AUC, QCD train vs WJet: 0.528746
+Mahalanobis AUC, QCD val vs WJet: 0.529727
+Epoch 70 train losses: {'total_loss': 0.35038837081636004, 'invariant_loss': 0.18984784195413978, 'sigreg_loss': 7.3946211636828645, 'triplet_loss': 0.12645005626256203, 'triplet_pos_distance': 0.05792630078923672, 'triplet_neg_distance': 1.7964936069515356}
+Epoch 70 val losses: {'total_loss': 0.3159759520572059, 'invariant_loss': 0.1393412779636529, 'sigreg_loss': 8.095344387755102, 'triplet_loss': 0.14739545107800134, 'triplet_pos_distance': 0.03344309875475509, 'triplet_neg_distance': 1.4989789827745787}
+Mahalanobis AUC, QCD train vs WJet: 0.524817
+Mahalanobis AUC, QCD val vs WJet: 0.526784
+Epoch 71 train losses: {'total_loss': 0.35044481641496233, 'invariant_loss': 0.18947105239266934, 'sigreg_loss': 7.41184462915601, 'triplet_loss': 0.12734819867688676, 'triplet_pos_distance': 0.05773406225206602, 'triplet_neg_distance': 1.8075795710239264}
+Epoch 71 val losses: {'total_loss': 0.3173106338600723, 'invariant_loss': 0.13968882299199395, 'sigreg_loss': 8.225286989795919, 'triplet_loss': 0.1312583550354656, 'triplet_pos_distance': 0.03498726733485047, 'triplet_neg_distance': 1.5473570069488214}
+Mahalanobis AUC, QCD train vs WJet: 0.531154
+Mahalanobis AUC, QCD val vs WJet: 0.532145
+Epoch 72 train losses: {'total_loss': 0.3502267160455284, 'invariant_loss': 0.18959206622808486, 'sigreg_loss': 7.402533567774936, 'triplet_loss': 0.12580528757189546, 'triplet_pos_distance': 0.058102504138255975, 'triplet_neg_distance': 1.811311085053417}
+Epoch 72 val losses: {'total_loss': 0.31793746413016805, 'invariant_loss': 0.13680533160056388, 'sigreg_loss': 8.337053571428571, 'triplet_loss': 0.14371626873557664, 'triplet_pos_distance': 0.03317826472184792, 'triplet_neg_distance': 1.5216164722734569}
+Mahalanobis AUC, QCD train vs WJet: 0.513787
+Mahalanobis AUC, QCD val vs WJet: 0.515808
+Epoch 73 train losses: {'total_loss': 0.3495748180257695, 'invariant_loss': 0.18939018897388293, 'sigreg_loss': 7.368606138107417, 'triplet_loss': 0.1280173791186584, 'triplet_pos_distance': 0.057858680191514134, 'triplet_neg_distance': 1.8139729576037669}
+Epoch 73 val losses: {'total_loss': 0.3183536654224201, 'invariant_loss': 0.13762549443968705, 'sigreg_loss': 8.419642857142858, 'triplet_loss': 0.12345874260122679, 'triplet_pos_distance': 0.03554876382481687, 'triplet_neg_distance': 1.5624426816190993}
+Mahalanobis AUC, QCD train vs WJet: 0.536309
+Mahalanobis AUC, QCD val vs WJet: 0.537551
+Epoch 74 train losses: {'total_loss': 0.349761493561213, 'invariant_loss': 0.1903526731731032, 'sigreg_loss': 7.344669117647059, 'triplet_loss': 0.125079671135339, 'triplet_pos_distance': 0.05823998778220028, 'triplet_neg_distance': 1.8062757261268927}
+Epoch 74 val losses: {'total_loss': 0.31535989988823326, 'invariant_loss': 0.13572477632943464, 'sigreg_loss': 8.21906887755102, 'triplet_loss': 0.15251253666926404, 'triplet_pos_distance': 0.032932699572447, 'triplet_neg_distance': 1.4798831319322392}
+Mahalanobis AUC, QCD train vs WJet: 0.535245
+Mahalanobis AUC, QCD val vs WJet: 0.536210
+Epoch 75 train losses: {'total_loss': 0.34934756937234296, 'invariant_loss': 0.18954388743928632, 'sigreg_loss': 7.364889705882353, 'triplet_loss': 0.12495718766813693, 'triplet_pos_distance': 0.05809462005201051, 'triplet_neg_distance': 1.801313342340767}
+Epoch 75 val losses: {'total_loss': 0.31648165991111676, 'invariant_loss': 0.13516897620747284, 'sigreg_loss': 8.341836734693878, 'triplet_loss': 0.14455021419847497, 'triplet_pos_distance': 0.03272299411497554, 'triplet_neg_distance': 1.5004733089281588}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.533097
+Mahalanobis AUC, QCD val vs WJet: 0.534083
+Epoch 76 train losses: {'total_loss': 0.348558040321483, 'invariant_loss': 0.1898135854803083, 'sigreg_loss': 7.3163363171355495, 'triplet_loss': 0.12414928093133375, 'triplet_pos_distance': 0.05793003412320867, 'triplet_neg_distance': 1.8133403448497547}
+Epoch 76 val losses: {'total_loss': 0.31278839190395513, 'invariant_loss': 0.13932374967452216, 'sigreg_loss': 7.972257653061225, 'triplet_loss': 0.14008423556782762, 'triplet_pos_distance': 0.03351372449981923, 'triplet_neg_distance': 1.5122400735105788}
+Mahalanobis AUC, QCD train vs WJet: 0.547202
+Mahalanobis AUC, QCD val vs WJet: 0.547703
+Epoch 77 train losses: {'total_loss': 0.3468429867530723, 'invariant_loss': 0.18804644513160676, 'sigreg_loss': 7.32340952685422, 'triplet_loss': 0.12337764669829013, 'triplet_pos_distance': 0.05712978257452283, 'triplet_neg_distance': 1.8154372918941175}
+Epoch 77 val losses: {'total_loss': 0.32025619740692934, 'invariant_loss': 0.132473547733864, 'sigreg_loss': 8.584661989795919, 'triplet_loss': 0.16079542512188152, 'triplet_pos_distance': 0.031201846536477, 'triplet_neg_distance': 1.4680342394478467}
+Mahalanobis AUC, QCD train vs WJet: 0.535287
+Mahalanobis AUC, QCD val vs WJet: 0.536049
+Epoch 78 train losses: {'total_loss': 0.3477675036319991, 'invariant_loss': 0.18851430876099545, 'sigreg_loss': 7.342990728900256, 'triplet_loss': 0.1239480142531645, 'triplet_pos_distance': 0.057415249435912315, 'triplet_neg_distance': 1.8228150990308094}
+Epoch 78 val losses: {'total_loss': 0.31308633431184046, 'invariant_loss': 0.13792915554831223, 'sigreg_loss': 8.07015306122449, 'triplet_loss': 0.1372292447379049, 'triplet_pos_distance': 0.034042235663426776, 'triplet_neg_distance': 1.524780486919442}
+Mahalanobis AUC, QCD train vs WJet: 0.528862
+Mahalanobis AUC, QCD val vs WJet: 0.529915
+Epoch 79 train losses: {'total_loss': 0.3472635694553175, 'invariant_loss': 0.18842839228603847, 'sigreg_loss': 7.33048273657289, 'triplet_loss': 0.12211557289066217, 'triplet_pos_distance': 0.057390775912634244, 'triplet_neg_distance': 1.823095005643947}
+Epoch 79 val losses: {'total_loss': 0.313740254512855, 'invariant_loss': 0.1355026786272623, 'sigreg_loss': 8.232302295918368, 'triplet_loss': 0.13599600604906373, 'triplet_pos_distance': 0.03251088101758945, 'triplet_neg_distance': 1.5151580772837814}
+Mahalanobis AUC, QCD train vs WJet: 0.530961
+Mahalanobis AUC, QCD val vs WJet: 0.532403
+Epoch 80 train losses: {'total_loss': 0.34729484691644263, 'invariant_loss': 0.18881633832021746, 'sigreg_loss': 7.311540920716112, 'triplet_loss': 0.12257627730288774, 'triplet_pos_distance': 0.057597831877715444, 'triplet_neg_distance': 1.8293724322258054}
+Epoch 80 val losses: {'total_loss': 0.31837864052884435, 'invariant_loss': 0.1323267012378391, 'sigreg_loss': 8.645886479591837, 'triplet_loss': 0.13143076793271669, 'triplet_pos_distance': 0.03290122770229165, 'triplet_neg_distance': 1.5288102529486831}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.524840
+Mahalanobis AUC, QCD val vs WJet: 0.526168
+Epoch 81 train losses: {'total_loss': 0.34659399568577254, 'invariant_loss': 0.18821529055114292, 'sigreg_loss': 7.3156769501278776, 'triplet_loss': 0.1207852480299485, 'triplet_pos_distance': 0.05771941554439647, 'triplet_neg_distance': 1.8211734101290593}
+Epoch 81 val losses: {'total_loss': 0.312510362541189, 'invariant_loss': 0.13474124555989186, 'sigreg_loss': 8.245057397959183, 'triplet_loss': 0.12872052340939336, 'triplet_pos_distance': 0.03442212835676512, 'triplet_neg_distance': 1.5371969999099264}
+Mahalanobis AUC, QCD train vs WJet: 0.522800
+Mahalanobis AUC, QCD val vs WJet: 0.523894
+Epoch 82 train losses: {'total_loss': 0.347031856474974, 'invariant_loss': 0.18854933508369318, 'sigreg_loss': 7.312420076726343, 'triplet_loss': 0.12236039950262251, 'triplet_pos_distance': 0.05748241732987906, 'triplet_neg_distance': 1.8253271594986586}
+Epoch 82 val losses: {'total_loss': 0.3160062671011808, 'invariant_loss': 0.1375964231104875, 'sigreg_loss': 8.264668367346939, 'triplet_loss': 0.13131620966810353, 'triplet_pos_distance': 0.03432014104625096, 'triplet_neg_distance': 1.5271352304487813}
+Mahalanobis AUC, QCD train vs WJet: 0.524871
+Mahalanobis AUC, QCD val vs WJet: 0.526405
+Epoch 83 train losses: {'total_loss': 0.34623182178153405, 'invariant_loss': 0.18823000619097438, 'sigreg_loss': 7.294637148337596, 'triplet_loss': 0.12115612594634675, 'triplet_pos_distance': 0.05722622418075876, 'triplet_neg_distance': 1.8334407594502735}
+Epoch 83 val losses: {'total_loss': 0.3145830804596142, 'invariant_loss': 0.1358630609679587, 'sigreg_loss': 8.28188775510204, 'triplet_loss': 0.1304319807309277, 'triplet_pos_distance': 0.03382002191656098, 'triplet_neg_distance': 1.5244884910632153}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.533880
+Mahalanobis AUC, QCD val vs WJet: 0.534486
+Epoch 84 train losses: {'total_loss': 0.34513435890073973, 'invariant_loss': 0.18819490395238636, 'sigreg_loss': 7.244045716112532, 'triplet_loss': 0.12061658912740858, 'triplet_pos_distance': 0.057417768989796836, 'triplet_neg_distance': 1.8292812067834312}
+Epoch 84 val losses: {'total_loss': 0.3124311418861759, 'invariant_loss': 0.13548252609919528, 'sigreg_loss': 8.161989795918368, 'triplet_loss': 0.13705729575333547, 'triplet_pos_distance': 0.032280150972002625, 'triplet_neg_distance': 1.5193558146758956}
+Mahalanobis AUC, QCD train vs WJet: 0.525797
+Mahalanobis AUC, QCD val vs WJet: 0.526845
+Epoch 85 train losses: {'total_loss': 0.34574086272426885, 'invariant_loss': 0.18813055477407584, 'sigreg_loss': 7.280910326086956, 'triplet_loss': 0.11966373823830843, 'triplet_pos_distance': 0.057586649013564105, 'triplet_neg_distance': 1.829876701392786}
+Epoch 85 val losses: {'total_loss': 0.31320109446437994, 'invariant_loss': 0.1363060056631054, 'sigreg_loss': 8.205835459183673, 'triplet_loss': 0.12790236983220188, 'triplet_pos_distance': 0.03388079770897724, 'triplet_neg_distance': 1.5253357309467939}
+Mahalanobis AUC, QCD train vs WJet: 0.531561
+Mahalanobis AUC, QCD val vs WJet: 0.532401
+Epoch 86 train losses: {'total_loss': 0.34491073204885664, 'invariant_loss': 0.18796919269101395, 'sigreg_loss': 7.244105658567775, 'triplet_loss': 0.12048757889920184, 'triplet_pos_distance': 0.057111989139862686, 'triplet_neg_distance': 1.8257487887311774}
+Epoch 86 val losses: {'total_loss': 0.31272524671286955, 'invariant_loss': 0.135795247493958, 'sigreg_loss': 8.18734056122449, 'triplet_loss': 0.13176409071501421, 'triplet_pos_distance': 0.033684582021847674, 'triplet_neg_distance': 1.5328136919712534}
+Mahalanobis AUC, QCD train vs WJet: 0.530374
+Mahalanobis AUC, QCD val vs WJet: 0.531707
+Epoch 87 train losses: {'total_loss': 0.3455939694972294, 'invariant_loss': 0.18865639623016348, 'sigreg_loss': 7.243406329923274, 'triplet_loss': 0.12064149715673284, 'triplet_pos_distance': 0.0577578155938393, 'triplet_neg_distance': 1.8178519252925882}
+Epoch 87 val losses: {'total_loss': 0.31499673030814346, 'invariant_loss': 0.1349755819050633, 'sigreg_loss': 8.341358418367347, 'triplet_loss': 0.13180923157808733, 'triplet_pos_distance': 0.0332941889325727, 'triplet_neg_distance': 1.500389878847161}
+Mahalanobis AUC, QCD train vs WJet: 0.531626
+Mahalanobis AUC, QCD val vs WJet: 0.532880
+Epoch 88 train losses: {'total_loss': 0.3447045923575111, 'invariant_loss': 0.18827259128965684, 'sigreg_loss': 7.228820332480819, 'triplet_loss': 0.11867655651724857, 'triplet_pos_distance': 0.057096493794866233, 'triplet_neg_distance': 1.81597996977589}
+Epoch 88 val losses: {'total_loss': 0.31335100485962264, 'invariant_loss': 0.137196579567936, 'sigreg_loss': 8.157684948979592, 'triplet_loss': 0.12981291997189426, 'triplet_pos_distance': 0.03351348075939684, 'triplet_neg_distance': 1.531553450287605}
+Mahalanobis AUC, QCD train vs WJet: 0.531444
+Mahalanobis AUC, QCD val vs WJet: 0.532587
+Epoch 89 train losses: {'total_loss': 0.34518301681331964, 'invariant_loss': 0.18852834359687917, 'sigreg_loss': 7.234155210997442, 'triplet_loss': 0.11953583892310976, 'triplet_pos_distance': 0.057239487295603506, 'triplet_neg_distance': 1.8294569412460717}
+Epoch 89 val losses: {'total_loss': 0.3124878394360445, 'invariant_loss': 0.1357909594947586, 'sigreg_loss': 8.17155612244898, 'triplet_loss': 0.13274623465021046, 'triplet_pos_distance': 0.03281067746064188, 'triplet_neg_distance': 1.5248592094499238}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.528104
+Mahalanobis AUC, QCD val vs WJet: 0.529430
+Epoch 90 train losses: {'total_loss': 0.344041012399032, 'invariant_loss': 0.1877485031781294, 'sigreg_loss': 7.221867007672635, 'triplet_loss': 0.11839930929453171, 'triplet_pos_distance': 0.057058918744782965, 'triplet_neg_distance': 1.8298217965208965}
+Epoch 90 val losses: {'total_loss': 0.31137231007522465, 'invariant_loss': 0.13553091351475036, 'sigreg_loss': 8.14795918367347, 'triplet_loss': 0.12904930114746094, 'triplet_pos_distance': 0.032930734728900145, 'triplet_neg_distance': 1.5281548633867381}
+Mahalanobis AUC, QCD train vs WJet: 0.527473
+Mahalanobis AUC, QCD val vs WJet: 0.528976
+Epoch 91 train losses: {'total_loss': 0.34342773716010705, 'invariant_loss': 0.18780512945807498, 'sigreg_loss': 7.190537084398977, 'triplet_loss': 0.11804420402859483, 'triplet_pos_distance': 0.056766953257381764, 'triplet_neg_distance': 1.8359557580764947}
+Epoch 91 val losses: {'total_loss': 0.3120538490463276, 'invariant_loss': 0.1361926482724292, 'sigreg_loss': 8.157844387755102, 'triplet_loss': 0.12707998896283762, 'triplet_pos_distance': 0.03413767296326708, 'triplet_neg_distance': 1.5393739756272764}
+Mahalanobis AUC, QCD train vs WJet: 0.528439
+Mahalanobis AUC, QCD val vs WJet: 0.529910
+Epoch 92 train losses: {'total_loss': 0.34361650804272087, 'invariant_loss': 0.18756651533457935, 'sigreg_loss': 7.207281010230179, 'triplet_loss': 0.11895878330978286, 'triplet_pos_distance': 0.05724660064691625, 'triplet_neg_distance': 1.8333950085408242}
+Epoch 92 val losses: {'total_loss': 0.311605412589044, 'invariant_loss': 0.13595527992108647, 'sigreg_loss': 8.142697704081632, 'triplet_loss': 0.12808335830970685, 'triplet_pos_distance': 0.033713398586806595, 'triplet_neg_distance': 1.5358737992997071}
+Mahalanobis AUC, QCD train vs WJet: 0.529778
+Mahalanobis AUC, QCD val vs WJet: 0.531013
+Epoch 93 train losses: {'total_loss': 0.34463265976485086, 'invariant_loss': 0.18869464236604588, 'sigreg_loss': 7.205462755754476, 'triplet_loss': 0.11823239006921459, 'triplet_pos_distance': 0.0577610625130365, 'triplet_neg_distance': 1.826474214911156}
+Epoch 93 val losses: {'total_loss': 0.3115374187425691, 'invariant_loss': 0.1359406911140802, 'sigreg_loss': 8.136798469387756, 'triplet_loss': 0.12834647518335557, 'triplet_pos_distance': 0.03390570373597498, 'triplet_neg_distance': 1.5315568489687783}
+Mahalanobis AUC, QCD train vs WJet: 0.528596
+Mahalanobis AUC, QCD val vs WJet: 0.530214
+Epoch 94 train losses: {'total_loss': 0.343697217686097, 'invariant_loss': 0.18806089401778664, 'sigreg_loss': 7.1911764705882355, 'triplet_loss': 0.11811891646908067, 'triplet_pos_distance': 0.05762482825142648, 'triplet_neg_distance': 1.8296512074177833}
+Epoch 94 val losses: {'total_loss': 0.31226605465825724, 'invariant_loss': 0.13743426551928326, 'sigreg_loss': 8.097417091836734, 'triplet_loss': 0.12869394471754833, 'triplet_pos_distance': 0.03398314604003515, 'triplet_neg_distance': 1.5330528203321963}
+Mahalanobis AUC, QCD train vs WJet: 0.531677
+Mahalanobis AUC, QCD val vs WJet: 0.532832
+Epoch 95 train losses: {'total_loss': 0.34205585605729266, 'invariant_loss': 0.18723326527020512, 'sigreg_loss': 7.152793318414322, 'triplet_loss': 0.11780532811056166, 'triplet_pos_distance': 0.057485734200691016, 'triplet_neg_distance': 1.8326282239021243}
+Epoch 95 val losses: {'total_loss': 0.31158012509041905, 'invariant_loss': 0.1363836308295021, 'sigreg_loss': 8.104751275510203, 'triplet_loss': 0.13092101753062133, 'triplet_pos_distance': 0.03408782140408852, 'triplet_neg_distance': 1.5283931086258011}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.531817
+Mahalanobis AUC, QCD val vs WJet: 0.533219
+Epoch 96 train losses: {'total_loss': 0.3440942933873447, 'invariant_loss': 0.18855007970348345, 'sigreg_loss': 7.185461956521739, 'triplet_loss': 0.1182905217475446, 'triplet_pos_distance': 0.057153734342788184, 'triplet_neg_distance': 1.837454251163756}
+Epoch 96 val losses: {'total_loss': 0.31001088312085795, 'invariant_loss': 0.13498357094216104, 'sigreg_loss': 8.105229591836734, 'triplet_loss': 0.1291793578741502, 'triplet_pos_distance': 0.03302945212784166, 'triplet_neg_distance': 1.5399402750998128}
+Mahalanobis AUC, QCD train vs WJet: 0.530466
+Mahalanobis AUC, QCD val vs WJet: 0.531759
+Epoch 97 train losses: {'total_loss': 0.34393440045968954, 'invariant_loss': 0.18789893026699495, 'sigreg_loss': 7.209638746803069, 'triplet_loss': 0.11848262669828237, 'triplet_pos_distance': 0.05767833261900698, 'triplet_neg_distance': 1.8363501455472864}
+Epoch 97 val losses: {'total_loss': 0.31159123352595736, 'invariant_loss': 0.13635697333636332, 'sigreg_loss': 8.10985331632653, 'triplet_loss': 0.13025234027632646, 'triplet_pos_distance': 0.03349050732177435, 'triplet_neg_distance': 1.5329685028718443}
+Mahalanobis AUC, QCD train vs WJet: 0.530806
+Mahalanobis AUC, QCD val vs WJet: 0.532208
+Epoch 98 train losses: {'total_loss': 0.34419635216445876, 'invariant_loss': 0.18825457424230282, 'sigreg_loss': 7.209079283887468, 'triplet_loss': 0.11760813060700132, 'triplet_pos_distance': 0.05732426763324024, 'triplet_neg_distance': 1.8375205481448746}
+Epoch 98 val losses: {'total_loss': 0.31101935813013387, 'invariant_loss': 0.13629528222491546, 'sigreg_loss': 8.09343112244898, 'triplet_loss': 0.12826452111559256, 'triplet_pos_distance': 0.032553337951551894, 'triplet_neg_distance': 1.5383865948842497}
+Saved new best model to plots/run-lejepa-trip-part-prob-aug/best_model.pth
+Mahalanobis AUC, QCD train vs WJet: 0.530955
+Mahalanobis AUC, QCD val vs WJet: 0.532356
+Epoch 99 train losses: {'total_loss': 0.3432499326174826, 'invariant_loss': 0.18776966200765136, 'sigreg_loss': 7.180626598465473, 'triplet_loss': 0.11855646414334511, 'triplet_pos_distance': 0.0568262237598143, 'triplet_neg_distance': 1.834969419195219}
+Epoch 99 val losses: {'total_loss': 0.3085804907034855, 'invariant_loss': 0.13418855111361766, 'sigreg_loss': 8.081313775510203, 'triplet_loss': 0.12780809022334158, 'triplet_pos_distance': 0.032678044847763925, 'triplet_neg_distance': 1.5385298236292235}
+Mahalanobis AUC, QCD train vs WJet: 0.530907
+Mahalanobis AUC, QCD val vs WJet: 0.532302
+Epoch 100 train losses: {'total_loss': 0.3421649311471473, 'invariant_loss': 0.18727687732947756, 'sigreg_loss': 7.155031170076726, 'triplet_loss': 0.11794795842407763, 'triplet_pos_distance': 0.05725200824401415, 'triplet_neg_distance': 1.835459310075511}
+Epoch 100 val losses: {'total_loss': 0.3119933811985717, 'invariant_loss': 0.13611864621693992, 'sigreg_loss': 8.151945153061224, 'triplet_loss': 0.12863531138519851, 'triplet_pos_distance': 0.03334678981301128, 'triplet_neg_distance': 1.5358202871011228}

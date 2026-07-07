@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --nodes=1               # node count
-#SBATCH --nodelist=gpu3102      # the L40S GPU!! 3001-3005 or gpu3101-3102 are L40S
+#SBATCH --nodelist=gpu3005      # the L40S GPU!! 3001-3005 or gpu3101-3102 are L40S
 #SBATCH -p gpu --gres=gpu:1     # number of gpus per node
 #SBATCH --ntasks-per-node=1     # total number of tasks across all nodes
 #SBATCH --cpus-per-task=4       # cpu-cores per task (>1 if multi-threaded tasks)
@@ -9,8 +9,8 @@
 #SBATCH --job-name='JETANOMALY'
 #SBATCH --output=slurm_logs/R-%x.%j/log.out
 #SBATCH --error=slurm_logs/R-%x.%j/log.err
-# Force unbuffered output
-export PYTHONUNBUFFERED=1
+# # Force unbuffered output
+# export PYTHONUNBUFFERED=1
 export PYTHONIOENCODING=utf-8
 
 echo ""
@@ -43,12 +43,30 @@ python -u scripts/run_train_lejepa_trip_part.py \
   --num-heads 8 \
   --batch-size 128 \
   --epochs 100 \
-  --learning-rate 5e-4 \
+  --learning-rate 1e-3 \
   --weight-decay 5e-2 \
   --precision bf16 \
   --triplet-weight 0.1 \
   --triplet-margin 1.0 \
   --num-global-views 2 \
   --num-local-views 3 \
-  --num-negative-views 4 \
-  --output-dir "plots/run-lejepa-trip-part-prob-aug"
+  --num-negative-views 3 \
+  --global-drop-pt-frac-min 0.0 \
+  --global-drop-pt-frac-max 0.50 \
+  --local-drop-pt-frac-min 0.50 \
+  --local-drop-pt-frac-max 0.95 \
+  --batch-mix-prob 0.01 \
+  --pt-resample-prob 0.33 \
+  --node-eta-phi-rotation-prob 0.01 \
+  --eta-phi-shuffle-prob 0.32 \
+  --identity-shuffle-prob 0.32 \
+  --output-dir "plots/run-lejepa-trip-part-prob-aug-fracb-augb-3n"
+
+
+# --learning-rate 5e-4 \
+
+# --batch-mix-prob 0.45 \
+# --pt-resample-prob 0.25 \
+# --node-eta-phi-rotation-prob 0.20 \
+# --eta-phi-shuffle-prob 0.05 \
+# --identity-shuffle-prob 0.05 \

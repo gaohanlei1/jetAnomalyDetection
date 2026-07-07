@@ -44,7 +44,6 @@ python -u scripts/run_train_lejepa_trip_part.py \
 
 import argparse
 import json
-import logging
 import math
 import os
 import random
@@ -64,7 +63,6 @@ from tqdm import tqdm
 from sklearn.metrics import roc_auc_score
 from visualize.plot_metrics import plot_anomaly_score, plot_roc_curve
 
-import constants as c
 from helpers import helpers_main
 from models.part import (
     CorruptedNegativeAugmentationConfig,
@@ -189,7 +187,7 @@ def dataframe_to_node_tensors(
             node_tensors.append(x)
             labels.append(label)
         except Exception as exc:
-            logging.info(f"Skipping event {i} due to error: {exc}")
+            print(f"Skipping event {i} due to error: {exc}")
 
     return node_tensors, labels
 
@@ -377,8 +375,8 @@ class TrainLeJEPATripletParticleTransformer:
         already been sliced/preprocessed upstream.
         """
 
-        logging.info(f"Loading background from {self.bg_file}")
-        logging.info(f"Loading signal from {self.sg_file}")
+        print(f"Loading background from {self.bg_file}")
+        print(f"Loading signal from {self.sg_file}")
 
         self.bg_data = pd.read_pickle(self.bg_file)
         self.sg_data = pd.read_pickle(self.sg_file)
@@ -388,14 +386,14 @@ class TrainLeJEPATripletParticleTransformer:
         if self.args.max_signal_events is not None:
             self.sg_data = self.sg_data.head(self.args.max_signal_events)
 
-        logging.info(f"Background rows: {len(self.bg_data)}")
-        logging.info(f"Signal rows: {len(self.sg_data)}")
-        logging.info(f"Background columns: {self.bg_data.columns.tolist()}")
-        logging.info(f"Signal columns: {self.sg_data.columns.tolist()}")
+        print(f"Background rows: {len(self.bg_data)}")
+        print(f"Signal rows: {len(self.sg_data)}")
+        print(f"Background columns: {self.bg_data.columns.tolist()}")
+        print(f"Signal columns: {self.sg_data.columns.tolist()}")
 
         print(f"Background rows: {len(self.bg_data)}")
         print(f"Signal rows: {len(self.sg_data)}")
-        print(f"Node features: {self.node_feature_names}")
+        print(f"Node feature names: {self.node_feature_names}")
 
     def build_node_datasets(self) -> None:
         """
@@ -441,8 +439,8 @@ class TrainLeJEPATripletParticleTransformer:
         self.sg_labels = sg_labels
 
         if self.args.normalize_features:
-            logging.warning(
-                "Feature normalization is enabled. This changes eta/phi/pt/mass "
+            print(
+                "Warning: Feature normalization is enabled. This changes eta/phi/pt/mass "
                 "before pairwise physics bias computation. Use only if intended."
             )
             self.feature_mean, self.feature_std = compute_feature_stats(self.bg_train_nodes)
@@ -468,15 +466,11 @@ class TrainLeJEPATripletParticleTransformer:
         self.bg_val_dataset = JetNodeDataset(self.bg_val_nodes, self.bg_val_labels)
         self.sg_dataset = JetNodeDataset(self.sg_nodes, self.sg_labels)
 
-        logging.info(f"Background train events: {len(self.bg_train_dataset)}")
-        logging.info(f"Background val events: {len(self.bg_val_dataset)}")
-        logging.info(f"Signal events: {len(self.sg_dataset)}")
-        logging.info(f"Feature mean: {self.feature_mean}")
-        logging.info(f"Feature std: {self.feature_std}")
-
-        print(f"Background train events: {len(self.bg_train_dataset)}")
-        print(f"Background val events: {len(self.bg_val_dataset)}")
-        print(f"Signal events: {len(self.sg_dataset)}")
+        print(f"Loaded background train events: {len(self.bg_train_dataset)}")
+        print(f"Loaded background val events: {len(self.bg_val_dataset)}")
+        print(f"Loaded signal events: {len(self.sg_dataset)}")
+        print(f"Feature mean: {self.feature_mean}")
+        print(f"Feature std: {self.feature_std}")
         print(f"Example node tensor shape: {self.bg_train_nodes[0].shape}")
 
     def plot_features(self) -> None:
@@ -629,8 +623,8 @@ class TrainLeJEPATripletParticleTransformer:
                     break
 
         if num_plotted < num_samples:
-            logging.warning(
-                f"Requested {num_samples} augmentation plots but only produced {num_plotted}."
+            print(
+                f"Warning: Requested {num_samples} augmentation plots but only produced {num_plotted}."
             )
 
     def _plot_single_augmentation_panel(
@@ -663,7 +657,7 @@ class TrainLeJEPATripletParticleTransformer:
                 valid_phis.append(x_panel[valid, phi_index].detach().cpu().numpy())
 
         if len(valid_pts) == 0:
-            logging.warning(f"Skipping augmentation plot with no valid nodes: {output_path}")
+            print(f"Warning: Skipping augmentation plot with no valid nodes: {output_path}")
             return
 
         all_pt = np.concatenate(valid_pts)
@@ -856,13 +850,13 @@ class TrainLeJEPATripletParticleTransformer:
             triplet_loss_config=triplet_loss_config,
         ).to(DEVICE)
 
-        logging.info(f"Model summary:\n{self.model}")
+        print(f"Model summary:\n{self.model}")
         print(f"Model summary:\n{self.model}")
 
         self.num_params = sum(
             p.numel() for p in self.model.parameters() if p.requires_grad
         )
-        logging.info(f"Number of trainable parameters: {self.num_params}")
+        print(f"Number of trainable parameters: {self.num_params}")
         print(f"Number of trainable parameters: {self.num_params}")
 
     def plot_progress(
@@ -871,9 +865,15 @@ class TrainLeJEPATripletParticleTransformer:
         val_history: Dict[str, List[float]],
         epoch_end_steps: List[int],
         best_val_loss: float,
+        auc_history: Dict[str, List[float]],
+        mahalanobis_eval_steps: List[int],
     ) -> None:
         """
-        Plot train/validation curves for total, invariant, SIGReg, and triplet losses/distances.
+        Plot train/validation curves for total, invariant, SIGReg, triplet
+        losses/distances, plus Mahalanobis anomaly-detection AUC.
+
+        AUC values are plotted at the actual training steps where Mahalanobis
+        evaluation was performed.
         """
 
         if len(train_history["total_loss"]) == 0:
@@ -896,21 +896,44 @@ class TrainLeJEPATripletParticleTransformer:
             "Triplet Negative Distance",
         ]
 
-        fig, axes = plt.subplots(len(loss_keys), 1, figsize=(10, 3.8 * len(loss_keys)), sharex=True)
+        num_subplots = len(loss_keys) + 1
+
+        fig, axes = plt.subplots(
+            num_subplots,
+            1,
+            figsize=(10, 3.8 * num_subplots),
+            sharex=True,
+        )
 
         step_axis = np.arange(1, len(train_history["total_loss"]) + 1)
         epoch_end_steps_np = np.asarray(epoch_end_steps)
 
-        for ax, key, title in zip(axes, loss_keys, titles):
+        for ax, key, title in zip(axes[:-1], loss_keys, titles):
             train_values = np.asarray(train_history[key], dtype=np.float64)
             val_values = np.asarray(val_history[key], dtype=np.float64)
 
-            ax.plot(step_axis, train_values, label="Train", alpha=0.75)
+            ax.plot(
+                step_axis,
+                train_values,
+                label="Train",
+                alpha=0.75,
+            )
 
             if len(val_values) > 0:
-                repeat_count = int(np.ceil(len(train_values) / len(val_values)))
-                repeated_val = np.repeat(val_values, repeat_count)[: len(train_values)]
-                ax.plot(step_axis, repeated_val, label="Validation", alpha=0.75)
+                repeat_count = int(
+                    np.ceil(len(train_values) / len(val_values))
+                )
+                repeated_val = np.repeat(
+                    val_values,
+                    repeat_count,
+                )[: len(train_values)]
+
+                ax.plot(
+                    step_axis,
+                    repeated_val,
+                    label="Validation",
+                    alpha=0.75,
+                )
 
             if key == "total_loss" and np.isfinite(best_val_loss):
                 ax.axhline(
@@ -924,7 +947,11 @@ class TrainLeJEPATripletParticleTransformer:
 
             if len(epoch_end_steps_np) > 0:
                 max_labels = 12
-                stride = max(1, int(np.ceil(len(epoch_end_steps_np) / max_labels)))
+                stride = max(
+                    1,
+                    int(np.ceil(len(epoch_end_steps_np) / max_labels)),
+                )
+
                 for step_idx in epoch_end_steps_np[::stride]:
                     ax.axvline(
                         step_idx,
@@ -935,23 +962,83 @@ class TrainLeJEPATripletParticleTransformer:
                     )
 
             ax.set_ylabel(title)
+
             if np.all(train_values > 0):
                 ax.set_yscale("log")
+
             ax.legend()
             ax.grid(False)
+
+        # Mahalanobis AUC subplot.
+        auc_ax = axes[-1]
+
+        eval_steps = np.asarray(
+            mahalanobis_eval_steps,
+            dtype=np.int64,
+        )
+        auc_bgtrain = np.asarray(
+            auc_history["auc_bgtrain_vs_signal"],
+            dtype=np.float64,
+        )
+        auc_bgval = np.asarray(
+            auc_history["auc_bgval_vs_signal"],
+            dtype=np.float64,
+        )
+
+        if len(eval_steps) > 0:
+            auc_ax.step(
+                eval_steps,
+                auc_bgtrain,
+                where="post",
+                label="QCD Train vs WJet",
+                alpha=0.75,
+            )
+
+            auc_ax.step(
+                eval_steps,
+                auc_bgval,
+                where="post",
+                label="QCD Val vs WJet",
+                alpha=0.75,
+            )
+
+        if len(epoch_end_steps_np) > 0:
+            max_labels = 12
+            stride = max(
+                1,
+                int(np.ceil(len(epoch_end_steps_np) / max_labels)),
+            )
+
+            for step_idx in epoch_end_steps_np[::stride]:
+                auc_ax.axvline(
+                    step_idx,
+                    color="gray",
+                    ls="--",
+                    lw=0.6,
+                    alpha=0.25,
+                )
+
+        auc_ax.set_ylabel("ROC AUC")
+        auc_ax.set_ylim(0.0, 1.0)
+        auc_ax.legend()
+        auc_ax.grid(False)
 
         axes[-1].set_xlabel("Step Number")
 
         if len(epoch_end_steps_np) > 0:
             epoch_ids = np.arange(1, len(epoch_end_steps_np) + 1)
             max_labels = 12
-            stride = max(1, int(np.ceil(len(epoch_end_steps_np) / max_labels)))
+            stride = max(
+                1,
+                int(np.ceil(len(epoch_end_steps_np) / max_labels)),
+            )
+
             top_ax = axes[0].secondary_xaxis("top")
             top_ax.set_xticks(epoch_end_steps_np[::stride])
             top_ax.set_xticklabels(epoch_ids[::stride])
             top_ax.set_xlabel("Epoch")
 
-        fig.suptitle("LeJEPA + Triplet SSL Loss Curves")
+        fig.suptitle("LeJEPA + Triplet SSL Training Progress")
         fig.tight_layout()
         fig.savefig(os.path.join(self.output_dir, "loss.png"))
         plt.close(fig)
@@ -997,18 +1084,18 @@ class TrainLeJEPATripletParticleTransformer:
         Mahalanobis/ROC evaluation exactly once.
         """
 
-        logging.info("Collecting background train latents...")
+        print("Collecting background train latents...")
         bg_train_latents = self.collect_representations(bg_train_loader)
 
-        logging.info("Collecting background validation latents...")
+        print("Collecting background validation latents...")
         bg_val_latents = self.collect_representations(bg_val_loader)
 
-        logging.info("Collecting signal latents...")
+        print("Collecting signal latents...")
         signal_latents = self.collect_representations(signal_loader)
 
-        logging.info(f"Background train latents: {bg_train_latents.shape}")
-        logging.info(f"Background val latents: {bg_val_latents.shape}")
-        logging.info(f"Signal latents: {signal_latents.shape}")
+        print(f"Background train latents: {bg_train_latents.shape}")
+        print(f"Background val latents: {bg_val_latents.shape}")
+        print(f"Signal latents: {signal_latents.shape}")
 
         return bg_train_latents, bg_val_latents, signal_latents
 
@@ -1076,7 +1163,7 @@ class TrainLeJEPATripletParticleTransformer:
         bg_val_latents: np.ndarray,
         signal_latents: np.ndarray,
         epoch: int,
-    ) -> None:
+    ) -> Tuple[float, float]:
         """
         Evaluate Mahalanobis anomaly scores from already-collected latents.
 
@@ -1084,6 +1171,10 @@ class TrainLeJEPATripletParticleTransformer:
         ROC/AUC is reported for both:
             - background train vs signal
             - background validation vs signal
+        
+        Returns:
+            auc_bgtrain_vs_signal: float
+            auc_bgval_vs_signal: float
         """
 
         mahal_dir = os.path.join(self.output_dir, "mahalanobis_eval", f"epoch_{epoch:04d}")
@@ -1190,12 +1281,14 @@ class TrainLeJEPATripletParticleTransformer:
         with open(latest_metrics_path, "w") as f:
             json.dump(metrics, f, indent=2)
 
-        logging.info(f"Mahalanobis metrics saved to {metrics_path}")
-        logging.info(f"Mahalanobis AUC, QCD train vs WJet: {auc_bgtrain_vs_signal:.6f}")
-        logging.info(f"Mahalanobis AUC, QCD val vs WJet: {auc_bgval_vs_signal:.6f}")
+        print(f"Mahalanobis metrics saved to {metrics_path}")
+        print(f"Mahalanobis AUC, QCD train vs WJet: {auc_bgtrain_vs_signal:.6f}")
+        print(f"Mahalanobis AUC, QCD val vs WJet: {auc_bgval_vs_signal:.6f}")
 
         print(f"Mahalanobis AUC, QCD train vs WJet: {auc_bgtrain_vs_signal:.6f}")
         print(f"Mahalanobis AUC, QCD val vs WJet: {auc_bgval_vs_signal:.6f}")
+        
+        return auc_bgtrain_vs_signal, auc_bgval_vs_signal
         
     def plot_latent_space_for_epoch(
         self,
@@ -1244,6 +1337,113 @@ class TrainLeJEPATripletParticleTransformer:
         self.build_model()
         self.plot_augmentation_samples(train_loader)
 
+        summary_path = os.path.join(self.output_dir, "summary.json")
+
+        summary = {
+            # Run status.
+            "status": "initialized",
+            "current_epoch": 0,
+            "completed_epochs": 0,
+
+            # Data.
+            "background": self.bg_file,
+            "signal": self.sg_file,
+            "node_features": self.node_feature_names,
+            "background_train_events": len(self.bg_train_dataset),
+            "background_val_events": len(self.bg_val_dataset),
+            "signal_events": len(self.sg_dataset),
+
+            # Model.
+            "batch_size": self.args.batch_size,
+            "embed_dim": self.args.embed_dim,
+            "representation_dim": self.args.representation_dim,
+            "num_layers": self.args.num_layers,
+            "num_heads": self.args.num_heads,
+            "ffn_mult": self.args.ffn_mult,
+            "dropout": self.args.dropout,
+            "num_trainable_parameters": int(self.num_params),
+
+            # Optimization.
+            "epochs": self.args.epochs,
+            "learning_rate": self.args.learning_rate,
+            "weight_decay": self.args.weight_decay,
+            "precision": self.args.precision,
+            "final_lr_ratio": self.args.final_lr_ratio,
+
+            # Positive-view augmentation.
+            "num_global_views": self.args.num_global_views,
+            "num_local_views": self.args.num_local_views,
+            "global_drop_pt_frac_range": [
+                self.args.global_drop_pt_frac_min,
+                self.args.global_drop_pt_frac_max,
+            ],
+            "local_drop_pt_frac_range": [
+                self.args.local_drop_pt_frac_min,
+                self.args.local_drop_pt_frac_max,
+            ],
+            "min_nodes": self.args.min_nodes,
+            "pt_drop_power": self.args.pt_drop_power,
+
+            # LeJEPA loss.
+            "invariant_weight": self.args.invariant_weight,
+            "sigreg_weight": self.args.sigreg_weight,
+            "epps_pulley_num_points": self.args.epps_pulley_num_points,
+            "num_slices": self.args.num_slices,
+
+            # Triplet loss.
+            "triplet_weight": self.args.triplet_weight,
+            "triplet_margin": self.args.triplet_margin,
+            "normalize_triplet_representations":
+                self.args.normalize_triplet_representations,
+            "use_all_views_as_triplet_positives":
+                self.args.use_all_views_as_triplet_positives,
+
+            # Negative augmentation.
+            "num_negative_views": self.args.num_negative_views,
+            "batch_mix_prob": self.args.batch_mix_prob,
+            "pt_resample_prob": self.args.pt_resample_prob,
+            "node_eta_phi_rotation_prob":
+                self.args.node_eta_phi_rotation_prob,
+            "eta_phi_shuffle_prob": self.args.eta_phi_shuffle_prob,
+            "identity_shuffle_prob": self.args.identity_shuffle_prob,
+            "corrupt_node_frac": self.args.corrupt_node_frac,
+            "batch_mix_anchor_frac": self.args.batch_mix_anchor_frac,
+            "renormalize_negative_pt_sum":
+                self.args.renormalize_negative_pt_sum,
+            "renormalize_negative_log_pt_stats":
+                self.args.renormalize_negative_log_pt_stats,
+
+            # Evaluation.
+            "mahalanobis_eval": not self.args.no_mahalanobis_eval,
+            "mahalanobis_cov_eps": self.args.mahalanobis_cov_eps,
+
+            # Misc.
+            "normalize_features": self.args.normalize_features,
+            "seed": self.args.seed,
+            "device": str(DEVICE),
+
+            # Fields populated during training.
+            "warmup_steps": None,
+            "current_learning_rate": None,
+            "best_val_loss": None,
+            "final_val_loss": None,
+            "latest_train_losses": None,
+            "latest_val_losses": None,
+        }
+
+        def update_summary(**updates) -> None:
+            summary.update(updates)
+
+            temp_path = summary_path + ".tmp"
+            with open(temp_path, "w") as f:
+                json.dump(summary, f, indent=2)
+
+            os.replace(temp_path, summary_path)
+
+        # Write a partial summary immediately, before optimization starts.
+        update_summary()
+        print(f"Initialized run summary at {summary_path}")
+        
         optimizer = torch.optim.AdamW(
             self.model.parameters(),
             lr=self.args.learning_rate,
@@ -1260,6 +1460,13 @@ class TrainLeJEPATripletParticleTransformer:
             total_steps=total_steps,
             warmup_steps=warmup_steps,
             final_lr_ratio=self.args.final_lr_ratio,
+        )
+        
+        update_summary(
+            status="training",
+            warmup_steps=int(warmup_steps),
+            total_training_steps=int(total_steps),
+            current_learning_rate=float(optimizer.param_groups[0]["lr"]),
         )
 
         dtype = precision_to_dtype(self.args.precision)
@@ -1281,15 +1488,20 @@ class TrainLeJEPATripletParticleTransformer:
             "triplet_pos_distance": [],
             "triplet_neg_distance": [],
         }
+        auc_history = {
+            "auc_bgtrain_vs_signal": [],
+            "auc_bgval_vs_signal": [],
+        }
         epoch_end_steps: List[int] = []
+        mahalanobis_eval_steps: List[int] = []
 
         best_val_loss = float("inf")
         best_model_path = os.path.join(self.output_dir, "best_model.pth")
         timer = helpers_main.LeTimer()
 
         for epoch in range(1, self.args.epochs + 1):
-            logging.info(f"\nEpoch [{epoch}/{self.args.epochs}]")
-            logging.info(f"Learning rate: {optimizer.param_groups[0]['lr']:.8g}")
+            print(f"\nEpoch [{epoch}/{self.args.epochs}]")
+            print(f"Learning rate: {optimizer.param_groups[0]['lr']:.8g}")
 
             self.model.train()
             epoch_train = {
@@ -1423,17 +1635,9 @@ class TrainLeJEPATripletParticleTransformer:
             if mean_val["total_loss"] < best_val_loss:
                 best_val_loss = mean_val["total_loss"]
                 torch.save(self.model, best_model_path)
-                logging.info(f"Saved new best model to {best_model_path}")
                 print(f"Saved new best model to {best_model_path}")
 
-            self.plot_progress(
-                train_history=train_history,
-                val_history=val_history,
-                epoch_end_steps=epoch_end_steps,
-                best_val_loss=best_val_loss,
-            )
-
-            if (
+            if ( # Plot latent space and evaluate Mahalanobis only at specified intervals or at the final epoch.
                 self.args.latent_plot_every > 0
                 and (epoch % self.args.latent_plot_every == 0 or epoch == self.args.epochs)
             ):
@@ -1450,18 +1654,57 @@ class TrainLeJEPATripletParticleTransformer:
                 )
 
                 if not self.args.no_mahalanobis_eval:
-                    self.evaluate_mahalanobis_for_epoch(
+                    (
+                        auc_bgtrain_vs_signal,
+                        auc_bgval_vs_signal,
+                    ) = self.evaluate_mahalanobis_for_epoch(
                         bg_train_latents=bg_train_latents,
                         bg_val_latents=bg_val_latents,
                         signal_latents=signal_latents,
                         epoch=epoch,
                     )
 
-            logging.info(f"Train losses: {mean_train}")
-            logging.info(f"Validation losses: {mean_val}")
-            logging.info(timer.time_taken())
+                    auc_history["auc_bgtrain_vs_signal"].append(
+                        float(auc_bgtrain_vs_signal)
+                    )
+                    auc_history["auc_bgval_vs_signal"].append(
+                        float(auc_bgval_vs_signal)
+                    )
+
+                    mahalanobis_eval_steps.append(
+                        len(train_history["total_loss"])
+                    )
+
+            self.plot_progress(
+                train_history=train_history,
+                val_history=val_history,
+                epoch_end_steps=epoch_end_steps,
+                best_val_loss=best_val_loss,
+                auc_history=auc_history,
+                mahalanobis_eval_steps=mahalanobis_eval_steps,
+            )
+            
             print(f"Epoch {epoch} train losses: {mean_train}")
             print(f"Epoch {epoch} val losses: {mean_val}")
+            
+            update_summary(
+                status="training",
+                current_epoch=int(epoch),
+                completed_epochs=int(epoch),
+                current_learning_rate=float(optimizer.param_groups[0]["lr"]),
+                best_val_loss=float(best_val_loss),
+                final_val_loss=float(mean_val["total_loss"]),
+                latest_train_losses={
+                    key: float(value)
+                    for key, value in mean_train.items()
+                },
+                latest_val_losses={
+                    key: float(value)
+                    for key, value in mean_val.items()
+                },
+            )
+
+            print(f"Updated run summary at {summary_path}")
 
         # Final full-jet representation arrays for downstream inspection.
         # Reuse the last evaluation latents when the final epoch already ran
@@ -1483,68 +1726,22 @@ class TrainLeJEPATripletParticleTransformer:
         np.save(os.path.join(self.output_dir, "background_val_latents.npy"), bg_val_latents)
         np.save(os.path.join(self.output_dir, "signal_latents.npy"), sg_latents)
 
-        summary = {
-            "background": self.bg_file,
-            "signal": self.sg_file,
-            "node_features": self.node_feature_names,
-            "batch_size": self.args.batch_size,
-            "embed_dim": self.args.embed_dim,
-            "representation_dim": self.args.representation_dim,
-            "num_layers": self.args.num_layers,
-            "num_heads": self.args.num_heads,
-            "ffn_mult": self.args.ffn_mult,
-            "dropout": self.args.dropout,
-            "learning_rate": self.args.learning_rate,
-            "weight_decay": self.args.weight_decay,
-            "precision": self.args.precision,
-            "warmup_steps": warmup_steps,
-            "final_lr_ratio": self.args.final_lr_ratio,
-            "num_global_views": self.args.num_global_views,
-            "num_local_views": self.args.num_local_views,
-            "global_drop_pt_frac_range": [
-                self.args.global_drop_pt_frac_min,
-                self.args.global_drop_pt_frac_max,
-            ],
-            "local_drop_pt_frac_range": [
-                self.args.local_drop_pt_frac_min,
-                self.args.local_drop_pt_frac_max,
-            ],
-            "min_nodes": self.args.min_nodes,
-            "pt_drop_power": self.args.pt_drop_power,
-            "invariant_weight": self.args.invariant_weight,
-            "sigreg_weight": self.args.sigreg_weight,
-            "epps_pulley_num_points": self.args.epps_pulley_num_points,
-            "num_slices": self.args.num_slices,
-            "mahalanobis_eval": not self.args.no_mahalanobis_eval,
-            "mahalanobis_cov_eps": self.args.mahalanobis_cov_eps,
-            "triplet_weight": self.args.triplet_weight,
-            "triplet_margin": self.args.triplet_margin,
-            "normalize_triplet_representations": self.args.normalize_triplet_representations,
-            "use_all_views_as_triplet_positives": self.args.use_all_views_as_triplet_positives,
-            "num_negative_views": self.args.num_negative_views,
-            "batch_mix_prob": self.args.batch_mix_prob,
-            "pt_resample_prob": self.args.pt_resample_prob,
-            "node_eta_phi_rotation_prob": self.args.node_eta_phi_rotation_prob,
-            "eta_phi_shuffle_prob": self.args.eta_phi_shuffle_prob,
-            "identity_shuffle_prob": self.args.identity_shuffle_prob,
-            "corrupt_node_frac": self.args.corrupt_node_frac,
-            "batch_mix_anchor_frac": self.args.batch_mix_anchor_frac,
-            "renormalize_negative_pt_sum": self.args.renormalize_negative_pt_sum,
-            "renormalize_negative_log_pt_stats": self.args.renormalize_negative_log_pt_stats,
-            "normalize_features": self.args.normalize_features,
-            "seed": self.args.seed,
-            "device": str(DEVICE),
-            "background_train_events": len(self.bg_train_dataset),
-            "background_val_events": len(self.bg_val_dataset),
-            "signal_events": len(self.sg_dataset),
-            "best_val_loss": float(best_val_loss),
-            "final_val_loss": float(val_history["total_loss"][-1]),
-            "num_trainable_parameters": int(self.num_params),
-        }
-
-        summary_path = os.path.join(self.output_dir, "summary.json")
-        with open(summary_path, "w") as f:
-            json.dump(summary, f, indent=2)
+        update_summary(
+            status="completed",
+            current_epoch=int(self.args.epochs),
+            completed_epochs=int(self.args.epochs),
+            current_learning_rate=float(optimizer.param_groups[0]["lr"]),
+            best_val_loss=float(best_val_loss),
+            final_val_loss=float(val_history["total_loss"][-1]),
+            latest_train_losses={
+                key: float(value)
+                for key, value in mean_train.items()
+            },
+            latest_val_losses={
+                key: float(value)
+                for key, value in mean_val.items()
+            },
+        )
 
         history_path = os.path.join(self.output_dir, "loss_history.json")
         with open(history_path, "w") as f:
@@ -1552,14 +1749,16 @@ class TrainLeJEPATripletParticleTransformer:
                 {
                     "train": train_history,
                     "val": val_history,
+                    "auc": auc_history,
                     "epoch_end_steps": epoch_end_steps,
+                    "mahalanobis_eval_steps": mahalanobis_eval_steps,
                 },
                 f,
                 indent=2,
             )
 
-        logging.info(f"Saved run summary to {summary_path}")
-        logging.info(f"Saved loss history to {history_path}")
+        print(f"Saved run summary to {summary_path}")
+        print(f"Saved loss history to {history_path}")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --nodes=1               # node count
-#SBATCH --nodelist=gpu3101      # the L40S GPU!! 3001-3005 or gpu3101 are L40S
+#SBATCH --nodelist=gpu3005      # the L40S GPU!! 3001-3005 or gpu3101 are L40S
 #SBATCH -p gpu --gres=gpu:1     # number of gpus per node
 #SBATCH --ntasks-per-node=1     # total number of tasks across all nodes
 #SBATCH --cpus-per-task=4       # cpu-cores per task (>1 if multi-threaded tasks)
@@ -50,4 +50,4 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #     --output-dir "plots/run-lejepa-part-more-vars"
 
 python -u scripts/run_eval_lejepa_part.py \
-    --run-dir plots/run-lejepa-part-more-vars
+    --run-dir plots/run-lejepa-trip-part-prob-aug-fracb-augb-3n

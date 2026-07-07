@@ -19,8 +19,7 @@ dist/
 *.egg-info/
 
 # Logs and debug files
-*.log
-*.prof
+logs/
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints
