@@ -1,0 +1,23 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 3203427
+##  Job Name : jet-data
+##  Nodelist : node2322
+##      CPUs : 1
+##  Mem/Node : 98304 MB
+## Directory : /oscar/home/hgao50/jetAnomalyDetection
+##   Job Started : Sat Jun 13 03:28:53 PM EDT 2026
+###############################################################################
+Job ID: 3203427
+Host: node2322.oscar.ccv.brown.edu
+Project: /oscar/home/hgao50/jetAnomalyDetection
+Output root: /users/hgao50/scratch/jet-anomaly-work/datasets/pt200to400-v1
+Workers: 4
+QCD source 1: /users/hgao50/scratch/jet-anomaly-work/raw/QCD_PT-170to300_TuneCP5_13p6TeV_pythia8_1.root
+QCD source 2: /users/hgao50/scratch/jet-anomaly-work/raw/QCD_PT-300to470_TuneCP5_13p6TeV_pythia8_1.root
+WJet source: /users/hgao50/scratch/jet-anomaly-work/raw/WWto4Q_TuneCP5_13p6TeV_powheg-pythia8_1.root
+INFO:root:Set up logger!
+INFO:root:Will measure perf.
+INFO:root:Loaded 1 file(s)!
+INFO:root:Now preprocessing /users/hgao50/scratch/jet-anomaly-work/raw/QCD_PT-170to300_TuneCP5_13p6TeV_pythia8_1.root
+INFO:root:self.savepath='/users/hgao50/scratch/jet-anomaly-work/datasets/pt200to400-v1/preprocessed/qcd'
+INFO:root:74793 events in total, splitting into 4 chunks.

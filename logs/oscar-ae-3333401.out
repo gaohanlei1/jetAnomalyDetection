@@ -1,0 +1,250 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 3333401
+##  Job Name : jet-ae
+##  Nodelist : gpu3004
+##      CPUs : 1
+##  Mem/Node : 65536 MB
+## Directory : /oscar/home/hgao50/jetAnomalyDetection
+##   Job Started : Thu Jun 18 05:46:01 PM EDT 2026
+###############################################################################
+Job ID: 3333401
+Host: gpu3004.oscar.ccv.brown.edu
+Project: /oscar/home/hgao50/jetAnomalyDetection
+Background: /users/hgao50/scratch/jet-anomaly-work/datasets/pt200to400-v1/processed/PT-200to400/scaledby_QCD/QCD_scaled.pkl
+Signal: /users/hgao50/scratch/jet-anomaly-work/datasets/pt200to400-v1/processed/PT-200to400/scaledby_QCD/WJet_scaled.pkl
+Output: /users/hgao50/scratch/jet-anomaly-runs/gae-pt200to400-v4
+Thu Jun 18 17:46:02 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:C1:00.0 Off |                    0 |
+| N/A   27C    P8             31W /  350W |      74MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          184125      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+PyTorch: 2.2.1+cu118
+CUDA available: True
+GPU: NVIDIA L40S
+INFO:root:Using device='cuda'
+INFO:root:Using device='cuda'
+['pt', 'eta', 'phi', 'fj_phi', 'fj_eta', 'fj_pt', 'fj_mass', 'fj_msoftdrop', 'fj_particleNetWithMass_QCD', 'fj_particleNet_XbbVsQCD', 'fj_particleNet_XccVsQCD', 'fj_particleNet_XqqVsQCD', 'fj_particleNet_QCD', 'fj_particleNet_massCorr', 'trkHighPurity', 'charge', 'lostInnerHits', 'lostOuterHits', 'numberOfHits', 'numberOfPixelHits', 'pdgId', 'pvAssocQuality', 'trkAlgo', 'trkQuality', 'd0', 'd0Err', 'dz', 'dzErr', 'mass', 'puppiWeight', 'puppiWeightNoLep', 'trkChi2', 'trkEta', 'trkP', 'trkPhi', 'trkPt', 'vtxChi2', 'dz/dzErr', 'd0/d0Err', 'dR', 'within_bounds', 'log_pt', 'pdgId_-211', 'pdgId_-13', 'pdgId_-11', 'pdgId_11', 'pdgId_13', 'pdgId_22', 'pdgId_130', 'pdgId_211']
+INFO:root:Number of training events after slicing: 93502
+INFO:root:Number of test events after removing leptonic jet: 4258
+INFO:root:
+Sample background pt values:
+0    [0.046527777, 0.060648147, 0.028510803, 0.1177...
+1    [0.03296095, 0.029522276, 0.13902308, 0.010005...
+2    [0.00865087, 0.012511055, 0.032816187, 0.48820...
+3    [0.17660692, 0.094483934, 0.1803152, 0.1847960...
+4    [0.011034922, 0.08265887, 0.068270385, 0.02551...
+INFO:root:Sample signal pt values:
+0    [0.035092458, 0.15621997, 0.045148894, 0.10536...
+1    [0.0032114342, 0.0022360655, 0.087713934, 0.53...
+2    [0.034397893, 0.43650794, 0.05532662, 0.149191...
+3    [0.0017178243, 0.08002798, 0.13940091, 0.01213...
+4    [0.17883435, 0.3346626, 0.03598543, 0.16411042...
+INFO:root:Skipping event 24815 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 36566 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 40203 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 46879 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 48319 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 50586 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 54419 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 54695 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 56263 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 58812 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 66614 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 70161 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 70963 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 71640 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 72264 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 74257 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 84734 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 88589 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 89262 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 89808 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 91827 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Number of background graphs: 93481
+INFO:root:Number of signal graphs: 4258
+INFO:root:Feature Means: tensor([ 0.0365, -0.0002, -0.0001,  0.0001, -0.0020])
+INFO:root:Feature Stds: tensor([0.0607, 0.1675, 0.1709, 1.3756, 1.1225])
+INFO:root:Number of features: 5
+INFO:root:Model Summary:
+JetGraphAutoencoder(
+  (embedding): Linear(in_features=5, out_features=32, bias=True)
+  (unembedding): Linear(in_features=32, out_features=5, bias=True)
+  (conv1): EdgeConv(nn=Sequential(
+    (0): Linear(in_features=64, out_features=256, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=256, out_features=32, bias=True)
+  ))
+  (conv2): EdgeConv(nn=Sequential(
+    (0): Linear(in_features=64, out_features=256, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=256, out_features=16, bias=True)
+  ))
+  (conv3): EdgeConv(nn=Sequential(
+    (0): Linear(in_features=32, out_features=256, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=256, out_features=32, bias=True)
+  ))
+  (conv4): EdgeConv(nn=Sequential(
+    (0): Linear(in_features=64, out_features=256, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=256, out_features=32, bias=True)
+  ))
+)
+INFO:root:Number of trainable parameters: 87509
+INFO:root:
+Epoch [1/20]
+INFO:root:Learning Rate: 0.000010
+INFO:root:train loss: 0.39540504999426923
+INFO:root:test loss: 0.14640768368783202
+INFO:root:signal loss: 0.13685682757476325
+INFO:root: (took 30.4109 s)
+INFO:root:
+Epoch [2/20]
+INFO:root:Learning Rate: 0.000010
+INFO:root:train loss: 0.07774281774394985
+INFO:root:test loss: 0.034267520897253614
+INFO:root:signal loss: 0.03906548191214084
+INFO:root: (took 30.095 s)
+INFO:root:
+Epoch [3/20]
+INFO:root:Learning Rate: 0.000010
+INFO:root:train loss: 0.023844293615851674
+INFO:root:test loss: 0.01763650520624042
+INFO:root:signal loss: 0.023478599013795683
+INFO:root: (took 30.5117 s)
+INFO:root:
+Epoch [4/20]
+INFO:root:Learning Rate: 0.000010
+INFO:root:train loss: 0.01595598903314949
+INFO:root:test loss: 0.013751105157360935
+INFO:root:signal loss: 0.019808658512970614
+INFO:root: (took 30.4191 s)
+INFO:root:
+Epoch [5/20]
+INFO:root:Learning Rate: 0.000010
+INFO:root:train loss: 0.013694534279801225
+INFO:root:test loss: 0.012560774311151083
+INFO:root:signal loss: 0.018660936779345872
+INFO:root: (took 30.7035 s)
+INFO:root:
+Epoch [6/20]
+INFO:root:Learning Rate: 0.000010
+INFO:root:train loss: 0.012959150809370828
+INFO:root:test loss: 0.012117600335364026
+INFO:root:signal loss: 0.018214604742390866
+INFO:root: (took 30.5132 s)
+INFO:root:
+Epoch [7/20]
+INFO:root:Learning Rate: 0.000010
+INFO:root:train loss: 0.01263719423410345
+INFO:root:test loss: 0.01188182471899314
+INFO:root:signal loss: 0.017969548196224306
+INFO:root: (took 30.6455 s)
+INFO:root:
+Epoch [8/20]
+INFO:root:Learning Rate: 0.000010
+INFO:root:train loss: 0.012444271530774386
+INFO:root:test loss: 0.011705838352715601
+INFO:root:signal loss: 0.01776496617776865
+INFO:root: (took 30.5905 s)
+INFO:root:
+Epoch [9/20]
+INFO:root:Learning Rate: 0.000010
+INFO:root:train loss: 0.012254727457015049
+INFO:root:test loss: 0.011450309686344015
+INFO:root:signal loss: 0.01739554317265794
+INFO:root: (took 30.6954 s)
+INFO:root:
+Epoch [10/20]
+INFO:root:Learning Rate: 0.000010
+INFO:root:train loss: 0.010921927063803167
+INFO:root:test loss: 0.008241861164034133
+INFO:root:signal loss: 0.01221834330186016
+INFO:root: (took 30.6178 s)
+INFO:root:
+Epoch [11/20]
+INFO:root:Learning Rate: 0.000010
+INFO:root:train loss: 0.007715839416607641
+INFO:root:test loss: 0.006749095987392603
+INFO:root:signal loss: 0.010118620496946104
+INFO:root: (took 30.6265 s)
+INFO:root:
+Epoch [12/20]
+INFO:root:Learning Rate: 0.000010
+INFO:root:train loss: 0.004853517149110588
+INFO:root:test loss: 0.0031359599024902585
+INFO:root:signal loss: 0.00432603983379141
+INFO:root: (took 30.6281 s)
+INFO:root:
+Epoch [13/20]
+INFO:root:Learning Rate: 0.000010
+INFO:root:train loss: 0.0024333506997059663
+INFO:root:test loss: 0.0022097853864100816
+INFO:root:signal loss: 0.0030726158614897033
+INFO:root: (took 30.6447 s)
+INFO:root:
+Epoch [14/20]
+INFO:root:Learning Rate: 0.000010
+INFO:root:train loss: 0.0017005065209060985
+INFO:root:test loss: 0.0017088406770794083
+INFO:root:signal loss: 0.002365091361911491
+INFO:root: (took 30.6257 s)
+INFO:root:
+Epoch [15/20]
+INFO:root:Learning Rate: 0.000010
+INFO:root:train loss: 0.0013086087850358264
+INFO:root:test loss: 0.0014510371800458316
+INFO:root:signal loss: 0.001987362336057329
+INFO:root: (took 30.6775 s)
+INFO:root:
+Epoch [16/20]
+INFO:root:Learning Rate: 0.000010
+INFO:root:train loss: 0.0011133133897130035
+INFO:root:test loss: 0.0013195581405967321
+INFO:root:signal loss: 0.001797175191954517
+INFO:root: (took 30.6795 s)
+INFO:root:
+Epoch [17/20]
+INFO:root:Learning Rate: 0.000010
+INFO:root:train loss: 0.0010086705714386112
+INFO:root:test loss: 0.0012367011541089556
+INFO:root:signal loss: 0.0016831535691802062
+INFO:root: (took 30.658 s)
+INFO:root:
+Epoch [18/20]
+INFO:root:Learning Rate: 0.000010
+INFO:root:train loss: 0.0009424216363445989
+INFO:root:test loss: 0.0011822267243286257
+INFO:root:signal loss: 0.001608105385111721
+INFO:root: (took 30.4025 s)
+INFO:root:
+Epoch [19/20]
+INFO:root:Learning Rate: 0.000010
+INFO:root:train loss: 0.0008946955687497082
+INFO:root:test loss: 0.0011361122619003763
+INFO:root:signal loss: 0.001549259171370307
+INFO:root: (took 30.512 s)
+INFO:root:
+Epoch [20/20]
+INFO:root:Learning Rate: 0.000010
+INFO:root:train loss: 0.0008585825579904555
+INFO:root:test loss: 0.0011006569173182908
+INFO:root:signal loss: 0.001508846653074816
+INFO:root: (took 30.4633 s)
+INFO:root:AUC: 0.630
+INFO:root:Saved run summary to /users/hgao50/scratch/jet-anomaly-runs/gae-pt200to400-v4/summary.json

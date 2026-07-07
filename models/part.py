@@ -836,31 +836,16 @@ class MinimalParticleTransformerRepresentation(nn.Module):
             dropout=config.dropout,
         )
 
-    def forward(
+    def encode_cls(
         self,
         x: torch.Tensor,
         padding_mask: Optional[torch.Tensor] = None,
-        normalize_output: bool = False,
     ) -> torch.Tensor:
         """
-        Forward pass.
-
-        Args:
-            x:
-                Tensor of shape (B, N, F).
-
-            padding_mask:
-                Optional bool tensor of shape (B, N).
-                True means padded node.
-                False means valid node.
-
-            normalize_output:
-                If True, L2-normalize the representation vector.
-                This is often useful for contrastive learning.
+        Encode node features into a CLS token before the output head.
 
         Returns:
-            z:
-                Tensor of shape (B, representation_dim).
+            cls: Tensor of shape (B, embed_dim).
         """
 
         if x.ndim != 3:
@@ -914,12 +899,134 @@ class MinimalParticleTransformerRepresentation(nn.Module):
                 padding_mask=padding_mask,
             )
 
+        return cls
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        padding_mask: Optional[torch.Tensor] = None,
+        normalize_output: bool = False,
+    ) -> torch.Tensor:
+        """
+        Forward pass.
+
+        Args:
+            x:
+                Tensor of shape (B, N, F).
+
+            padding_mask:
+                Optional bool tensor of shape (B, N).
+                True means padded node.
+                False means valid node.
+
+            normalize_output:
+                If True, L2-normalize the representation vector.
+                This is often useful for contrastive learning.
+
+        Returns:
+            z:
+                Tensor of shape (B, representation_dim).
+        """
+
+        cls = self.encode_cls(x, padding_mask=padding_mask)
+
+        use_autocast = (
+            self.config.use_internal_autocast
+            and x.device.type in {"cuda", "cpu"}
+            and self.config.compute_dtype in {torch.float16, torch.bfloat16}
+        )
+
+        with torch.autocast(
+            device_type=x.device.type,
+            dtype=self.config.compute_dtype,
+            enabled=use_autocast,
+        ):
             z = self.representation_head(cls)
 
             if normalize_output:
                 z = F.normalize(z, p=2, dim=-1)
 
         return z
+
+
+class ClassificationHead(nn.Module):
+    """
+    Binary classification head for supervised PART upper-bound training.
+
+    Input:
+        cls: (B, embed_dim)
+
+    Output:
+        logits: (B,)
+    """
+
+    def __init__(self, embed_dim: int, dropout: float = 0.1):
+        super().__init__()
+
+        self.net = nn.Sequential(
+            RMSNorm(embed_dim),
+            nn.Linear(embed_dim, 1),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x).squeeze(-1)
+
+
+class ParticleTransformerClassifier(MinimalParticleTransformerRepresentation):
+    """
+    Supervised binary classifier sharing the PART backbone with LeJEPA models.
+
+    Main stages:
+        1. NodeEmbedding
+        2. PairwiseAttentionBias
+        3. ParticleTransformerEncoder
+        4. CLSPooling
+        5. ClassificationHead
+
+    Input:
+        x: (B, N, F)
+
+    Optional input:
+        padding_mask: (B, N), True means padded node.
+
+    Output:
+        logits: (B,), unbounded signal logits.
+    """
+
+    def __init__(self, config: ParticleTransformerConfig):
+        super().__init__(config)
+        self.classifier_head = ClassificationHead(
+            embed_dim=config.embed_dim,
+            dropout=config.dropout,
+        )
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        padding_mask: Optional[torch.Tensor] = None,
+        normalize_output: bool = False,
+    ) -> torch.Tensor:
+        if normalize_output:
+            raise ValueError(
+                "ParticleTransformerClassifier does not support normalize_output."
+            )
+
+        cls = self.encode_cls(x, padding_mask=padding_mask)
+
+        use_autocast = (
+            self.config.use_internal_autocast
+            and x.device.type in {"cuda", "cpu"}
+            and self.config.compute_dtype in {torch.float16, torch.bfloat16}
+        )
+
+        with torch.autocast(
+            device_type=x.device.type,
+            dtype=self.config.compute_dtype,
+            enabled=use_autocast,
+        ):
+            logits = self.classifier_head(cls)
+
+        return logits
 
 
 # ------------------------------------------------------------

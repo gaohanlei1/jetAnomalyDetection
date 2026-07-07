@@ -1,0 +1,460 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 3332186
+##  Job Name : jet-ae
+##  Nodelist : gpu3002
+##      CPUs : 1
+##  Mem/Node : 65536 MB
+## Directory : /oscar/home/hgao50/jetAnomalyDetection
+##   Job Started : Thu Jun 18 04:30:35 PM EDT 2026
+###############################################################################
+Job ID: 3332186
+Host: gpu3002.oscar.ccv.brown.edu
+Project: /oscar/home/hgao50/jetAnomalyDetection
+Background: /users/hgao50/scratch/jet-anomaly-work/datasets/pt200to400-v1/processed/PT-200to400/scaledby_QCD/QCD_scaled.pkl
+Signal: /users/hgao50/scratch/jet-anomaly-work/datasets/pt200to400-v1/processed/PT-200to400/scaledby_QCD/WJet_scaled.pkl
+Output: /users/hgao50/scratch/jet-anomaly-runs/gae-pt200to400-v4
+Thu Jun 18 16:30:36 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:41:00.0 Off |                    0 |
+| N/A   26C    P8             31W /  350W |      74MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          158354      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+PyTorch: 2.2.1+cu118
+CUDA available: True
+GPU: NVIDIA L40S
+INFO:root:Using device='cuda'
+INFO:root:Using device='cuda'
+['pt', 'eta', 'phi', 'fj_phi', 'fj_eta', 'fj_pt', 'fj_mass', 'fj_msoftdrop', 'fj_particleNetWithMass_QCD', 'fj_particleNet_XbbVsQCD', 'fj_particleNet_XccVsQCD', 'fj_particleNet_XqqVsQCD', 'fj_particleNet_QCD', 'fj_particleNet_massCorr', 'trkHighPurity', 'charge', 'lostInnerHits', 'lostOuterHits', 'numberOfHits', 'numberOfPixelHits', 'pdgId', 'pvAssocQuality', 'trkAlgo', 'trkQuality', 'd0', 'd0Err', 'dz', 'dzErr', 'mass', 'puppiWeight', 'puppiWeightNoLep', 'trkChi2', 'trkEta', 'trkP', 'trkPhi', 'trkPt', 'vtxChi2', 'dz/dzErr', 'd0/d0Err', 'dR', 'within_bounds', 'log_pt', 'pdgId_-211', 'pdgId_-13', 'pdgId_-11', 'pdgId_11', 'pdgId_13', 'pdgId_22', 'pdgId_130', 'pdgId_211']
+INFO:root:Number of training events after slicing: 93502
+INFO:root:Number of test events after removing leptonic jet: 4258
+INFO:root:
+Sample background pt values:
+0    [0.046527777, 0.060648147, 0.028510803, 0.1177...
+1    [0.03296095, 0.029522276, 0.13902308, 0.010005...
+2    [0.00865087, 0.012511055, 0.032816187, 0.48820...
+3    [0.17660692, 0.094483934, 0.1803152, 0.1847960...
+4    [0.011034922, 0.08265887, 0.068270385, 0.02551...
+INFO:root:Sample signal pt values:
+0    [0.035092458, 0.15621997, 0.045148894, 0.10536...
+1    [0.0032114342, 0.0022360655, 0.087713934, 0.53...
+2    [0.034397893, 0.43650794, 0.05532662, 0.149191...
+3    [0.0017178243, 0.08002798, 0.13940091, 0.01213...
+4    [0.17883435, 0.3346626, 0.03598543, 0.16411042...
+INFO:root:Skipping event 24815 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 36566 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 40203 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 46879 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 48319 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 50586 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 54419 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 54695 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 56263 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 58812 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 66614 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 70161 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 70963 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 71640 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 72264 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 74257 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 84734 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 88589 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 89262 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 89808 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Skipping event 91827 due to error: Graph construction failed: Too few valid particles to build a graph.
+INFO:root:Number of background graphs: 93481
+INFO:root:Number of signal graphs: 4258
+INFO:root:Feature Means: tensor([-1.0387e-08,  2.3955e-09, -4.1087e-09, -1.5463e-08, -1.2547e-08])
+INFO:root:Feature Stds: tensor([1., 1., 1., 1., 1.])
+INFO:root:Number of features: 5
+INFO:root:Model Summary:
+JetGraphAutoencoder(
+  (embedding): Linear(in_features=5, out_features=16, bias=True)
+  (unembedding): Linear(in_features=16, out_features=5, bias=True)
+  (conv1): EdgeConv(nn=Sequential(
+    (0): Linear(in_features=32, out_features=128, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=128, out_features=16, bias=True)
+  ))
+  (conv2): EdgeConv(nn=Sequential(
+    (0): Linear(in_features=32, out_features=128, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=128, out_features=16, bias=True)
+  ))
+  (conv3): EdgeConv(nn=Sequential(
+    (0): Linear(in_features=32, out_features=128, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=128, out_features=16, bias=True)
+  ))
+  (conv4): EdgeConv(nn=Sequential(
+    (0): Linear(in_features=32, out_features=128, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=128, out_features=16, bias=True)
+  ))
+)
+INFO:root:Number of trainable parameters: 25333
+INFO:root:
+Epoch [1/50]
+INFO:root:Learning Rate: 0.000050
+INFO:root:train loss: 0.6314054074656565
+INFO:root:test loss: 0.32755691026077777
+INFO:root:signal loss: 0.454972411509815
+INFO:root: (took 31.4995 s)
+INFO:root:
+Epoch [2/50]
+INFO:root:Learning Rate: 0.000050
+INFO:root:train loss: 0.17788100340447435
+INFO:root:test loss: 0.05219354293099795
+INFO:root:signal loss: 0.07896403916365612
+INFO:root: (took 30.817 s)
+INFO:root:
+Epoch [3/50]
+INFO:root:Learning Rate: 0.000050
+INFO:root:train loss: 0.027422772319724512
+INFO:root:test loss: 0.014677598008760156
+INFO:root:signal loss: 0.02418380652620169
+INFO:root: (took 31.3308 s)
+INFO:root:
+Epoch [4/50]
+INFO:root:Learning Rate: 0.000050
+INFO:root:train loss: 0.009584003034501095
+INFO:root:test loss: 0.006922419876037393
+INFO:root:signal loss: 0.011717242580129184
+INFO:root: (took 31.3379 s)
+INFO:root:
+Epoch [5/50]
+INFO:root:Learning Rate: 0.000050
+INFO:root:train loss: 0.00499456479047625
+INFO:root:test loss: 0.004047870854194231
+INFO:root:signal loss: 0.006983116548024481
+INFO:root: (took 31.5427 s)
+INFO:root:
+Epoch [6/50]
+INFO:root:Learning Rate: 0.000050
+INFO:root:train loss: 0.0030527773432328445
+INFO:root:test loss: 0.0026248082886860813
+INFO:root:signal loss: 0.004586303222708974
+INFO:root: (took 31.7889 s)
+INFO:root:
+Epoch [7/50]
+INFO:root:Learning Rate: 0.000050
+INFO:root:train loss: 0.0020486042862503102
+INFO:root:test loss: 0.0018573283205746305
+INFO:root:signal loss: 0.003222812319415223
+INFO:root: (took 31.5279 s)
+INFO:root:
+Epoch [8/50]
+INFO:root:Learning Rate: 0.000050
+INFO:root:train loss: 0.0014649868825386007
+INFO:root:test loss: 0.0013542980185169615
+INFO:root:signal loss: 0.0023602946028373644
+INFO:root: (took 31.5386 s)
+INFO:root:
+Epoch [9/50]
+INFO:root:Learning Rate: 0.000050
+INFO:root:train loss: 0.0011031895368941562
+INFO:root:test loss: 0.0010381384372392128
+INFO:root:signal loss: 0.0018024275571236583
+INFO:root: (took 31.5466 s)
+INFO:root:
+Epoch [10/50]
+INFO:root:Learning Rate: 0.000050
+INFO:root:train loss: 0.0008611575651247058
+INFO:root:test loss: 0.000828614119762777
+INFO:root:signal loss: 0.0014293710622564001
+INFO:root: (took 31.59 s)
+INFO:root:
+Epoch [11/50]
+INFO:root:Learning Rate: 0.000035
+INFO:root:train loss: 0.0007064564046398175
+INFO:root:test loss: 0.0007061976627196627
+INFO:root:signal loss: 0.0012303010071917605
+INFO:root: (took 31.5376 s)
+INFO:root:
+Epoch [12/50]
+INFO:root:Learning Rate: 0.000035
+INFO:root:train loss: 0.0006083168949907163
+INFO:root:test loss: 0.0006029854157339469
+INFO:root:signal loss: 0.0010633652949808355
+INFO:root: (took 31.5928 s)
+INFO:root:
+Epoch [13/50]
+INFO:root:Learning Rate: 0.000035
+INFO:root:train loss: 0.0005290053491418906
+INFO:root:test loss: 0.0005312609774640482
+INFO:root:signal loss: 0.0009408434634234716
+INFO:root: (took 31.8177 s)
+INFO:root:
+Epoch [14/50]
+INFO:root:Learning Rate: 0.000035
+INFO:root:train loss: 0.000463630494666011
+INFO:root:test loss: 0.0004666637422781546
+INFO:root:signal loss: 0.0008297223228697231
+INFO:root: (took 31.3302 s)
+INFO:root:
+Epoch [15/50]
+INFO:root:Learning Rate: 0.000035
+INFO:root:train loss: 0.0004114176163764972
+INFO:root:test loss: 0.00041588111459020543
+INFO:root:signal loss: 0.0007458117998184018
+INFO:root: (took 31.5524 s)
+INFO:root:
+Epoch [16/50]
+INFO:root:Learning Rate: 0.000035
+INFO:root:train loss: 0.000367721445097447
+INFO:root:test loss: 0.0003769448915760288
+INFO:root:signal loss: 0.0006658594080131007
+INFO:root: (took 31.315 s)
+INFO:root:
+Epoch [17/50]
+INFO:root:Learning Rate: 0.000035
+INFO:root:train loss: 0.00033138113988292946
+INFO:root:test loss: 0.00033697471121199655
+INFO:root:signal loss: 0.0005978408580251164
+INFO:root: (took 31.3388 s)
+INFO:root:
+Epoch [18/50]
+INFO:root:Learning Rate: 0.000035
+INFO:root:train loss: 0.0003004788604057677
+INFO:root:test loss: 0.00030869041665010735
+INFO:root:signal loss: 0.0005554004405849519
+INFO:root: (took 31.3248 s)
+INFO:root:
+Epoch [19/50]
+INFO:root:Learning Rate: 0.000035
+INFO:root:train loss: 0.00027350447673366105
+INFO:root:test loss: 0.0002834993831298968
+INFO:root:signal loss: 0.0005043831160686278
+INFO:root: (took 31.383 s)
+INFO:root:
+Epoch [20/50]
+INFO:root:Learning Rate: 0.000035
+INFO:root:train loss: 0.000249852729612528
+INFO:root:test loss: 0.00025830243373896415
+INFO:root:signal loss: 0.0004561853102110503
+INFO:root: (took 31.4964 s)
+INFO:root:
+Epoch [21/50]
+INFO:root:Learning Rate: 0.000024
+INFO:root:train loss: 0.0002298999066987227
+INFO:root:test loss: 0.0002424497352103837
+INFO:root:signal loss: 0.0004329699373260178
+INFO:root: (took 31.4123 s)
+INFO:root:
+Epoch [22/50]
+INFO:root:Learning Rate: 0.000024
+INFO:root:train loss: 0.00021616575795664373
+INFO:root:test loss: 0.00022863587910167558
+INFO:root:signal loss: 0.0004081349963821763
+INFO:root: (took 31.1963 s)
+INFO:root:
+Epoch [23/50]
+INFO:root:Learning Rate: 0.000024
+INFO:root:train loss: 0.00020307187901983487
+INFO:root:test loss: 0.00021465126899086236
+INFO:root:signal loss: 0.0003810658530942891
+INFO:root: (took 31.2046 s)
+INFO:root:
+Epoch [24/50]
+INFO:root:Learning Rate: 0.000024
+INFO:root:train loss: 0.0001911051592705341
+INFO:root:test loss: 0.0002015748519748021
+INFO:root:signal loss: 0.00035900626510654065
+INFO:root: (took 31.6755 s)
+INFO:root:
+Epoch [25/50]
+INFO:root:Learning Rate: 0.000024
+INFO:root:train loss: 0.00017998286237762133
+INFO:root:test loss: 0.0001920303838365105
+INFO:root:signal loss: 0.00034213511900945244
+INFO:root: (took 32.0111 s)
+INFO:root:
+Epoch [26/50]
+INFO:root:Learning Rate: 0.000024
+INFO:root:train loss: 0.0001699344073075198
+INFO:root:test loss: 0.0001825307135127989
+INFO:root:signal loss: 0.00032232279311330517
+INFO:root: (took 31.4681 s)
+INFO:root:
+Epoch [27/50]
+INFO:root:Learning Rate: 0.000024
+INFO:root:train loss: 0.0001605801748244193
+INFO:root:test loss: 0.00017216797384813558
+INFO:root:signal loss: 0.00030625303126269825
+INFO:root: (took 31.6574 s)
+INFO:root:
+Epoch [28/50]
+INFO:root:Learning Rate: 0.000024
+INFO:root:train loss: 0.00015189740664161937
+INFO:root:test loss: 0.00016104072239742453
+INFO:root:signal loss: 0.0002892031464284254
+INFO:root: (took 31.554 s)
+INFO:root:
+Epoch [29/50]
+INFO:root:Learning Rate: 0.000024
+INFO:root:train loss: 0.00014388235199363372
+INFO:root:test loss: 0.00015341368701886547
+INFO:root:signal loss: 0.00027375066532261445
+INFO:root: (took 31.5937 s)
+INFO:root:
+Epoch [30/50]
+INFO:root:Learning Rate: 0.000024
+INFO:root:train loss: 0.00013644392055297394
+INFO:root:test loss: 0.0001458088349813482
+INFO:root:signal loss: 0.00026131041593090387
+INFO:root: (took 31.797 s)
+INFO:root:
+Epoch [31/50]
+INFO:root:Learning Rate: 0.000017
+INFO:root:train loss: 0.00012933572034908809
+INFO:root:test loss: 0.0001408950236538935
+INFO:root:signal loss: 0.00025186139079166344
+INFO:root: (took 31.6133 s)
+INFO:root:
+Epoch [32/50]
+INFO:root:Learning Rate: 0.000017
+INFO:root:train loss: 0.00012451018016143854
+INFO:root:test loss: 0.00013687628165265405
+INFO:root:signal loss: 0.0002443976408400432
+INFO:root: (took 31.9963 s)
+INFO:root:
+Epoch [33/50]
+INFO:root:Learning Rate: 0.000017
+INFO:root:train loss: 0.00011980463730120933
+INFO:root:test loss: 0.00013038771760077238
+INFO:root:signal loss: 0.00023373416572102375
+INFO:root: (took 31.4884 s)
+INFO:root:
+Epoch [34/50]
+INFO:root:Learning Rate: 0.000017
+INFO:root:train loss: 0.00011534620781432698
+INFO:root:test loss: 0.00012664815140405798
+INFO:root:signal loss: 0.0002260019578281342
+INFO:root: (took 31.4662 s)
+INFO:root:
+Epoch [35/50]
+INFO:root:Learning Rate: 0.000017
+INFO:root:train loss: 0.00011102060794823749
+INFO:root:test loss: 0.00012177691753885401
+INFO:root:signal loss: 0.0002184301717626955
+INFO:root: (took 31.6977 s)
+INFO:root:
+Epoch [36/50]
+INFO:root:Learning Rate: 0.000017
+INFO:root:train loss: 0.00010697125120927365
+INFO:root:test loss: 0.000118638849906655
+INFO:root:signal loss: 0.00021246013333133025
+INFO:root: (took 31.4774 s)
+INFO:root:
+Epoch [37/50]
+INFO:root:Learning Rate: 0.000017
+INFO:root:train loss: 0.00010306826032870637
+INFO:root:test loss: 0.00011239973253330885
+INFO:root:signal loss: 0.00020200445789315459
+INFO:root: (took 31.5356 s)
+INFO:root:
+Epoch [38/50]
+INFO:root:Learning Rate: 0.000017
+INFO:root:train loss: 9.939216339585854e-05
+INFO:root:test loss: 0.00010890541085886329
+INFO:root:signal loss: 0.00019585725636073734
+INFO:root: (took 31.7458 s)
+INFO:root:
+Epoch [39/50]
+INFO:root:Learning Rate: 0.000017
+INFO:root:train loss: 9.600087375946939e-05
+INFO:root:test loss: 0.00010575430980032654
+INFO:root:signal loss: 0.00019067215336909148
+INFO:root: (took 31.5538 s)
+INFO:root:
+Epoch [40/50]
+INFO:root:Learning Rate: 0.000017
+INFO:root:train loss: 9.258003501522086e-05
+INFO:root:test loss: 0.00010123124225382691
+INFO:root:signal loss: 0.0001823300398773418
+INFO:root: (took 31.7583 s)
+INFO:root:
+Epoch [41/50]
+INFO:root:Learning Rate: 0.000012
+INFO:root:train loss: 8.930366283679585e-05
+INFO:root:test loss: 9.901980275068668e-05
+INFO:root:signal loss: 0.00017829766428564196
+INFO:root: (took 31.7725 s)
+INFO:root:
+Epoch [42/50]
+INFO:root:Learning Rate: 0.000012
+INFO:root:train loss: 8.697616316018015e-05
+INFO:root:test loss: 9.74158542272921e-05
+INFO:root:signal loss: 0.0001752834351584158
+INFO:root: (took 31.6458 s)
+INFO:root:
+Epoch [43/50]
+INFO:root:Learning Rate: 0.000012
+INFO:root:train loss: 8.489242848798086e-05
+INFO:root:test loss: 9.264558510303778e-05
+INFO:root:signal loss: 0.00016886028476981518
+INFO:root: (took 31.4452 s)
+INFO:root:
+Epoch [44/50]
+INFO:root:Learning Rate: 0.000012
+INFO:root:train loss: 8.270533183888633e-05
+INFO:root:test loss: 9.130145176468793e-05
+INFO:root:signal loss: 0.00016666933214337247
+INFO:root: (took 31.548 s)
+INFO:root:
+Epoch [45/50]
+INFO:root:Learning Rate: 0.000012
+INFO:root:train loss: 8.062976278595e-05
+INFO:root:test loss: 8.868873615787462e-05
+INFO:root:signal loss: 0.00016149684538092275
+INFO:root: (took 31.9663 s)
+INFO:root:
+Epoch [46/50]
+INFO:root:Learning Rate: 0.000012
+INFO:root:train loss: 7.860617616488315e-05
+INFO:root:test loss: 8.62720545319136e-05
+INFO:root:signal loss: 0.0001570837252623369
+INFO:root: (took 31.9069 s)
+INFO:root:
+Epoch [47/50]
+INFO:root:Learning Rate: 0.000012
+INFO:root:train loss: 7.660317533164822e-05
+INFO:root:test loss: 8.482879010357621e-05
+INFO:root:signal loss: 0.00015404622956468166
+INFO:root: (took 31.6956 s)
+INFO:root:
+Epoch [48/50]
+INFO:root:Learning Rate: 0.000012
+INFO:root:train loss: 7.479712019691509e-05
+INFO:root:test loss: 8.227162217551827e-05
+INFO:root:signal loss: 0.00015069394717642513
+INFO:root: (took 31.6227 s)
+INFO:root:
+Epoch [49/50]
+INFO:root:Learning Rate: 0.000012
+INFO:root:train loss: 7.292165183836643e-05
+INFO:root:test loss: 8.096974727558274e-05
+INFO:root:signal loss: 0.00014862424689058193
+INFO:root: (took 31.6141 s)
+INFO:root:
+Epoch [50/50]
+INFO:root:Learning Rate: 0.000012
+INFO:root:train loss: 7.120400979926023e-05
+INFO:root:test loss: 7.899043099324558e-05
+INFO:root:signal loss: 0.00014533975750646768
+INFO:root: (took 31.8167 s)
+INFO:root:AUC: 0.712
+INFO:root:Saved run summary to plots/test-plots/summary.json

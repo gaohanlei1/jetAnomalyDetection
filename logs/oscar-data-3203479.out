@@ -1,0 +1,81 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 3203479
+##  Job Name : jet-data
+##  Nodelist : node2342
+##      CPUs : 1
+##  Mem/Node : 98304 MB
+## Directory : /oscar/home/hgao50/jetAnomalyDetection
+##   Job Started : Sat Jun 13 03:39:48 PM EDT 2026
+###############################################################################
+Job ID: 3203479
+Host: node2342.oscar.ccv.brown.edu
+Project: /oscar/home/hgao50/jetAnomalyDetection
+Output root: /users/hgao50/scratch/jet-anomaly-work/datasets/pt200to400-v1
+Workers: 4
+QCD source 1: /users/hgao50/scratch/jet-anomaly-work/raw/QCD_PT-170to300_TuneCP5_13p6TeV_pythia8_1.root
+QCD source 2: /users/hgao50/scratch/jet-anomaly-work/raw/QCD_PT-300to470_TuneCP5_13p6TeV_pythia8_1.root
+WJet source: /users/hgao50/scratch/jet-anomaly-work/raw/WWto4Q_TuneCP5_13p6TeV_powheg-pythia8_1.root
+INFO:root:Set up logger!
+INFO:root:Will measure perf.
+INFO:root:Loaded 1 file(s)!
+INFO:root:Now preprocessing /users/hgao50/scratch/jet-anomaly-work/raw/QCD_PT-170to300_TuneCP5_13p6TeV_pythia8_1.root
+INFO:root:self.savepath='/users/hgao50/scratch/jet-anomaly-work/datasets/pt200to400-v1/preprocessed/qcd'
+INFO:root:74793 events in total, splitting into 4 chunks.
+INFO:root:Initialised pool <multiprocessing.pool.Pool state=RUN pool_size=4> with 4 workers.
+INFO:root:#0 (3816902): Received range 0 to 18698 (18698 events).
+INFO:root:#1 (3816904): Received range 37396 to 56094 (18698 events).
+INFO:root:#2 (3816903): Received range 18698 to 37396 (18698 events).
+INFO:root:#3 (3816905): Received range 56094 to 74793 (18699 events).
+INFO:root:#0 (3816902):  Preprocessed last few events, from 0 to 18698!
+INFO:root:#2 (3816903):  Preprocessed last few events, from 18698 to 37396!
+INFO:root:#3 (3816905):  Preprocessed last few events, from 56094 to 74793!
+INFO:root:#1 (3816904):  Preprocessed last few events, from 37396 to 56094!
+INFO:root:All done! Converting len(results)=4 dicts to dataframes and concatenating...
+INFO:root:Concatenated len(results)=4 fatjets! Saving...
+ERROR:root:Chunk 0 has inconsistent array lengths: {'pt': 9924, 'eta': 9924, 'phi': 9924, 'fj_phi': 9924, 'fj_eta': 9924, 'fj_pt': 9924, 'fj_mass': 9924, 'fj_msoftdrop': 19848, 'fj_particleNetWithMass_QCD': 19848, 'fj_particleNet_XbbVsQCD': 19848, 'fj_particleNet_XccVsQCD': 19848, 'fj_particleNet_XqqVsQCD': 19848, 'fj_particleNet_QCD': 9924, 'fj_particleNet_massCorr': 9924, 'trkHighPurity': 9924, 'charge': 9924, 'lostInnerHits': 9924, 'lostOuterHits': 9924, 'numberOfHits': 9924, 'numberOfPixelHits': 9924, 'pdgId': 9924, 'pvAssocQuality': 9924, 'trkAlgo': 9924, 'trkQuality': 9924, 'd0': 9924, 'd0Err': 9924, 'dz': 9924, 'dzErr': 9924, 'mass': 9924, 'puppiWeight': 9924, 'puppiWeightNoLep': 9924, 'trkChi2': 9924, 'trkEta': 9924, 'trkP': 9924, 'trkPhi': 9924, 'trkPt': 9924, 'vtxChi2': 9924}
+ERROR:root:Chunk 1 has inconsistent array lengths: {'pt': 10011, 'eta': 10011, 'phi': 10011, 'fj_phi': 10011, 'fj_eta': 10011, 'fj_pt': 10011, 'fj_mass': 10011, 'fj_msoftdrop': 20022, 'fj_particleNetWithMass_QCD': 20022, 'fj_particleNet_XbbVsQCD': 20022, 'fj_particleNet_XccVsQCD': 20022, 'fj_particleNet_XqqVsQCD': 20022, 'fj_particleNet_QCD': 10011, 'fj_particleNet_massCorr': 10011, 'trkHighPurity': 10011, 'charge': 10011, 'lostInnerHits': 10011, 'lostOuterHits': 10011, 'numberOfHits': 10011, 'numberOfPixelHits': 10011, 'pdgId': 10011, 'pvAssocQuality': 10011, 'trkAlgo': 10011, 'trkQuality': 10011, 'd0': 10011, 'd0Err': 10011, 'dz': 10011, 'dzErr': 10011, 'mass': 10011, 'puppiWeight': 10011, 'puppiWeightNoLep': 10011, 'trkChi2': 10011, 'trkEta': 10011, 'trkP': 10011, 'trkPhi': 10011, 'trkPt': 10011, 'vtxChi2': 10011}
+ERROR:root:Chunk 2 has inconsistent array lengths: {'pt': 10005, 'eta': 10005, 'phi': 10005, 'fj_phi': 10005, 'fj_eta': 10005, 'fj_pt': 10005, 'fj_mass': 10005, 'fj_msoftdrop': 20010, 'fj_particleNetWithMass_QCD': 20010, 'fj_particleNet_XbbVsQCD': 20010, 'fj_particleNet_XccVsQCD': 20010, 'fj_particleNet_XqqVsQCD': 20010, 'fj_particleNet_QCD': 10005, 'fj_particleNet_massCorr': 10005, 'trkHighPurity': 10005, 'charge': 10005, 'lostInnerHits': 10005, 'lostOuterHits': 10005, 'numberOfHits': 10005, 'numberOfPixelHits': 10005, 'pdgId': 10005, 'pvAssocQuality': 10005, 'trkAlgo': 10005, 'trkQuality': 10005, 'd0': 10005, 'd0Err': 10005, 'dz': 10005, 'dzErr': 10005, 'mass': 10005, 'puppiWeight': 10005, 'puppiWeightNoLep': 10005, 'trkChi2': 10005, 'trkEta': 10005, 'trkP': 10005, 'trkPhi': 10005, 'trkPt': 10005, 'vtxChi2': 10005}
+ERROR:root:Chunk 3 has inconsistent array lengths: {'pt': 9993, 'eta': 9993, 'phi': 9993, 'fj_phi': 9993, 'fj_eta': 9993, 'fj_pt': 9993, 'fj_mass': 9993, 'fj_msoftdrop': 19986, 'fj_particleNetWithMass_QCD': 19986, 'fj_particleNet_XbbVsQCD': 19986, 'fj_particleNet_XccVsQCD': 19986, 'fj_particleNet_XqqVsQCD': 19986, 'fj_particleNet_QCD': 9993, 'fj_particleNet_massCorr': 9993, 'trkHighPurity': 9993, 'charge': 9993, 'lostInnerHits': 9993, 'lostOuterHits': 9993, 'numberOfHits': 9993, 'numberOfPixelHits': 9993, 'pdgId': 9993, 'pvAssocQuality': 9993, 'trkAlgo': 9993, 'trkQuality': 9993, 'd0': 9993, 'd0Err': 9993, 'dz': 9993, 'dzErr': 9993, 'mass': 9993, 'puppiWeight': 9993, 'puppiWeightNoLep': 9993, 'trkChi2': 9993, 'trkEta': 9993, 'trkP': 9993, 'trkPhi': 9993, 'trkPt': 9993, 'vtxChi2': 9993}
+INFO:root:Set up logger!
+INFO:root:Will measure perf.
+INFO:root:Loaded 1 file(s)!
+INFO:root:Now preprocessing /users/hgao50/scratch/jet-anomaly-work/raw/QCD_PT-300to470_TuneCP5_13p6TeV_pythia8_1.root
+INFO:root:self.savepath='/users/hgao50/scratch/jet-anomaly-work/datasets/pt200to400-v1/preprocessed/qcd'
+INFO:root:68900 events in total, splitting into 4 chunks.
+INFO:root:Initialised pool <multiprocessing.pool.Pool state=RUN pool_size=4> with 4 workers.
+INFO:root:#0 (3821068): Received range 0 to 17225 (17225 events).
+INFO:root:#1 (3821069): Received range 17225 to 34450 (17225 events).
+INFO:root:#2 (3821071): Received range 51675 to 68900 (17225 events).
+INFO:root:#3 (3821070): Received range 34450 to 51675 (17225 events).
+INFO:root:#0 (3821068):  Preprocessed last few events, from 0 to 17225!
+INFO:root:#3 (3821070):  Preprocessed last few events, from 34450 to 51675!
+INFO:root:#1 (3821069):  Preprocessed last few events, from 17225 to 34450!
+INFO:root:#2 (3821071):  Preprocessed last few events, from 51675 to 68900!
+INFO:root:All done! Converting len(results)=4 dicts to dataframes and concatenating...
+INFO:root:Concatenated len(results)=4 fatjets! Saving...
+ERROR:root:Chunk 0 has inconsistent array lengths: {'pt': 13476, 'eta': 13476, 'phi': 13476, 'fj_phi': 13476, 'fj_eta': 13476, 'fj_pt': 13476, 'fj_mass': 13476, 'fj_msoftdrop': 26952, 'fj_particleNetWithMass_QCD': 26952, 'fj_particleNet_XbbVsQCD': 26952, 'fj_particleNet_XccVsQCD': 26952, 'fj_particleNet_XqqVsQCD': 26952, 'fj_particleNet_QCD': 13476, 'fj_particleNet_massCorr': 13476, 'trkHighPurity': 13476, 'charge': 13476, 'lostInnerHits': 13476, 'lostOuterHits': 13476, 'numberOfHits': 13476, 'numberOfPixelHits': 13476, 'pdgId': 13476, 'pvAssocQuality': 13476, 'trkAlgo': 13476, 'trkQuality': 13476, 'd0': 13476, 'd0Err': 13476, 'dz': 13476, 'dzErr': 13476, 'mass': 13476, 'puppiWeight': 13476, 'puppiWeightNoLep': 13476, 'trkChi2': 13476, 'trkEta': 13476, 'trkP': 13476, 'trkPhi': 13476, 'trkPt': 13476, 'vtxChi2': 13476}
+ERROR:root:Chunk 1 has inconsistent array lengths: {'pt': 13269, 'eta': 13269, 'phi': 13269, 'fj_phi': 13269, 'fj_eta': 13269, 'fj_pt': 13269, 'fj_mass': 13269, 'fj_msoftdrop': 26538, 'fj_particleNetWithMass_QCD': 26538, 'fj_particleNet_XbbVsQCD': 26538, 'fj_particleNet_XccVsQCD': 26538, 'fj_particleNet_XqqVsQCD': 26538, 'fj_particleNet_QCD': 13269, 'fj_particleNet_massCorr': 13269, 'trkHighPurity': 13269, 'charge': 13269, 'lostInnerHits': 13269, 'lostOuterHits': 13269, 'numberOfHits': 13269, 'numberOfPixelHits': 13269, 'pdgId': 13269, 'pvAssocQuality': 13269, 'trkAlgo': 13269, 'trkQuality': 13269, 'd0': 13269, 'd0Err': 13269, 'dz': 13269, 'dzErr': 13269, 'mass': 13269, 'puppiWeight': 13269, 'puppiWeightNoLep': 13269, 'trkChi2': 13269, 'trkEta': 13269, 'trkP': 13269, 'trkPhi': 13269, 'trkPt': 13269, 'vtxChi2': 13269}
+ERROR:root:Chunk 2 has inconsistent array lengths: {'pt': 13410, 'eta': 13410, 'phi': 13410, 'fj_phi': 13410, 'fj_eta': 13410, 'fj_pt': 13410, 'fj_mass': 13410, 'fj_msoftdrop': 26820, 'fj_particleNetWithMass_QCD': 26820, 'fj_particleNet_XbbVsQCD': 26820, 'fj_particleNet_XccVsQCD': 26820, 'fj_particleNet_XqqVsQCD': 26820, 'fj_particleNet_QCD': 13410, 'fj_particleNet_massCorr': 13410, 'trkHighPurity': 13410, 'charge': 13410, 'lostInnerHits': 13410, 'lostOuterHits': 13410, 'numberOfHits': 13410, 'numberOfPixelHits': 13410, 'pdgId': 13410, 'pvAssocQuality': 13410, 'trkAlgo': 13410, 'trkQuality': 13410, 'd0': 13410, 'd0Err': 13410, 'dz': 13410, 'dzErr': 13410, 'mass': 13410, 'puppiWeight': 13410, 'puppiWeightNoLep': 13410, 'trkChi2': 13410, 'trkEta': 13410, 'trkP': 13410, 'trkPhi': 13410, 'trkPt': 13410, 'vtxChi2': 13410}
+ERROR:root:Chunk 3 has inconsistent array lengths: {'pt': 13414, 'eta': 13414, 'phi': 13414, 'fj_phi': 13414, 'fj_eta': 13414, 'fj_pt': 13414, 'fj_mass': 13414, 'fj_msoftdrop': 26828, 'fj_particleNetWithMass_QCD': 26828, 'fj_particleNet_XbbVsQCD': 26828, 'fj_particleNet_XccVsQCD': 26828, 'fj_particleNet_XqqVsQCD': 26828, 'fj_particleNet_QCD': 13414, 'fj_particleNet_massCorr': 13414, 'trkHighPurity': 13414, 'charge': 13414, 'lostInnerHits': 13414, 'lostOuterHits': 13414, 'numberOfHits': 13414, 'numberOfPixelHits': 13414, 'pdgId': 13414, 'pvAssocQuality': 13414, 'trkAlgo': 13414, 'trkQuality': 13414, 'd0': 13414, 'd0Err': 13414, 'dz': 13414, 'dzErr': 13414, 'mass': 13414, 'puppiWeight': 13414, 'puppiWeightNoLep': 13414, 'trkChi2': 13414, 'trkEta': 13414, 'trkP': 13414, 'trkPhi': 13414, 'trkPt': 13414, 'vtxChi2': 13414}
+INFO:root:Set up logger!
+INFO:root:Will measure perf.
+INFO:root:Loaded 1 file(s)!
+INFO:root:Now preprocessing /users/hgao50/scratch/jet-anomaly-work/raw/WWto4Q_TuneCP5_13p6TeV_powheg-pythia8_1.root
+INFO:root:self.savepath='/users/hgao50/scratch/jet-anomaly-work/datasets/pt200to400-v1/preprocessed/wjet'
+INFO:root:120927 events in total, splitting into 4 chunks.
+INFO:root:Initialised pool <multiprocessing.pool.Pool state=RUN pool_size=4> with 4 workers.
+INFO:root:#0 (3825299): Received range 60463 to 90695 (30232 events).
+INFO:root:#1 (3825298): Received range 30231 to 60463 (30232 events).
+INFO:root:#2 (3825297): Received range 0 to 30231 (30231 events).
+INFO:root:#3 (3825300): Received range 90695 to 120927 (30232 events).
+INFO:root:#1 (3825298):  Preprocessed last few events, from 30231 to 60463!
+INFO:root:#0 (3825299):  Preprocessed last few events, from 60463 to 90695!
+INFO:root:#3 (3825300):  Preprocessed last few events, from 90695 to 120927!
+INFO:root:#2 (3825297):  Preprocessed last few events, from 0 to 30231!
+INFO:root:All done! Converting len(results)=4 dicts to dataframes and concatenating...
+INFO:root:Concatenated len(results)=4 fatjets! Saving...
+ERROR:root:Chunk 0 has inconsistent array lengths: {'pt': 1068, 'eta': 1068, 'phi': 1068, 'fj_phi': 1068, 'fj_eta': 1068, 'fj_pt': 1068, 'fj_mass': 1068, 'fj_msoftdrop': 2136, 'fj_particleNetWithMass_QCD': 2136, 'fj_particleNet_XbbVsQCD': 2136, 'fj_particleNet_XccVsQCD': 2136, 'fj_particleNet_XqqVsQCD': 2136, 'fj_particleNet_QCD': 1068, 'fj_particleNet_massCorr': 1068, 'trkHighPurity': 1068, 'charge': 1068, 'lostInnerHits': 1068, 'lostOuterHits': 1068, 'numberOfHits': 1068, 'numberOfPixelHits': 1068, 'pdgId': 1068, 'pvAssocQuality': 1068, 'trkAlgo': 1068, 'trkQuality': 1068, 'd0': 1068, 'd0Err': 1068, 'dz': 1068, 'dzErr': 1068, 'mass': 1068, 'puppiWeight': 1068, 'puppiWeightNoLep': 1068, 'trkChi2': 1068, 'trkEta': 1068, 'trkP': 1068, 'trkPhi': 1068, 'trkPt': 1068, 'vtxChi2': 1068}
+ERROR:root:Chunk 1 has inconsistent array lengths: {'pt': 1029, 'eta': 1029, 'phi': 1029, 'fj_phi': 1029, 'fj_eta': 1029, 'fj_pt': 1029, 'fj_mass': 1029, 'fj_msoftdrop': 2058, 'fj_particleNetWithMass_QCD': 2058, 'fj_particleNet_XbbVsQCD': 2058, 'fj_particleNet_XccVsQCD': 2058, 'fj_particleNet_XqqVsQCD': 2058, 'fj_particleNet_QCD': 1029, 'fj_particleNet_massCorr': 1029, 'trkHighPurity': 1029, 'charge': 1029, 'lostInnerHits': 1029, 'lostOuterHits': 1029, 'numberOfHits': 1029, 'numberOfPixelHits': 1029, 'pdgId': 1029, 'pvAssocQuality': 1029, 'trkAlgo': 1029, 'trkQuality': 1029, 'd0': 1029, 'd0Err': 1029, 'dz': 1029, 'dzErr': 1029, 'mass': 1029, 'puppiWeight': 1029, 'puppiWeightNoLep': 1029, 'trkChi2': 1029, 'trkEta': 1029, 'trkP': 1029, 'trkPhi': 1029, 'trkPt': 1029, 'vtxChi2': 1029}
+ERROR:root:Chunk 2 has inconsistent array lengths: {'pt': 1056, 'eta': 1056, 'phi': 1056, 'fj_phi': 1056, 'fj_eta': 1056, 'fj_pt': 1056, 'fj_mass': 1056, 'fj_msoftdrop': 2112, 'fj_particleNetWithMass_QCD': 2112, 'fj_particleNet_XbbVsQCD': 2112, 'fj_particleNet_XccVsQCD': 2112, 'fj_particleNet_XqqVsQCD': 2112, 'fj_particleNet_QCD': 1056, 'fj_particleNet_massCorr': 1056, 'trkHighPurity': 1056, 'charge': 1056, 'lostInnerHits': 1056, 'lostOuterHits': 1056, 'numberOfHits': 1056, 'numberOfPixelHits': 1056, 'pdgId': 1056, 'pvAssocQuality': 1056, 'trkAlgo': 1056, 'trkQuality': 1056, 'd0': 1056, 'd0Err': 1056, 'dz': 1056, 'dzErr': 1056, 'mass': 1056, 'puppiWeight': 1056, 'puppiWeightNoLep': 1056, 'trkChi2': 1056, 'trkEta': 1056, 'trkP': 1056, 'trkPhi': 1056, 'trkPt': 1056, 'vtxChi2': 1056}
+ERROR:root:Chunk 3 has inconsistent array lengths: {'pt': 1105, 'eta': 1105, 'phi': 1105, 'fj_phi': 1105, 'fj_eta': 1105, 'fj_pt': 1105, 'fj_mass': 1105, 'fj_msoftdrop': 2210, 'fj_particleNetWithMass_QCD': 2210, 'fj_particleNet_XbbVsQCD': 2210, 'fj_particleNet_XccVsQCD': 2210, 'fj_particleNet_XqqVsQCD': 2210, 'fj_particleNet_QCD': 1105, 'fj_particleNet_massCorr': 1105, 'trkHighPurity': 1105, 'charge': 1105, 'lostInnerHits': 1105, 'lostOuterHits': 1105, 'numberOfHits': 1105, 'numberOfPixelHits': 1105, 'pdgId': 1105, 'pvAssocQuality': 1105, 'trkAlgo': 1105, 'trkQuality': 1105, 'd0': 1105, 'd0Err': 1105, 'dz': 1105, 'dzErr': 1105, 'mass': 1105, 'puppiWeight': 1105, 'puppiWeightNoLep': 1105, 'trkChi2': 1105, 'trkEta': 1105, 'trkP': 1105, 'trkPhi': 1105, 'trkPt': 1105, 'vtxChi2': 1105}
+INFO:root:Will measure perf.

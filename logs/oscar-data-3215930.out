@@ -1,0 +1,236 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 3215930
+##  Job Name : jet-data
+##  Nodelist : node2351
+##      CPUs : 1
+##  Mem/Node : 98304 MB
+## Directory : /oscar/home/hgao50/jetAnomalyDetection
+##   Job Started : Sun Jun 14 08:30:04 AM EDT 2026
+###############################################################################
+Job ID: 3215930
+Host: node2351.oscar.ccv.brown.edu
+Project: /oscar/home/hgao50/jetAnomalyDetection
+Output root: /users/hgao50/scratch/jet-anomaly-work/datasets/pt200to400-smoke
+Workers: 4
+Maximum events per ROOT file: 2000
+QCD source 1: /users/hgao50/scratch/jet-anomaly-work/raw/QCD_PT-170to300_TuneCP5_13p6TeV_pythia8_1.root
+QCD source 2: /users/hgao50/scratch/jet-anomaly-work/raw/QCD_PT-300to470_TuneCP5_13p6TeV_pythia8_1.root
+WJet source: /users/hgao50/scratch/jet-anomaly-work/raw/WWto4Q_TuneCP5_13p6TeV_powheg-pythia8_1.root
+Preprocessing marker found; reusing existing intermediate pickle files.
+INFO:root:Will measure perf.
+INFO:root:Concatenating QCD: (took 0.3801 s)
+INFO:root:Combined QCD data length: 2642
+INFO:root:Entered modify_df! len(df)=2642. Now calculating dz/dzErr...
+INFO:root:Found dz/dzErr  (took 0.3299 s)
+INFO:root:Found d0/d0Err  (took 0.29 s)
+INFO:root:Found dR  (took 0.0558 s)
+INFO:root:Found within_bounds  (took 0.1318 s), extracting jet-level metadata...
+INFO:root:Found log_pt  (took 0.0374 s), calculating one-hot lists...
+Columns before one-hot encoding: ['pt', 'eta', 'phi', 'fj_phi', 'fj_eta', 'fj_pt', 'fj_mass', 'fj_msoftdrop', 'fj_particleNetWithMass_QCD', 'fj_particleNet_XbbVsQCD', 'fj_particleNet_XccVsQCD', 'fj_particleNet_XqqVsQCD', 'fj_particleNet_QCD', 'fj_particleNet_massCorr', 'trkHighPurity', 'charge', 'lostInnerHits', 'lostOuterHits', 'numberOfHits', 'numberOfPixelHits', 'pdgId', 'pvAssocQuality', 'trkAlgo', 'trkQuality', 'd0', 'd0Err', 'dz', 'dzErr', 'mass', 'puppiWeight', 'puppiWeightNoLep', 'trkChi2', 'trkEta', 'trkP', 'trkPhi', 'trkPt', 'vtxChi2', 'dz/dzErr', 'd0/d0Err', 'dR', 'within_bounds', 'log_pt']
+INFO:root:Found one-hot lists  (took 11.1357 s), now filtering out-of-bounds particles...
+Columns after one-hot encoding: ['pt', 'eta', 'phi', 'fj_phi', 'fj_eta', 'fj_pt', 'fj_mass', 'fj_msoftdrop', 'fj_particleNetWithMass_QCD', 'fj_particleNet_XbbVsQCD', 'fj_particleNet_XccVsQCD', 'fj_particleNet_XqqVsQCD', 'fj_particleNet_QCD', 'fj_particleNet_massCorr', 'trkHighPurity', 'charge', 'lostInnerHits', 'lostOuterHits', 'numberOfHits', 'numberOfPixelHits', 'pdgId', 'pvAssocQuality', 'trkAlgo', 'trkQuality', 'd0', 'd0Err', 'dz', 'dzErr', 'mass', 'puppiWeight', 'puppiWeightNoLep', 'trkChi2', 'trkEta', 'trkP', 'trkPhi', 'trkPt', 'vtxChi2', 'dz/dzErr', 'd0/d0Err', 'dR', 'within_bounds', 'log_pt', 'pdgId_-211', 'pdgId_-13', 'pdgId_-11', 'pdgId_11', 'pdgId_13', 'pdgId_22', 'pdgId_130', 'pdgId_211']
+INFO:root:Done!  (took 3.4477 s)
+INFO:root:Concatenating WJet: (took 0.0169 s)
+INFO:root:Combined WJet data length: 81
+INFO:root:Entered modify_df! len(df)=81. Now calculating dz/dzErr...
+INFO:root:Found dz/dzErr  (took 0.0102 s)
+INFO:root:Found d0/d0Err  (took 0.0102 s)
+INFO:root:Found dR  (took 0.0029 s)
+INFO:root:Found within_bounds  (took 0.0056 s), extracting jet-level metadata...
+INFO:root:Found log_pt  (took 0.0023 s), calculating one-hot lists...
+Columns before one-hot encoding: ['pt', 'eta', 'phi', 'fj_phi', 'fj_eta', 'fj_pt', 'fj_mass', 'fj_msoftdrop', 'fj_particleNetWithMass_QCD', 'fj_particleNet_XbbVsQCD', 'fj_particleNet_XccVsQCD', 'fj_particleNet_XqqVsQCD', 'fj_particleNet_QCD', 'fj_particleNet_massCorr', 'trkHighPurity', 'charge', 'lostInnerHits', 'lostOuterHits', 'numberOfHits', 'numberOfPixelHits', 'pdgId', 'pvAssocQuality', 'trkAlgo', 'trkQuality', 'd0', 'd0Err', 'dz', 'dzErr', 'mass', 'puppiWeight', 'puppiWeightNoLep', 'trkChi2', 'trkEta', 'trkP', 'trkPhi', 'trkPt', 'vtxChi2', 'dz/dzErr', 'd0/d0Err', 'dR', 'within_bounds', 'log_pt']
+INFO:root:Found one-hot lists  (took 0.3399 s), now filtering out-of-bounds particles...
+Columns after one-hot encoding: ['pt', 'eta', 'phi', 'fj_phi', 'fj_eta', 'fj_pt', 'fj_mass', 'fj_msoftdrop', 'fj_particleNetWithMass_QCD', 'fj_particleNet_XbbVsQCD', 'fj_particleNet_XccVsQCD', 'fj_particleNet_XqqVsQCD', 'fj_particleNet_QCD', 'fj_particleNet_massCorr', 'trkHighPurity', 'charge', 'lostInnerHits', 'lostOuterHits', 'numberOfHits', 'numberOfPixelHits', 'pdgId', 'pvAssocQuality', 'trkAlgo', 'trkQuality', 'd0', 'd0Err', 'dz', 'dzErr', 'mass', 'puppiWeight', 'puppiWeightNoLep', 'trkChi2', 'trkEta', 'trkP', 'trkPhi', 'trkPt', 'vtxChi2', 'dz/dzErr', 'd0/d0Err', 'dR', 'within_bounds', 'log_pt', 'pdgId_-211', 'pdgId_-13', 'pdgId_-11', 'pdgId_11', 'pdgId_13', 'pdgId_22', 'pdgId_130', 'pdgId_211']
+INFO:root:Done!  (took 0.1037 s)
+INFO:root:Now, scaling data with QCD as the base!
+INFO:root:Features selected for scaling or passthrough:
+['lostOuterHits', 'numberOfHits', 'numberOfPixelHits', 'pdgId', 'pvAssocQuality', 'trkAlgo', 'trkQuality', 'd0', 'd0Err', 'dz', 'dzErr', 'mass', 'puppiWeight', 'puppiWeightNoLep', 'trkChi2', 'trkEta', 'trkP', 'trkPhi', 'trkPt', 'vtxChi2', 'dz/dzErr', 'd0/d0Err', 'dR', 'within_bounds', 'log_pt', 'pdgId_-211', 'pdgId_-13', 'pdgId_-11', 'pdgId_11', 'pdgId_13', 'pdgId_22', 'pdgId_130', 'pdgId_211', 'fj_msoftdrop', 'fj_particleNetWithMass_QCD', 'fj_particleNet_XbbVsQCD', 'fj_particleNet_XccVsQCD', 'fj_particleNet_XqqVsQCD']
+INFO:root:In find_scalers, col='lostOuterHits'
+WARNING:root:Preserving lostOuterHits without scaling because the QCD reference contains no finite non-zero values.
+INFO:root:In find_scalers, col='numberOfHits'
+INFO:root:In find_scalers, col='numberOfPixelHits'
+INFO:root:In find_scalers, col='pdgId'
+INFO:root:In find_scalers, col='pvAssocQuality'
+INFO:root:In find_scalers, col='trkAlgo'
+WARNING:root:Preserving trkAlgo without scaling because its QCD 16th and 84th percentiles are identical.
+INFO:root:In find_scalers, col='trkQuality'
+WARNING:root:Preserving trkQuality without scaling because its QCD 16th and 84th percentiles are identical.
+INFO:root:In find_scalers, col='d0'
+INFO:root:In find_scalers, col='d0Err'
+INFO:root:In find_scalers, col='dz'
+INFO:root:In find_scalers, col='dzErr'
+INFO:root:In find_scalers, col='mass'
+WARNING:root:Preserving mass without scaling because its QCD 16th and 84th percentiles are identical.
+INFO:root:In find_scalers, col='puppiWeight'
+WARNING:root:Preserving puppiWeight without scaling because its QCD 16th and 84th percentiles are identical.
+INFO:root:In find_scalers, col='puppiWeightNoLep'
+WARNING:root:Preserving puppiWeightNoLep without scaling because its QCD 16th and 84th percentiles are identical.
+INFO:root:In find_scalers, col='trkChi2'
+INFO:root:In find_scalers, col='trkEta'
+INFO:root:In find_scalers, col='trkP'
+INFO:root:In find_scalers, col='trkPhi'
+INFO:root:In find_scalers, col='trkPt'
+INFO:root:In find_scalers, col='vtxChi2'
+WARNING:root:Preserving vtxChi2 without scaling because its QCD 16th and 84th percentiles are identical.
+INFO:root:In find_scalers, col='dz/dzErr'
+INFO:root:In find_scalers, col='d0/d0Err'
+INFO:root:In find_scalers, col='dR'
+INFO:root:In find_scalers, col='within_bounds'
+INFO:root:In find_scalers, col='log_pt'
+INFO:root:In find_scalers, col='pdgId_-211'
+INFO:root:In find_scalers, col='pdgId_-13'
+INFO:root:In find_scalers, col='pdgId_-11'
+INFO:root:In find_scalers, col='pdgId_11'
+INFO:root:In find_scalers, col='pdgId_13'
+INFO:root:In find_scalers, col='pdgId_22'
+INFO:root:In find_scalers, col='pdgId_130'
+INFO:root:In find_scalers, col='pdgId_211'
+INFO:root:In find_scalers, col='fj_msoftdrop'
+INFO:root:In find_scalers, col='fj_particleNetWithMass_QCD'
+INFO:root:In find_scalers, col='fj_particleNet_XbbVsQCD'
+INFO:root:In find_scalers, col='fj_particleNet_XccVsQCD'
+INFO:root:In find_scalers, col='fj_particleNet_XqqVsQCD'
+INFO:root:Scalers found  (took 4.4501 s), now applying to qcd:
+INFO:root:Skipping col='pt', not in scaler
+INFO:root:Skipping col='eta', not in scaler
+INFO:root:Skipping col='phi', not in scaler
+INFO:root:Preserving col='fj_phi'
+INFO:root:Standardising fj_phi
+INFO:root:Preserving col='fj_eta'
+INFO:root:Standardising fj_eta
+INFO:root:Preserving col='fj_pt'
+INFO:root:Standardising fj_pt
+INFO:root:Preserving col='fj_mass'
+INFO:root:Standardising fj_mass
+INFO:root:Preserving col='fj_msoftdrop'
+INFO:root:Standardising fj_msoftdrop
+INFO:root:Preserving col='fj_particleNetWithMass_QCD'
+INFO:root:Standardising fj_particleNetWithMass_QCD
+INFO:root:Preserving col='fj_particleNet_XbbVsQCD'
+INFO:root:Standardising fj_particleNet_XbbVsQCD
+INFO:root:Preserving col='fj_particleNet_XccVsQCD'
+INFO:root:Standardising fj_particleNet_XccVsQCD
+INFO:root:Preserving col='fj_particleNet_XqqVsQCD'
+INFO:root:Standardising fj_particleNet_XqqVsQCD
+INFO:root:Preserving col='fj_particleNet_QCD'
+INFO:root:Standardising fj_particleNet_QCD
+INFO:root:Preserving col='fj_particleNet_massCorr'
+INFO:root:Standardising fj_particleNet_massCorr
+INFO:root:Skipping col='trkHighPurity', not in scaler
+INFO:root:Skipping col='charge', not in scaler
+INFO:root:Skipping col='lostInnerHits', not in scaler
+INFO:root:Standardising lostOuterHits
+INFO:root:Preserving uninformative col='lostOuterHits'
+INFO:root:Standardising numberOfHits
+INFO:root:Standardising numberOfPixelHits
+INFO:root:Standardising pdgId
+INFO:root:Standardising pvAssocQuality
+INFO:root:Standardising trkAlgo
+INFO:root:Preserving uninformative col='trkAlgo'
+INFO:root:Standardising trkQuality
+INFO:root:Preserving uninformative col='trkQuality'
+INFO:root:Standardising d0
+INFO:root:Standardising d0Err
+INFO:root:Standardising dz
+INFO:root:Standardising dzErr
+INFO:root:Standardising mass
+INFO:root:Preserving uninformative col='mass'
+INFO:root:Standardising puppiWeight
+INFO:root:Preserving uninformative col='puppiWeight'
+INFO:root:Standardising puppiWeightNoLep
+INFO:root:Preserving uninformative col='puppiWeightNoLep'
+INFO:root:Standardising trkChi2
+INFO:root:Standardising trkEta
+INFO:root:Standardising trkP
+INFO:root:Standardising trkPhi
+INFO:root:Standardising trkPt
+INFO:root:Standardising vtxChi2
+INFO:root:Preserving uninformative col='vtxChi2'
+INFO:root:Standardising dz/dzErr
+INFO:root:Standardising d0/d0Err
+INFO:root:Standardising dR
+INFO:root:Standardising within_bounds
+INFO:root:Standardising log_pt
+INFO:root:Standardising pdgId_-211
+INFO:root:Standardising pdgId_-13
+INFO:root:Standardising pdgId_-11
+INFO:root:Standardising pdgId_11
+INFO:root:Standardising pdgId_13
+INFO:root:Standardising pdgId_22
+INFO:root:Standardising pdgId_130
+INFO:root:Standardising pdgId_211
+INFO:root: (took 3.9676 s) Now wjet:
+INFO:root:Skipping col='pt', not in scaler
+INFO:root:Skipping col='eta', not in scaler
+INFO:root:Skipping col='phi', not in scaler
+INFO:root:Preserving col='fj_phi'
+INFO:root:Standardising fj_phi
+INFO:root:Preserving col='fj_eta'
+INFO:root:Standardising fj_eta
+INFO:root:Preserving col='fj_pt'
+INFO:root:Standardising fj_pt
+INFO:root:Preserving col='fj_mass'
+INFO:root:Standardising fj_mass
+INFO:root:Preserving col='fj_msoftdrop'
+INFO:root:Standardising fj_msoftdrop
+INFO:root:Preserving col='fj_particleNetWithMass_QCD'
+INFO:root:Standardising fj_particleNetWithMass_QCD
+INFO:root:Preserving col='fj_particleNet_XbbVsQCD'
+INFO:root:Standardising fj_particleNet_XbbVsQCD
+INFO:root:Preserving col='fj_particleNet_XccVsQCD'
+INFO:root:Standardising fj_particleNet_XccVsQCD
+INFO:root:Preserving col='fj_particleNet_XqqVsQCD'
+INFO:root:Standardising fj_particleNet_XqqVsQCD
+INFO:root:Preserving col='fj_particleNet_QCD'
+INFO:root:Standardising fj_particleNet_QCD
+INFO:root:Preserving col='fj_particleNet_massCorr'
+INFO:root:Standardising fj_particleNet_massCorr
+INFO:root:Skipping col='trkHighPurity', not in scaler
+INFO:root:Skipping col='charge', not in scaler
+INFO:root:Skipping col='lostInnerHits', not in scaler
+INFO:root:Standardising lostOuterHits
+INFO:root:Preserving uninformative col='lostOuterHits'
+INFO:root:Standardising numberOfHits
+INFO:root:Standardising numberOfPixelHits
+INFO:root:Standardising pdgId
+INFO:root:Standardising pvAssocQuality
+INFO:root:Standardising trkAlgo
+INFO:root:Preserving uninformative col='trkAlgo'
+INFO:root:Standardising trkQuality
+INFO:root:Preserving uninformative col='trkQuality'
+INFO:root:Standardising d0
+INFO:root:Standardising d0Err
+INFO:root:Standardising dz
+INFO:root:Standardising dzErr
+INFO:root:Standardising mass
+INFO:root:Preserving uninformative col='mass'
+INFO:root:Standardising puppiWeight
+INFO:root:Preserving uninformative col='puppiWeight'
+INFO:root:Standardising puppiWeightNoLep
+INFO:root:Preserving uninformative col='puppiWeightNoLep'
+INFO:root:Standardising trkChi2
+INFO:root:Standardising trkEta
+INFO:root:Standardising trkP
+INFO:root:Standardising trkPhi
+INFO:root:Standardising trkPt
+INFO:root:Standardising vtxChi2
+INFO:root:Preserving uninformative col='vtxChi2'
+INFO:root:Standardising dz/dzErr
+INFO:root:Standardising d0/d0Err
+INFO:root:Standardising dR
+INFO:root:Standardising within_bounds
+INFO:root:Standardising log_pt
+INFO:root:Standardising pdgId_-211
+INFO:root:Standardising pdgId_-13
+INFO:root:Standardising pdgId_-11
+INFO:root:Standardising pdgId_11
+INFO:root:Standardising pdgId_13
+INFO:root:Standardising pdgId_22
+INFO:root:Standardising pdgId_130
+INFO:root:Standardising pdgId_211
+INFO:root:Done!  (took 0.1449 s)
+INFO:root:Plotting data:
+INFO:root:Saved figure into plots/proc_distr_log_pt_QCD+WJet_165-0830-41.png
+INFO:root:Now, saving data!
+INFO:root:Saved into /users/hgao50/scratch/jet-anomaly-work/datasets/pt200to400-smoke/processed/PT-200to400/scaledby_QCD/QCD_scaled.pkl!
+INFO:root:Saved into /users/hgao50/scratch/jet-anomaly-work/datasets/pt200to400-smoke/processed/PT-200to400/scaledby_QCD/WJet_scaled.pkl!
