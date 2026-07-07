@@ -52,8 +52,6 @@ from tqdm import tqdm
 from helpers import join_dfs
 config = helpers_main.load_config()
 
-import logging
-
 # File paths for background and signal data
 bg_file = os.path.join(config['data']['processed_data_dir'], config['data']['background_file'])
 sg_file = os.path.join(config['data']['processed_data_dir'], config['data']['signal_file'])
@@ -271,7 +269,7 @@ class TrainMLPBaseline:
                 (self.bg_data[rawfj_pt_col] > pt_min) 
                 & (self.bg_data[rawfj_pt_col] < pt_max)
             ]
-        # logging.info(f"Signal Data Columns: {self.sg_data.columns.tolist()}")
+        # print(f"Signal Data Columns: {self.sg_data.columns.tolist()}")
         if rawfj_pt_col in self.sg_data:
             self.sg_data = self.sg_data[
                 (self.sg_data[rawfj_pt_col] > pt_min)
@@ -285,10 +283,10 @@ class TrainMLPBaseline:
         print("Signal pt stats after slicing:")
         print(self.sg_data[rawfj_pt_col].describe())
 
-        logging.info(f"Number of training events after slicing: {len(self.bg_data)}")
-        logging.info(f"Number of test events after removing leptonic jet: {len(self.sg_data)}")
-        logging.info(f"\nSample background pt values:\n{self.bg_data['pt'].head().to_string()}")
-        logging.info(f"Sample signal pt values:\n{self.sg_data['pt'].head().to_string()}")
+        print(f"Number of training events after slicing: {len(self.bg_data)}")
+        print(f"Number of test events after removing leptonic jet: {len(self.sg_data)}")
+        print(f"\nSample background pt values:\n{self.bg_data['pt'].head().to_string()}")
+        print(f"Sample signal pt values:\n{self.sg_data['pt'].head().to_string()}")
 
     def build_graphs(self):
         print("Building background graphs...")
@@ -389,9 +387,9 @@ class TrainMLPBaseline:
         # Compute mean and std per feature dimension
         self.means = self.all_features.mean(dim=0)
         self.stds  = self.all_features.std(dim=0)
-        logging.info(f"Feature Means: {self.means}")
-        logging.info(f"Feature Stds: {self.stds}")
-        logging.info(f"Number of features: {self.num_features}")
+        print(f"Feature Means: {self.means}")
+        print(f"Feature Stds: {self.stds}")
+        print(f"Number of features: {self.num_features}")
     
     def plot_features(self):
         # Plot each feature's distribution
@@ -432,13 +430,13 @@ class TrainMLPBaseline:
             dropout=self.dropout,
         ).to(DEVICE)
 
-        logging.info(f"Model Summary:\n{self.model}")
+        print(f"Model Summary:\n{self.model}")
         # also print
         print(f"Model Summary:\n{self.model}")
         num_params = sum(
             p.numel() for p in self.model.parameters() if p.requires_grad
         )
-        logging.info(f"Number of trainable parameters: {num_params}")
+        print(f"Number of trainable parameters: {num_params}")
         # also print
         print(f"Number of trainable parameters: {num_params}")
 
@@ -585,10 +583,10 @@ class TrainMLPBaseline:
         # 5. Training + validation loop
         # ------------------------------------------------------------------
         for epoch in range(self.epochs):
-            logging.info(f"\nEpoch [{epoch + 1}/{self.epochs}]")
+            print(f"\nEpoch [{epoch + 1}/{self.epochs}]")
 
             current_lr = optimizer.param_groups[0]["lr"]
-            logging.info(f"Learning Rate: {current_lr:.6f}")
+            print(f"Learning Rate: {current_lr:.6f}")
 
             # ------------------------------
             # Training phase
@@ -650,7 +648,7 @@ class TrainMLPBaseline:
             if mean_val_loss < best_val_loss:
                 best_val_loss = mean_val_loss
                 torch.save(self.model, best_model_path)
-                logging.info(f"Saved new best model to {best_model_path}")
+                print(f"Saved new best model to {best_model_path}")
                 print(f"Saved new best model to {best_model_path}")
 
             plot_progress()
@@ -658,9 +656,9 @@ class TrainMLPBaseline:
             if self.scheduler is not None:
                 self.scheduler.step()
 
-            logging.info(f"train loss: {mean_train_loss}")
-            logging.info(f"validation/background loss: {mean_val_loss}")
-            logging.info(timer.time_taken())
+            print(f"train loss: {mean_train_loss}")
+            print(f"validation/background loss: {mean_val_loss}")
+            print(timer.time_taken())
 
         # ------------------------------------------------------------------
         # 6. Final evaluation for anomaly detection
@@ -824,8 +822,8 @@ class TrainMLPBaseline:
         with open(summary_path, "w") as f:
             json.dump(summary, f, indent=2)
 
-        logging.info(f"Saved run summary to {summary_path}")
-        logging.info(f"Final AUC: {auc_score}")
+        print(f"Saved run summary to {summary_path}")
+        print(f"Final AUC: {auc_score}")
 
 
 if __name__ == "__main__":

@@ -208,8 +208,6 @@ class TrainClassTokenTransformerAE:
         if self.max_signal_events is not None:
             self.sg_data = self.sg_data.head(self.max_signal_events).reset_index(drop=True)
 
-        logging.info(f"Loaded background rows: {len(self.bg_data)}")
-        logging.info(f"Loaded signal rows: {len(self.sg_data)}")
         print(f"Loaded background rows: {len(self.bg_data)}")
         print(f"Loaded signal rows: {len(self.sg_data)}")
 
@@ -237,9 +235,6 @@ class TrainClassTokenTransformerAE:
         if len(self.bg_test_data) == 0:
             raise ValueError("No background test rows are available after splitting.")
 
-        logging.info(f"Background train-pool rows: {len(self.bg_train_pool_data)}")
-        logging.info(f"Background train rows used: {len(self.bg_train_data)}")
-        logging.info(f"Background fixed test rows: {len(self.bg_test_data)}")
         print(f"Background train-pool rows: {len(self.bg_train_pool_data)}")
         print(f"Background train rows used: {len(self.bg_train_data)}")
         print(f"Background fixed test rows: {len(self.bg_test_data)}")
@@ -338,9 +333,9 @@ class TrainClassTokenTransformerAE:
 
         self.means = self.all_features.mean(dim=0)
         self.stds = self.all_features.std(dim=0)
-        logging.info(f"Feature Means: {self.means}")
-        logging.info(f"Feature Stds: {self.stds}")
-        logging.info(f"Number of features: {self.num_features}")
+        print(f"Feature Means: {self.means}")
+        print(f"Feature Stds: {self.stds}")
+        print(f"Number of features: {self.num_features}")
 
     def plot_features(self):
         os.makedirs(self.feature_plots_dir, exist_ok=True)
@@ -419,11 +414,9 @@ class TrainClassTokenTransformerAE:
             loss_type=self.loss_type,
         ).to(DEVICE)
 
-        logging.info(f"Model Summary:\n{self.model}")
         print(f"Model Summary:\n{self.model}")
 
         num_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
-        logging.info(f"Number of trainable parameters: {num_params}")
         print(f"Number of trainable parameters: {num_params}")
 
         optimizer = torch.optim.AdamW(
@@ -498,8 +491,8 @@ class TrainClassTokenTransformerAE:
             plt.close(fig)
 
         for epoch in range(self.epochs):
-            logging.info(f"\nEpoch [{epoch + 1}/{self.epochs}]")
-            logging.info(f"Learning Rate: {optimizer.param_groups[0]['lr']:.6g}")
+            print(f"\nEpoch [{epoch + 1}/{self.epochs}]")
+            print(f"Learning Rate: {optimizer.param_groups[0]['lr']:.6g}")
 
             self.model.train()
             epoch_train_losses = []
@@ -545,19 +538,14 @@ class TrainClassTokenTransformerAE:
                 best_epoch = epoch + 1
                 best_model_state = copy.deepcopy(self.model.state_dict())
                 torch.save(self.model, best_model_path)
-                logging.info(f"Saved new best model to {best_model_path}")
                 print(f"Saved new best model to {best_model_path}")
 
             plot_progress()
             scheduler.step()
 
-            logging.info(f"train loss: {mean_train_loss}")
-            logging.info(f"validation/background loss: {mean_val_loss}")
-            logging.info(timer.time_taken())
 
         if best_model_state is not None:
             self.model.load_state_dict(best_model_state)
-            logging.info(f"Loaded best validation checkpoint from epoch {best_epoch} for final evaluation.")
             print(f"Loaded best validation checkpoint from epoch {best_epoch} for final evaluation.")
 
         background_train_loss, background_train_data = self._evaluate_loader(
@@ -688,8 +676,7 @@ class TrainClassTokenTransformerAE:
         with open(summary_path, "w") as f:
             json.dump(summary, f, indent=2)
 
-        logging.info(f"Saved run summary to {summary_path}")
-        logging.info(f"Final AUC: {auc_score}")
+        print(f"Saved run summary to {summary_path}")
         print(f"Final AUC: {auc_score}")
 
 

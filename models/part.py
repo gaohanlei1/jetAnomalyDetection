@@ -1167,7 +1167,7 @@ class CorruptedNegativeAugmentationConfig:
 
 class MultiViewAugmentation(nn.Module):
     """
-    Vectorized multi-view random node dropping + rotation augmentation.
+    Vectorized multi-view random node dropping augmentation.
 
     Submodule role:
         Used inside LeJEPAParticleTransformerRepresentation as:
@@ -1208,8 +1208,13 @@ class MultiViewAugmentation(nn.Module):
         that order until the cumulative dropped pt reaches the sampled target,
         while preserving at least min_nodes valid nodes.
         
-        Additionally, each event is randomly rotated by a angle in [0, 2pi), 
-        treating the eta-phi plane as a 2D Cartesian plane. 
+    Important:
+        Previously, the augmentation also includes a random rotation of jet, 
+        which corresponds to a random shift along the phi-axis. However, since 
+        during preprocessing stage (preprocessing.py) we already subtracted the 
+        eta and phi coordinates of each PFCand by the fat jet center, the 
+        random rotation is cancelled out. Therefore, no rotation is applied 
+        here.
 
     This preserves the original sequence length N. It does not physically
     shrink the tensor. Dropped nodes are masked out.
@@ -1218,36 +1223,6 @@ class MultiViewAugmentation(nn.Module):
     def __init__(self, config: MultiViewAugmentationConfig):
         super().__init__()
         self.config = config
-
-    def _random_rotation(
-        self,
-        x: torch.Tensor,
-        padding_mask: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        batch_size = x.size(0)
-        device = x.device
-        valid_mask = ~padding_mask  # shape: (B, N)
-        
-        # Sample random rotation angles for each event in the batch
-        theta = torch.rand(batch_size, 1, device=device, dtype=torch.float32) * 2 * math.pi # shape: (B, 1)
-        cos_theta = torch.cos(theta)
-        sin_theta = torch.sin(theta)
-
-        # Extract eta and phi coordinates
-        eta = x[..., 0].float() # shape: (B, N)
-        phi = x[..., 1].float() # shape: (B, N)
-
-        # Apply rotation
-        rotated_eta = cos_theta * eta - sin_theta * phi
-        rotated_phi = sin_theta * eta + cos_theta * phi
-
-        # Combine rotated coordinates with other features
-        rotated_x = x.clone()
-        
-        rotated_x[..., 0] = torch.where(valid_mask, rotated_eta, x[..., 0])
-        rotated_x[..., 1] = torch.where(valid_mask, rotated_phi, x[..., 1])
-
-        return rotated_x, padding_mask
 
     def _drop_nodes(
         self,
@@ -1365,7 +1340,6 @@ class MultiViewAugmentation(nn.Module):
                 padding_mask=padding_mask,
                 drop_frac_range=self.config.global_drop_pt_frac_range,
             )
-            # view_x, _ = self._random_rotation(view_x, view_mask)
             views.append(view_x)
             view_padding_masks.append(view_mask)
             view_types.append("global")
@@ -1376,7 +1350,6 @@ class MultiViewAugmentation(nn.Module):
                 padding_mask=padding_mask,
                 drop_frac_range=self.config.local_drop_pt_frac_range,
             )
-            # view_x, _ = self._random_rotation(view_x, view_mask)
             views.append(view_x)
             view_padding_masks.append(view_mask)
             view_types.append("local")
@@ -1434,12 +1407,6 @@ class CorruptedNegativeAugmentation(nn.Module):
             the current padded sequence length N, extra nodes are dropped.
             The resulting pt sum is renormalized to the original anchor event's
             pt sum, and log_pt is matched to the original anchor event's mean/std.
-
-    Important:
-        Every negative view is also rotated (event-level) randomly by an angle 
-        in [0, 2pi), treating the eta-phi plane as a 2D Cartesian plane. This is
-        done after the corruption mode is applied. This follows the same rotation 
-        convention as the multi-view augmentation.
     """
 
     def __init__(self, config: CorruptedNegativeAugmentationConfig):
@@ -1551,10 +1518,6 @@ class CorruptedNegativeAugmentation(nn.Module):
                     neg_mask,
                 )
 
-            # Apply one additional event-level rigid rotation to every event in
-            # the completed negative view, matching the positive-view convention.
-            neg_x, _ = self._random_rotation(neg_x, neg_mask)
-
             negative_views.append(neg_x)
             negative_padding_masks.append(neg_mask)
             negative_types.append(
@@ -1563,36 +1526,6 @@ class CorruptedNegativeAugmentation(nn.Module):
 
         return negative_views, negative_padding_masks, negative_types
 
-    def _random_rotation( # Copied from MultiViewAugmentation
-        self,
-        x: torch.Tensor,
-        padding_mask: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        batch_size = x.size(0)
-        device = x.device
-        valid_mask = ~padding_mask  # shape: (B, N)
-        
-        # Sample random rotation angles for each event in the batch
-        theta = torch.rand(batch_size, 1, device=device, dtype=torch.float32) * 2 * math.pi # shape: (B, 1)
-        cos_theta = torch.cos(theta)
-        sin_theta = torch.sin(theta)
-
-        # Extract eta and phi coordinates
-        eta = x[..., 0].float() # shape: (B, N)
-        phi = x[..., 1].float() # shape: (B, N)
-
-        # Apply rotation
-        rotated_eta = cos_theta * eta - sin_theta * phi
-        rotated_phi = sin_theta * eta + cos_theta * phi
-
-        # Combine rotated coordinates with other features
-        rotated_x = x.clone()
-        
-        rotated_x[..., 0] = torch.where(valid_mask, rotated_eta, x[..., 0])
-        rotated_x[..., 1] = torch.where(valid_mask, rotated_phi, x[..., 1])
-
-        return rotated_x, padding_mask
-    
     def _valid_mask(self, padding_mask: torch.Tensor) -> torch.Tensor:
         return ~padding_mask.bool()
 

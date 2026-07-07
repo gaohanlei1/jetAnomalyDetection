@@ -25,7 +25,6 @@ python -u scripts/run_train_classifier_part.py \
 import argparse
 import copy
 import json
-import logging
 import os
 import random
 import sys
@@ -147,7 +146,7 @@ def dataframe_to_node_tensors(
             node_tensors.append(x)
             labels.append(label)
         except Exception as exc:
-            logging.info(f"Skipping event {i} due to error: {exc}")
+            print(f"Skipping event {i} due to error: {exc}")
 
     return node_tensors, labels
 
@@ -369,8 +368,8 @@ class TrainPartClassifierUpperBound:
         helpers_main.log_config(self.session_name)
 
     def load(self) -> None:
-        logging.info(f"Loading background from {self.bg_file}")
-        logging.info(f"Loading signal from {self.sg_file}")
+        print(f"Loading background from {self.bg_file}")
+        print(f"Loading signal from {self.sg_file}")
 
         self.bg_data = pd.read_pickle(self.bg_file)
         self.sg_data = pd.read_pickle(self.sg_file)
@@ -380,9 +379,9 @@ class TrainPartClassifierUpperBound:
         if self.args.max_signal_events is not None:
             self.sg_data = self.sg_data.head(self.args.max_signal_events)
 
-        logging.info(f"Background rows: {len(self.bg_data)}")
-        logging.info(f"Signal rows: {len(self.sg_data)}")
-        logging.info(f"Node features: {self.node_feature_names}")
+        print(f"Background rows: {len(self.bg_data)}")
+        print(f"Signal rows: {len(self.sg_data)}")
+        print(f"Node features: {self.node_feature_names}")
 
         print(f"Background rows: {len(self.bg_data)}")
         print(f"Signal rows: {len(self.sg_data)}")
@@ -595,8 +594,8 @@ class TrainPartClassifierUpperBound:
             for parameter in self.model.parameters()
             if parameter.requires_grad
         )
-        logging.info(f"Model summary:\n{self.model}")
-        logging.info(f"Number of trainable parameters: {num_params}")
+        print(f"Model summary:\n{self.model}")
+        print(f"Number of trainable parameters: {num_params}")
         print(f"Model summary:\n{self.model}")
         print(f"Number of trainable parameters: {num_params}")
 
@@ -701,7 +700,7 @@ class TrainPartClassifierUpperBound:
                 best_epoch = epoch
                 best_state_dict = copy.deepcopy(self.model.state_dict())
                 torch.save(best_state_dict, best_model_path)
-                logging.info(f"Saved new best model to {best_model_path}")
+                print(f"Saved new best model to {best_model_path}")
 
             metrics_df = pd.DataFrame(metrics)
             metrics_df.to_csv(
@@ -713,7 +712,7 @@ class TrainPartClassifierUpperBound:
                 os.path.join(self.output_dir, "training_curves.png"),
             )
 
-            logging.info(
+            print(
                 "Epoch %s/%s | train loss %.6f | train AUC %.6f | "
                 "val loss %.6f | val AUC %.6f%s",
                 epoch,
@@ -815,8 +814,8 @@ class TrainPartClassifierUpperBound:
         with open(summary_path, "w") as f:
             json.dump(summary, f, indent=2)
 
-        logging.info(f"Saved run summary to {summary_path}")
-        logging.info(f"Final supervised PART classifier AUC: {test_auc}")
+        print(f"Saved run summary to {summary_path}")
+        print(f"Final supervised PART classifier AUC: {test_auc}")
         print(f"Final supervised PART classifier AUC: {test_auc:.6f}")
 
 

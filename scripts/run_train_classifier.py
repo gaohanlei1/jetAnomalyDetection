@@ -24,7 +24,6 @@ python -u scripts/run_train_classifier.py \
 import argparse
 import copy
 import json
-import logging
 import os
 import random
 import sys
@@ -362,9 +361,9 @@ class TrainClassifierUpperBound:
         if len(self.sg_data) == 0:
             raise ValueError("No signal events remain after loading and pT slicing.")
 
-        logging.info(f"Background events after slicing: {len(self.bg_data)}")
-        logging.info(f"Signal events after slicing: {len(self.sg_data)}")
-        logging.info(f"Node features: {self.node_features}")
+        print(f"Background events after slicing: {len(self.bg_data)}")
+        print(f"Signal events after slicing: {len(self.sg_data)}")
+        print(f"Node features: {self.node_features}")
 
         if rawfj_pt_col in self.bg_data:
             print("Background fj_pt stats after slicing:")
@@ -461,9 +460,9 @@ class TrainClassifierUpperBound:
         self.num_features = train_features.shape[1]
         self.means = train_features.mean(dim=0)
         self.stds = train_features.std(dim=0)
-        logging.info(f"Feature means: {self.means}")
-        logging.info(f"Feature stds: {self.stds}")
-        logging.info(f"Number of node features: {self.num_features}")
+        print(f"Feature means: {self.means}")
+        print(f"Feature stds: {self.stds}")
+        print(f"Number of node features: {self.num_features}")
 
     def plot_features(self) -> None:
         os.makedirs(self.feature_plots_dir, exist_ok=True)
@@ -541,8 +540,8 @@ class TrainClassifierUpperBound:
             for parameter in self.model.parameters()
             if parameter.requires_grad
         )
-        logging.info(f"Model summary:\n{self.model}")
-        logging.info(f"Number of trainable parameters: {num_params}")
+        print(f"Model summary:\n{self.model}")
+        print(f"Number of trainable parameters: {num_params}")
         print(f"Model Summary:\n{self.model}")
         print(f"Number of trainable parameters: {num_params}")
 
@@ -624,7 +623,7 @@ class TrainClassifierUpperBound:
                 best_epoch = epoch
                 best_state_dict = copy.deepcopy(self.model.state_dict())
                 torch.save(best_state_dict, best_model_path)
-                logging.info(f"Saved new best model to {best_model_path}")
+                print(f"Saved new best model to {best_model_path}")
 
             metrics_df = pd.DataFrame(metrics)
             metrics_df.to_csv(
@@ -636,7 +635,7 @@ class TrainClassifierUpperBound:
                 os.path.join(self.output_dir, "training_curves.png"),
             )
 
-            logging.info(
+            print(
                 "Epoch %s/%s | train loss %.6f | train AUC %.6f | "
                 "val loss %.6f | val AUC %.6f%s",
                 epoch,
@@ -724,8 +723,8 @@ class TrainClassifierUpperBound:
         with open(summary_path, "w") as f:
             json.dump(summary, f, indent=2)
 
-        logging.info(f"Saved run summary to {summary_path}")
-        logging.info(f"Final supervised classifier AUC: {test_auc}")
+        print(f"Saved run summary to {summary_path}")
+        print(f"Final supervised classifier AUC: {test_auc}")
         print(f"Final supervised classifier AUC: {test_auc:.6f}")
 
 
