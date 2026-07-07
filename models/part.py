@@ -6,6 +6,7 @@ import lejepa
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.profiler import record_function
 
 """
 Usage example:
@@ -442,17 +443,21 @@ class PairwiseAttentionBias(nn.Module):
         x: torch.Tensor,
         padding_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        pair_features = pairwise_physics_features(
-            x,
-            padding_mask=padding_mask,
-            eps=self.eps,
-        )
+        with record_function("pairwise_feature_construction"):
+            with torch.no_grad(): # Input features are not learned, so no gradients needed
+                pair_features = pairwise_physics_features(
+                    x,
+                    padding_mask=padding_mask,
+                    eps=self.eps,
+                ) # shape: (B, N, N, num_pair_features)
 
-        bias = self.mlp(pair_features)
-        bias = bias.permute(0, 3, 1, 2).contiguous()
+        with record_function("pairwise_mlp"):
+            bias = self.mlp(pair_features)
+        with record_function("pairwise_bias_reshape"):
+            bias = bias.permute(0, 3, 1, 2).contiguous()
 
-        batch_size, num_heads, seq_len, _ = bias.shape
-        bias = bias.view(batch_size * num_heads, seq_len, seq_len)
+            batch_size, num_heads, seq_len, _ = bias.shape
+            bias = bias.view(batch_size * num_heads, seq_len, seq_len)
 
         return bias
 
@@ -1149,7 +1154,8 @@ class CorruptedNegativeAugmentationConfig:
     # In the batch-mix corruption, keep this fraction of nodes from the anchor
     # event and fill the remaining available slots with nodes from a donor
     # event in the same batch.
-    batch_mix_anchor_frac: float = 0.5
+    batch_mix_anchor_frac_min: float = 0.1
+    batch_mix_anchor_frac_max: float = 0.9
 
     # After pt-changing corruptions, renormalize the valid-node pt sum to match
     # the original event's valid-node pt sum. This does not assume the sum is 1.
@@ -1313,6 +1319,7 @@ class MultiViewAugmentation(nn.Module):
         self,
         x: torch.Tensor,
         padding_mask: Optional[torch.Tensor] = None,
+        return_types: bool = False,
     ) -> Tuple[List[torch.Tensor], List[torch.Tensor], List[str]]:
         if x.ndim != 3:
             raise ValueError(f"Expected x shape (B, N, F), got {tuple(x.shape)}.")
@@ -1342,7 +1349,8 @@ class MultiViewAugmentation(nn.Module):
             )
             views.append(view_x)
             view_padding_masks.append(view_mask)
-            view_types.append("global")
+            if return_types:
+                view_types.append("global")
 
         for _ in range(self.config.num_local_views):
             view_x, view_mask = self._drop_nodes(
@@ -1352,7 +1360,8 @@ class MultiViewAugmentation(nn.Module):
             )
             views.append(view_x)
             view_padding_masks.append(view_mask)
-            view_types.append("local")
+            if return_types:
+                view_types.append("local")
 
         return views, view_padding_masks, view_types
 
@@ -1451,6 +1460,7 @@ class CorruptedNegativeAugmentation(nn.Module):
         self,
         x: torch.Tensor,
         padding_mask: Optional[torch.Tensor] = None,
+        return_types: bool = False,
     ) -> Tuple[List[torch.Tensor], List[torch.Tensor], List[List[str]]]:
         if x.ndim != 3:
             raise ValueError(f"Expected x shape (B, N, F), got {tuple(x.shape)}.")
@@ -1493,36 +1503,42 @@ class CorruptedNegativeAugmentation(nn.Module):
                 event_selector = event_mode_indices == mode_index  # (B,)
                 if not torch.any(event_selector):
                     continue
-
-                if mode == "identity_shuffle":
-                    candidate_x, candidate_mask = self._identity_shuffle(x, padding_mask)
-                elif mode == "pt_resample":
-                    candidate_x, candidate_mask = self._pt_resample(x, padding_mask)
-                elif mode == "node_eta_phi_rotation":
-                    candidate_x, candidate_mask = self._node_eta_phi_rotation(x, padding_mask)
-                elif mode == "eta_phi_shuffle":
-                    candidate_x, candidate_mask = self._eta_phi_shuffle(x, padding_mask)
-                elif mode == "batch_mix":
+                
+                if mode == "batch_mix":
                     candidate_x, candidate_mask = self._batch_mix(x, padding_mask)
+                    neg_x = torch.where(
+                        event_selector.view(batch_size, 1, 1),
+                        candidate_x,
+                        neg_x,
+                    )
+                    neg_mask = torch.where(
+                        event_selector.view(batch_size, 1),
+                        candidate_mask,
+                        neg_mask,
+                    )
                 else:
-                    raise RuntimeError(f"Unexpected negative corruption mode: {mode}")
+                    selected_x = x[event_selector]
+                    selected_mask = padding_mask[event_selector]
+                    if mode == "identity_shuffle":
+                        candidate_x, candidate_mask = self._identity_shuffle(selected_x, selected_mask)
+                    elif mode == "pt_resample":
+                        candidate_x, candidate_mask = self._pt_resample(selected_x, selected_mask)
+                    elif mode == "node_eta_phi_rotation":
+                        candidate_x, candidate_mask = self._node_eta_phi_rotation(selected_x, selected_mask)
+                    elif mode == "eta_phi_shuffle":
+                        candidate_x, candidate_mask = self._eta_phi_shuffle(selected_x, selected_mask)
+                    else:
+                        raise RuntimeError(f"Unexpected negative corruption mode: {mode}")
 
-                neg_x = torch.where(
-                    event_selector.view(batch_size, 1, 1),
-                    candidate_x,
-                    neg_x,
-                )
-                neg_mask = torch.where(
-                    event_selector.view(batch_size, 1),
-                    candidate_mask,
-                    neg_mask,
-                )
+                    neg_x[event_selector] = candidate_x
+                    neg_mask[event_selector] = candidate_mask
 
             negative_views.append(neg_x)
             negative_padding_masks.append(neg_mask)
-            negative_types.append(
-                [self._mode_names[index] for index in event_mode_indices.tolist()]
-            )
+            if return_types:
+                negative_types.append(
+                    [self._mode_names[index] for index in event_mode_indices.tolist()]
+                )
 
         return negative_views, negative_padding_masks, negative_types
 
@@ -1833,14 +1849,14 @@ class CorruptedNegativeAugmentation(nn.Module):
             return x.clone(), padding_mask.clone()
 
         valid_mask = self._valid_mask(padding_mask)
-        num_valid = valid_mask.sum(dim=1)
+        num_valid = valid_mask.sum(dim=1) # shape: (B,)
 
         donor_b = torch.randint(
             low=0,
             high=batch_size - 1,
             size=(batch_size,),
             device=device,
-        )
+        ) # shape: (B,)
         batch_indices = torch.arange(batch_size, device=device)
         donor_b = donor_b + (donor_b >= batch_indices).long() # index-shift to make sure donor is not myself
 
@@ -1856,8 +1872,11 @@ class CorruptedNegativeAugmentation(nn.Module):
             valid_mask,
         )
 
+        # Randomly sample anchor frac 
+        batch_mix_anchor_frac = torch.rand(batch_size, device=device, dtype=x.dtype)
+        batch_mix_anchor_frac = (self.config.batch_mix_anchor_frac_max - self.config.batch_mix_anchor_frac_min) * batch_mix_anchor_frac + self.config.batch_mix_anchor_frac_min
         num_anchor_keep = torch.round(
-            self.config.batch_mix_anchor_frac * num_valid.float()
+            batch_mix_anchor_frac * num_valid.to(x.dtype)
         ).long()
         num_anchor_keep = num_anchor_keep.clamp(min=1)
         num_anchor_keep = torch.minimum(num_anchor_keep, num_valid)
@@ -2479,47 +2498,54 @@ class LeJEPATripletParticleTransformerRepresentation(MinimalParticleTransformerR
             z_views: (V, B, D)
             z_negatives: (K, B, D)
         """
-
-        views, view_padding_masks, view_types = self.augmentation(
-            x=x,
-            padding_mask=padding_mask,
-        )
-
-        negative_views, negative_padding_masks, negative_types = self.negative_augmentation(
-            x=x,
-            padding_mask=padding_mask,
-        )
+        with record_function("positive_augmentation"):
+            views, view_padding_masks, view_types = self.augmentation(
+                x=x,
+                padding_mask=padding_mask,
+                return_types=return_views,
+            )
+        
+        with record_function("negative_augmentation"):
+            negative_views, negative_padding_masks, negative_types = self.negative_augmentation(
+                x=x,
+                padding_mask=padding_mask,
+                return_types=return_views,
+            )
 
         num_views = len(views)
         num_negative_views = len(negative_views)
         batch_size = x.size(0)
-
-        batched_views = torch.cat(views, dim=0)
-        batched_view_masks = torch.cat(view_padding_masks, dim=0)
-
-        batched_negatives = torch.cat(negative_views, dim=0)
-        batched_negative_masks = torch.cat(negative_padding_masks, dim=0)
-
-        all_inputs = torch.cat([batched_views, batched_negatives], dim=0) # shape: (num_views * B + num_negative_views * B, N, F)
-        all_masks = torch.cat([batched_view_masks, batched_negative_masks], dim=0) # shape: (num_views * B + num_negative_views * B, N)
         
-        all_z = super().forward(
-            all_inputs,
-            padding_mask=all_masks,
-            normalize_output=normalize_output,
-        )
+        with record_function("batch_concat"):
+            batched_views = torch.cat(views, dim=0)
+            batched_view_masks = torch.cat(view_padding_masks, dim=0)
 
-        z_views_flat = all_z[: num_views * batch_size]
-        z_negatives_flat = all_z[num_views * batch_size :]
+            batched_negatives = torch.cat(negative_views, dim=0)
+            batched_negative_masks = torch.cat(negative_padding_masks, dim=0)
 
-        z_views = z_views_flat.view(num_views, batch_size, -1)
-        z_negatives = z_negatives_flat.view(num_negative_views, batch_size, -1)
+            all_inputs = torch.cat([batched_views, batched_negatives], dim=0) # shape: (num_views * B + num_negative_views * B, N, F)
+            all_masks = torch.cat([batched_view_masks, batched_negative_masks], dim=0) # shape: (num_views * B + num_negative_views * B, N)
+        
+        with record_function("backbone_forward"):
+            all_z = super().forward(
+                all_inputs,
+                padding_mask=all_masks,
+                normalize_output=normalize_output,
+            )
 
-        loss_dict = self.loss(
-            z_views=z_views,
-            z_negatives=z_negatives,
-            num_global_views=self.augmentation.config.num_global_views,
-        )
+        with record_function("reshape_representations"):
+            z_views_flat = all_z[: num_views * batch_size]
+            z_negatives_flat = all_z[num_views * batch_size :]
+
+            z_views = z_views_flat.view(num_views, batch_size, -1)
+            z_negatives = z_negatives_flat.view(num_negative_views, batch_size, -1)
+
+        with record_function("ssl_loss"):
+            loss_dict = self.loss(
+                z_views=z_views,
+                z_negatives=z_negatives,
+                num_global_views=self.augmentation.config.num_global_views,
+            )
 
         output: Dict[str, torch.Tensor] = {
             **loss_dict,

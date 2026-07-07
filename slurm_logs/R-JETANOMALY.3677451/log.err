@@ -1,4 +1,0 @@
-Traceback (most recent call last):
-  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_train_lejepa_trip_part.py", line 69, in <module>
-    from models.part import (
-ImportError: cannot import name 'PtDropAugmentationConfig' from 'models.part' (/oscar/home/lwang223/jetAnomalyDetection/models/part.py)

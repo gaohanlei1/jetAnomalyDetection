@@ -72,6 +72,13 @@ from models.part import (
     MultiViewAugmentationConfig,
     TripletLossConfig,
 )
+from torch.profiler import (
+    profile,
+    ProfilerActivity,
+    record_function,
+    schedule,
+)
+from contextlib import nullcontext
 from visualize.plot_latent_space import reduce_to_2d, plot_latent_space
 
 config = helpers_main.load_config()
@@ -547,12 +554,14 @@ class TrainLeJEPATripletParticleTransformer:
                 views, view_padding_masks, view_types = self.model.augmentation(
                     x=x_batch,
                     padding_mask=padding_mask_batch,
+                    return_types=True,
                 )
 
                 negative_views, negative_padding_masks, negative_types = (
                     self.model.negative_augmentation(
                         x=x_batch,
                         padding_mask=padding_mask_batch,
+                        return_types=True,
                     )
                 )
 
@@ -740,6 +749,7 @@ class TrainLeJEPATripletParticleTransformer:
             num_workers=self.args.num_workers,
             pin_memory=self.args.pin_memory,
             collate_fn=collate_node_tensors,
+            persistent_workers=self.args.num_workers > 0,
         )
 
         bg_val_loader = DataLoader(
@@ -749,6 +759,7 @@ class TrainLeJEPATripletParticleTransformer:
             num_workers=self.args.num_workers,
             pin_memory=self.args.pin_memory,
             collate_fn=collate_node_tensors,
+            persistent_workers=self.args.num_workers > 0,
         )
 
         signal_loader = DataLoader(
@@ -758,6 +769,7 @@ class TrainLeJEPATripletParticleTransformer:
             num_workers=self.args.num_workers,
             pin_memory=self.args.pin_memory,
             collate_fn=collate_node_tensors,
+            persistent_workers=self.args.num_workers > 0,
         )
 
         return train_loader, bg_val_loader, signal_loader
@@ -821,7 +833,8 @@ class TrainLeJEPATripletParticleTransformer:
             pdg_end_index=self.node_feature_names.index("pdgId_211") + 1,
 
             corrupt_node_frac=self.args.corrupt_node_frac,
-            batch_mix_anchor_frac=self.args.batch_mix_anchor_frac,
+            batch_mix_anchor_frac_min=self.args.batch_mix_anchor_frac_min,
+            batch_mix_anchor_frac_max=self.args.batch_mix_anchor_frac_max,
             renormalize_pt_sum=self.args.renormalize_negative_pt_sum,
             renormalize_log_pt_stats=self.args.renormalize_negative_log_pt_stats,
         )
@@ -908,6 +921,7 @@ class TrainLeJEPATripletParticleTransformer:
         step_axis = np.arange(1, len(train_history["total_loss"]) + 1)
         epoch_end_steps_np = np.asarray(epoch_end_steps)
 
+        # Plot loss curves
         for ax, key, title in zip(axes[:-1], loss_keys, titles):
             train_values = np.asarray(train_history[key], dtype=np.float64)
             val_values = np.asarray(val_history[key], dtype=np.float64)
@@ -969,7 +983,7 @@ class TrainLeJEPATripletParticleTransformer:
             ax.legend()
             ax.grid(False)
 
-        # Mahalanobis AUC subplot.
+        # Mahalanobis AUC subplot
         auc_ax = axes[-1]
 
         eval_steps = np.asarray(
@@ -984,12 +998,12 @@ class TrainLeJEPATripletParticleTransformer:
             auc_history["auc_bgval_vs_signal"],
             dtype=np.float64,
         )
+        best_auc_bgval = np.nanmax(auc_bgval) if len(auc_bgval) > 0 else np.nan
 
         if len(eval_steps) > 0:
             auc_ax.step(
                 eval_steps,
                 auc_bgtrain,
-                where="post",
                 label="QCD Train vs WJet",
                 alpha=0.75,
             )
@@ -997,11 +1011,20 @@ class TrainLeJEPATripletParticleTransformer:
             auc_ax.step(
                 eval_steps,
                 auc_bgval,
-                where="post",
                 label="QCD Val vs WJet",
                 alpha=0.75,
             )
+            if np.isfinite(best_auc_bgval):
+                auc_ax.axhline(
+                    y=best_auc_bgval,
+                    color="black",
+                    linestyle="--",
+                    linewidth=1,
+                    alpha=0.25,
+                    label=f"Best Val: {best_auc_bgval:.4f}",
+                )
 
+        # Draw vertical lines for epoch boundaries
         if len(epoch_end_steps_np) > 0:
             max_labels = 12
             stride = max(
@@ -1025,6 +1048,7 @@ class TrainLeJEPATripletParticleTransformer:
 
         axes[-1].set_xlabel("Step Number")
 
+        # Add secondary x-axis for epoch numbers
         if len(epoch_end_steps_np) > 0:
             epoch_ids = np.arange(1, len(epoch_end_steps_np) + 1)
             max_labels = 12
@@ -1143,7 +1167,8 @@ class TrainLeJEPATripletParticleTransformer:
 
         latents = np.asarray(latents, dtype=np.float64)
         centered = latents - mean
-        scores = np.einsum("nd,dd,nd->n", centered, precision, centered)
+        # scores = np.einsum("nd,dd,nd->n", centered, precision, centered)
+        scores = np.einsum("ni,ij,nj->n", centered, precision, centered)
         return scores.astype(np.float64)
 
     @staticmethod
@@ -1284,9 +1309,6 @@ class TrainLeJEPATripletParticleTransformer:
         print(f"Mahalanobis metrics saved to {metrics_path}")
         print(f"Mahalanobis AUC, QCD train vs WJet: {auc_bgtrain_vs_signal:.6f}")
         print(f"Mahalanobis AUC, QCD val vs WJet: {auc_bgval_vs_signal:.6f}")
-
-        print(f"Mahalanobis AUC, QCD train vs WJet: {auc_bgtrain_vs_signal:.6f}")
-        print(f"Mahalanobis AUC, QCD val vs WJet: {auc_bgval_vs_signal:.6f}")
         
         return auc_bgtrain_vs_signal, auc_bgval_vs_signal
         
@@ -1407,7 +1429,8 @@ class TrainLeJEPATripletParticleTransformer:
             "eta_phi_shuffle_prob": self.args.eta_phi_shuffle_prob,
             "identity_shuffle_prob": self.args.identity_shuffle_prob,
             "corrupt_node_frac": self.args.corrupt_node_frac,
-            "batch_mix_anchor_frac": self.args.batch_mix_anchor_frac,
+            "batch_mix_anchor_frac_min": self.args.batch_mix_anchor_frac_min,
+            "batch_mix_anchor_frac_max": self.args.batch_mix_anchor_frac_max,
             "renormalize_negative_pt_sum":
                 self.args.renormalize_negative_pt_sum,
             "renormalize_negative_log_pt_stats":
@@ -1497,13 +1520,19 @@ class TrainLeJEPATripletParticleTransformer:
 
         best_val_loss = float("inf")
         best_model_path = os.path.join(self.output_dir, "best_model.pth")
-        timer = helpers_main.LeTimer()
 
+        profiler_schedule = schedule(
+            wait=2,
+            warmup=2,
+            active=5,
+            repeat=1,
+        )
         for epoch in range(1, self.args.epochs + 1):
             print(f"\nEpoch [{epoch}/{self.args.epochs}]")
             print(f"Learning rate: {optimizer.param_groups[0]['lr']:.8g}")
 
             self.model.train()
+
             epoch_train = {
                 "total_loss": [],
                 "invariant_loss": [],
@@ -1513,60 +1542,130 @@ class TrainLeJEPATripletParticleTransformer:
                 "triplet_neg_distance": [],
             }
 
-            pbar = tqdm(train_loader, desc=f"Train Epoch {epoch}/{self.args.epochs}")
-            for batch in pbar:
-                x = batch["x"].to(DEVICE, non_blocking=True)
-                padding_mask = batch["padding_mask"].to(DEVICE, non_blocking=True)
+            pbar = tqdm(
+                train_loader,
+                desc=f"Train Epoch {epoch}/{self.args.epochs}",
+            )
 
-                optimizer.zero_grad(set_to_none=True)
+            # Profile only the first epoch.
+            should_profile = self.args.profile and epoch == 1
 
-                with torch.autocast(
-                    device_type=DEVICE.type,
-                    dtype=dtype,
-                    enabled=use_autocast,
-                ):
-                    output = self.model.forward_pretrain(
-                        x,
-                        padding_mask=padding_mask,
-                        normalize_output=self.args.normalize_output_representations,
+            profiler_context = (
+                profile(
+                    activities=[
+                        ProfilerActivity.CPU,
+                        ProfilerActivity.CUDA,
+                    ],
+                    schedule=profiler_schedule,
+                    record_shapes=True,
+                    profile_memory=True,
+                    with_stack=False,
+                )
+                if should_profile
+                else nullcontext()
+            )
+
+            with profiler_context as prof:
+                for step, batch in enumerate(pbar):
+                    x = batch["x"].to(
+                        DEVICE,
+                        non_blocking=True,
                     )
-                    loss = output["total_loss"]
-
-                loss.backward()
-
-                if self.args.grad_clip_norm is not None:
-                    torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(),
-                        max_norm=self.args.grad_clip_norm,
+                    padding_mask = batch["padding_mask"].to(
+                        DEVICE,
+                        non_blocking=True,
                     )
 
-                optimizer.step()
-                scheduler.step()
+                    optimizer.zero_grad(set_to_none=True)
 
-                step_losses = {
-                    "total_loss": float(output["total_loss"].detach().cpu()),
-                    "invariant_loss": float(output["invariant_loss"].detach().cpu()),
-                    "sigreg_loss": float(output["sigreg_loss"].detach().cpu()),
-                    "triplet_loss": float(output["triplet_loss"].detach().cpu()),
-                    "triplet_pos_distance": float(output["triplet_pos_distance"].detach().cpu()),
-                    "triplet_neg_distance": float(output["triplet_neg_distance"].detach().cpu()),
-                }
+                    with record_function("training_forward"):
+                        with torch.autocast(
+                            device_type=DEVICE.type,
+                            dtype=dtype,
+                            enabled=use_autocast,
+                        ):
+                            output = self.model.forward_pretrain(
+                                x,
+                                padding_mask=padding_mask,
+                                normalize_output=(
+                                    self.args.normalize_output_representations
+                                ),
+                            )
+                            loss = output["total_loss"]
 
-                for key in train_history:
-                    train_history[key].append(step_losses[key])
-                    epoch_train[key].append(step_losses[key])
+                    with record_function("training_backward"):
+                        loss.backward()
 
-                pbar.set_postfix(
-                    {
-                        "total": f"{step_losses['total_loss']:.4g}",
-                        "inv": f"{step_losses['invariant_loss']:.4g}",
-                        "sig": f"{step_losses['sigreg_loss']:.4g}",
-                        "tri": f"{step_losses['triplet_loss']:.4g}",
-                        "d+": f"{step_losses['triplet_pos_distance']:.4g}",
-                        "d-": f"{step_losses['triplet_neg_distance']:.4g}",
+                    if self.args.grad_clip_norm is not None:
+                        with record_function("gradient_clipping"):
+                            torch.nn.utils.clip_grad_norm_(
+                                self.model.parameters(),
+                                max_norm=self.args.grad_clip_norm,
+                            )
+
+                    with record_function("optimizer_step"):
+                        optimizer.step()
+
+                    with record_function("scheduler_step"):
+                        scheduler.step()
+
+                    with record_function("metrics_to_cpu"):
+                        loss_values = torch.stack(
+                            [
+                                output["total_loss"].detach(),
+                                output["invariant_loss"].detach(),
+                                output["sigreg_loss"].detach(),
+                                output["triplet_loss"].detach(),
+                                output["triplet_pos_distance"].detach(),
+                                output["triplet_neg_distance"].detach(),
+                            ]
+                        ).float().cpu().tolist()
+
+                    step_losses = {
+                        "total_loss": loss_values[0],
+                        "invariant_loss": loss_values[1],
+                        "sigreg_loss": loss_values[2],
+                        "triplet_loss": loss_values[3],
+                        "triplet_pos_distance": loss_values[4],
+                        "triplet_neg_distance": loss_values[5],
                     }
+
+                    for key in train_history:
+                        train_history[key].append(step_losses[key])
+                        epoch_train[key].append(step_losses[key])
+
+                    with record_function("progress_bar_update"):
+                        if step % 10 == 0:
+                            pbar.set_postfix(
+                                {
+                                    "total": f"{step_losses['total_loss']:.4g}",
+                                    "inv": f"{step_losses['invariant_loss']:.4g}",
+                                    "sig": f"{step_losses['sigreg_loss']:.4g}",
+                                    "tri": f"{step_losses['triplet_loss']:.4g}",
+                                    "d+": f"{step_losses['triplet_pos_distance']:.4g}",
+                                    "d-": f"{step_losses['triplet_neg_distance']:.4g}",
+                                }
+                            )
+                    # Advance profiler state once per training iteration.
+                    if should_profile:
+                        prof.step()
+
+            if should_profile:
+                print(
+                    prof.key_averages().table(
+                        sort_by="cuda_time_total",
+                        row_limit=50,
+                    )
                 )
 
+                profile_path = os.path.join(
+                    self.output_dir,
+                    "l40s_profile_trace.json",
+                )
+                prof.export_chrome_trace(profile_path)
+
+                print(f"Saved profiler trace to {profile_path}")
+            
             mean_train = {
                 key: float(np.nanmean(values))
                 for key, values in epoch_train.items()
@@ -1766,7 +1865,13 @@ if __name__ == "__main__":
         prog="Train LeJEPA Triplet ParticleTransformer Representation",
         description="Train a ParticleTransformer representation model with LeJEPA + corrupted-negative triplet SSL.",
     )
-
+    # Profile
+    parser.add_argument(
+        "--profile",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Profile a short training window in the first epoch.",
+    )
     # Data.
     parser.add_argument(
         "--background",
@@ -2041,10 +2146,16 @@ if __name__ == "__main__":
         help="Fraction of valid nodes corrupted in within-event negative modes. Default: 1.0.",
     )
     parser.add_argument(
-        "--batch-mix-anchor-frac",
+        "--batch-mix-anchor-frac-min",
         type=float,
-        default=0.5,
-        help="Fraction of anchor-event nodes kept in batch_mix negatives. Default: 0.5.",
+        default=0.1,
+        help="Minimum fraction of anchor-event nodes kept in batch_mix negatives. Default: 0.1.",
+    )
+    parser.add_argument(
+        "--batch-mix-anchor-frac-max",
+        type=float,
+        default=0.9,
+        help="Maximum fraction of anchor-event nodes kept in batch_mix negatives. Default: 0.9.",
     )
     parser.add_argument(
         "--renormalize-negative-pt-sum",
@@ -2131,8 +2242,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num-workers",
         type=int,
-        default=0,
-        help="DataLoader workers. Default: 0.",
+        default=4,
+        help="DataLoader workers. Default: 4.",
     )
     parser.add_argument(
         "--pin-memory",
