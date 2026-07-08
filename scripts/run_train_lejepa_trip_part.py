@@ -372,9 +372,8 @@ class TrainLeJEPAParticleTransformer:
                 "invariant_loss",
                 "sigreg_loss",
                 "mahalanobis_loss",
-                "negative_mahalanobis_sq_mean",
                 "negative_mahalanobis_mean",
-                "ema_mean_norm",
+                "negative_outside_radius_fraction",
             ]
 
         else:

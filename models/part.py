@@ -2105,19 +2105,29 @@ class MahalanobisNegativeLossConfig:
             Sigma_t = M_t - mu_t mu_t^T
 
     Negative objective:
-        Corrupted negative representations are assigned a Mahalanobis distance
-        from the running normal QCD distribution.
+        Corrupted negative representations are assigned a Mahalanobis radius:
 
-        Default objective:
+            D_M(z^-)
+                = sqrt(
+                    (z^- - mu)^T
+                    Sigma^+
+                    (z^- - mu)
+                  )
 
-            L_maha = -mean(log(D_M^2 / D + eps))
+        The loss pushes negatives outside a target Mahalanobis radius R:
 
-        where D is representation dimension.
+            L_maha
+                = mean(
+                    ReLU(R - D_M(z^-))^2
+                  )
 
-        This continuously encourages larger negative Mahalanobis distance,
-        without a hard margin/boundary. Compared with directly minimizing
-        -D_M^2, the logarithm gives a weaker gradient once negatives are already
-        far away.
+        Therefore:
+            D_M(z^-) < R:
+                negative is still too close to the normal distribution and
+                receives an outward gradient.
+
+            D_M(z^-) >= R:
+                loss is zero and the negative is no longer pushed farther.
 
     Important:
         Running statistics are detached state. Gradients flow only through
@@ -2129,8 +2139,9 @@ class MahalanobisNegativeLossConfig:
     # EMA decay for both first and raw second moments.
     ema_decay: float = 0.99
 
-    # Small epsilon inside log.
-    log_eps: float = 1e-8
+    # Target Mahalanobis radius for corrupted negative samples.
+    # Negatives beyond this radius receive zero Mahalanobis loss.
+    target_radius: float = 5.0
 
 class LeJEPASIGRegLoss(nn.Module):
     """
@@ -2389,12 +2400,19 @@ class LeJEPASIGRegMahalanobisLoss(nn.Module):
             D_M^2(z^-)
                 = (z^- - mu)^T Sigma^{-1} (z^- - mu)
 
-    Continuously maximize Mahalanobis distance through:
+    Push corrupted negatives outside a target Mahalanobis radius:
 
             L_maha
-                = -mean(log(D_M^2 / D + eps))
+                = mean(
+                    ReLU(R - D_M(z^-))^2
+                )
 
-        There is no hard margin or boundary.
+        where R is the configured target radius.
+
+        Negatives with:
+            D_M(z^-) >= R
+
+        receive zero Mahalanobis loss and are not pushed farther.
 
     Important:
         - EMA statistics are updated from detached normal anchors.
@@ -2421,6 +2439,12 @@ class LeJEPASIGRegMahalanobisLoss(nn.Module):
             raise ValueError(
                 "ema_decay must satisfy 0 <= ema_decay < 1, got "
                 f"{mahalanobis_config.ema_decay}."
+            )
+        
+        if mahalanobis_config.target_radius <= 0.0:
+            raise ValueError(
+                "target_radius must be positive, got "
+                f"{mahalanobis_config.target_radius}."
             )
 
         self.lejepa_loss = LeJEPASIGRegLoss(lejepa_config)
@@ -2799,17 +2823,27 @@ class LeJEPASIGRegMahalanobisLoss(nn.Module):
             covariance=covariance,
         )
 
-        dim_scale = float(self.representation_dim)
-        normalized_maha_sq = maha_sq / dim_scale
+        # Mahalanobis radius:
+        #
+        #     D_M = sqrt(D_M^2)
+        #
+        # Shape:
+        #     (K, B)
+        maha_distance = torch.sqrt(
+            maha_sq.clamp_min(0.0)
+        )
 
-        # ----------------------------------------------------
-        # 6. Unbounded, no-margin negative objective
-        # ----------------------------------------------------
-        
-        mahalanobis_loss = -torch.log(
-            normalized_maha_sq
-            + self.mahalanobis_config.log_eps
-        ).mean()
+        target_radius = self.mahalanobis_config.target_radius
+
+        # Radius-based hinge objective:
+        #
+        #     L = mean(ReLU(R - D_M)^2)
+        #
+        # Negatives inside the target radius are pushed outward.
+        # Negatives at or beyond the target radius receive zero loss.
+        mahalanobis_loss = F.relu(
+            target_radius - maha_distance
+        ).square().mean()
 
         total_loss = (
             base_loss["total_loss"]
@@ -2837,17 +2871,17 @@ class LeJEPASIGRegMahalanobisLoss(nn.Module):
 
         output = {
             **base_loss,
-
             "mahalanobis_loss": mahalanobis_loss,
 
-            # Diagnostics
-            "negative_mahalanobis_sq_mean": maha_sq.mean(),
-            "negative_mahalanobis_mean": torch.sqrt(
-                maha_sq.clamp_min(0.0)
-            ).mean(),
+            # Mean Mahalanobis radius of corrupted negative samples.
+            "negative_mahalanobis_mean": maha_distance.mean(),
+
+            # Fraction of corrupted negatives already outside the target radius.
+            "negative_outside_radius_fraction": (
+                maha_distance >= target_radius
+            ).float().mean(),
 
             "ema_mean_norm": self.ema_mean.norm(),
-
             "total_loss": total_loss,
         }
 
