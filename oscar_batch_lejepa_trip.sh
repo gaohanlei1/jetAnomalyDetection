@@ -38,6 +38,7 @@ python -u scripts/run_train_lejepa_trip_part.py \
   --background "data/processed/qcd-vs-wjet-pt-200to400/QCD_scaled_scaled.pkl" \
   --signal "data/processed/qcd-vs-wjet-pt-200to400/WJet_scaled_scaled.pkl" \
   --model "mahalanobis" \
+  --mahalanobis-weight 0.02 \
   --embed-dim 128 \
   --representation-dim 128 \
   --num-layers 8 \
@@ -60,7 +61,7 @@ python -u scripts/run_train_lejepa_trip_part.py \
   --eta-phi-shuffle-prob 0.3 \
   --identity-shuffle-prob 0.3 \
   --pairwise-hidden-dim 16 \
-  --output-dir "plots/run-lejepa-mahala"
+  --output-dir "plots/run-lejepa-mahala-0.02"
 
 #  --triplet-weight 0.1 \
 #  --triplet-margin 1.0 \

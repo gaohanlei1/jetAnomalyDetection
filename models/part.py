@@ -2423,16 +2423,6 @@ class LeJEPASIGRegMahalanobisLoss(nn.Module):
                 f"{mahalanobis_config.ema_decay}."
             )
 
-        if mahalanobis_config.objective not in {
-            "negative_log",
-            "negative_distance",
-        }:
-            raise ValueError(
-                "Unsupported Mahalanobis objective "
-                f"{mahalanobis_config.objective!r}. "
-                "Expected 'negative_log' or 'negative_distance'."
-            )
-
         self.lejepa_loss = LeJEPASIGRegLoss(lejepa_config)
         self.mahalanobis_config = mahalanobis_config
         self.representation_dim = representation_dim
@@ -2618,7 +2608,10 @@ class LeJEPASIGRegMahalanobisLoss(nn.Module):
         covariance: torch.Tensor,
     ) -> torch.Tensor:
         """
-        Compute squared Mahalanobis distance without explicit matrix inverse.
+        Compute squared Mahalanobis distance using the Moore-Penrose
+        pseudoinverse of a symmetric positive-semidefinite covariance matrix.
+
+        This does not require covariance to be strictly positive-definite.
 
         Input:
             samples: (..., D)
@@ -2626,13 +2619,6 @@ class LeJEPASIGRegMahalanobisLoss(nn.Module):
 
         Returns:
             maha_sq: samples.shape[:-1]
-
-        Uses:
-            covariance = L L^T
-
-            y = L^{-1} (z - mu)
-
-            D_M^2 = ||y||^2
         """
 
         original_shape = samples.shape[:-1]
@@ -2642,26 +2628,60 @@ class LeJEPASIGRegMahalanobisLoss(nn.Module):
             self.representation_dim,
         ).float()
 
-        centered = flat_samples - self.ema_mean.detach().unsqueeze(0)
-
-        # Cholesky is preferred over explicit covariance inversion.
-        chol = torch.linalg.cholesky(covariance)
-
-        # Solve:
-        #
-        #     L y^T = centered^T
-        #
-        # Shapes:
-        #     L:              (D, D)
-        #     centered.T:     (D, M)
-        #     whitened.T:     (D, M)
-        whitened_t = torch.linalg.solve_triangular(
-            chol,
-            centered.transpose(0, 1),
-            upper=False,
+        centered = (
+            flat_samples
+            - self.ema_mean.detach().unsqueeze(0)
         )
 
-        maha_sq = whitened_t.square().sum(dim=0)
+        # Ensure exact numerical symmetry.
+        covariance = 0.5 * (
+            covariance + covariance.transpose(0, 1)
+        )
+
+        # Symmetric eigendecomposition:
+        #
+        #     Sigma = Q diag(lambda) Q^T
+        #
+        eigenvalues, eigenvectors = torch.linalg.eigh(
+            covariance
+        )
+
+        # Numerical rank tolerance.
+        #
+        # Eigenvalues below this threshold are treated as null-space
+        # directions rather than inverted.
+        max_eigenvalue = eigenvalues.abs().max()
+
+        tolerance = (
+            torch.finfo(eigenvalues.dtype).eps
+            * self.representation_dim
+            * max_eigenvalue
+        )
+
+        positive = eigenvalues > tolerance
+
+        inverse_eigenvalues = torch.where(
+            positive,
+            eigenvalues.reciprocal(),
+            torch.zeros_like(eigenvalues),
+        )
+
+        # Project centered samples into covariance eigenbasis:
+        #
+        #     y = (z - mu) Q
+        #
+        projected = centered @ eigenvectors
+
+        # Mahalanobis squared:
+        #
+        #     D_M^2
+        #       = sum_j projected_j^2 / lambda_j
+        #
+        # Null-space directions are ignored by the pseudoinverse.
+        maha_sq = (
+            projected.square()
+            * inverse_eigenvalues.unsqueeze(0)
+        ).sum(dim=-1)
 
         return maha_sq.view(*original_shape)
 

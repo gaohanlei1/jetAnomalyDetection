@@ -1,0 +1,24 @@
+{
+  "epoch": 36,
+  "auc_bgtrain_vs_signal": 0.5509403136075899,
+  "auc_bgval_vs_signal": 0.5543708938638121,
+  "background_train_score_mean": 127.44006566397225,
+  "background_val_score_mean": 127.18546798812055,
+  "signal_score_mean": 136.29027612183873,
+  "background_train_score_median": 118.3536863616302,
+  "background_val_score_median": 118.15912534292329,
+  "signal_score_median": 124.11235998728102,
+  "mahalanobis_cov_eps": 0.0001,
+  "background_train_latent_shape": [
+    99979,
+    128
+  ],
+  "background_val_latent_shape": [
+    24995,
+    128
+  ],
+  "signal_latent_shape": [
+    4064,
+    128
+  ]
+}

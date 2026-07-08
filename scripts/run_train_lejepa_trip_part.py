@@ -1625,9 +1625,6 @@ class TrainLeJEPAParticleTransformer:
                     "mahalanobis_log_eps": (
                         self.args.mahalanobis_log_eps
                     ),
-                    "mahalanobis_objective": (
-                        self.args.mahalanobis_objective
-                    ),
                 }
             )
 

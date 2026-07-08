@@ -32,11 +32,6 @@ logs/
 *.db
 *.root
 
-# PyTorch model checkpoints
-*.pt
-*.pth
-checkpoints/
-
 # TensorBoard logs
 runs/
 
