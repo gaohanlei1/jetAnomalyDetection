@@ -37,6 +37,7 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 python -u scripts/run_train_lejepa_trip_part.py \
   --background "data/processed/qcd-vs-wjet-pt-200to400/QCD_scaled_scaled.pkl" \
   --signal "data/processed/qcd-vs-wjet-pt-200to400/WJet_scaled_scaled.pkl" \
+  --model "mahalanobis" \
   --embed-dim 128 \
   --representation-dim 128 \
   --num-layers 8 \
@@ -44,10 +45,8 @@ python -u scripts/run_train_lejepa_trip_part.py \
   --batch-size 256 \
   --epochs 50 \
   --learning-rate 1e-3 \
-  --weight-decay 0 \
+  --weight-decay 5e-2 \
   --precision bf16 \
-  --triplet-weight 0.1 \
-  --triplet-margin 1.0 \
   --num-global-views 2 \
   --num-local-views 3 \
   --num-negative-views 3 \
@@ -56,18 +55,19 @@ python -u scripts/run_train_lejepa_trip_part.py \
   --local-drop-pt-frac-min 0.50 \
   --local-drop-pt-frac-max 0.95 \
   --batch-mix-prob 0.00 \
-  --pt-resample-prob 0.50 \
-  --node-eta-phi-rotation-prob 0.25 \
-  --eta-phi-shuffle-prob 0.25 \
-  --identity-shuffle-prob 0.00 \
+  --pt-resample-prob 0.30 \
+  --node-eta-phi-rotation-prob 0.1 \
+  --eta-phi-shuffle-prob 0.3 \
+  --identity-shuffle-prob 0.3 \
   --pairwise-hidden-dim 16 \
-  --output-dir "plots/run-lejepa-trip-part-prob-ph16-replicate-dr-nowd"
+  --output-dir "plots/run-lejepa-mahala"
 
-
-# --learning-rate 5e-4 \
-# --weight-decay 5e-2 \
-# --batch-mix-prob 0.45 \
-# --pt-resample-prob 0.25 \
-# --node-eta-phi-rotation-prob 0.20 \
-# --eta-phi-shuffle-prob 0.05 \
-# --identity-shuffle-prob 0.05 \
+#  --triplet-weight 0.1 \
+#  --triplet-margin 1.0 \
+#  --learning-rate 5e-4 \
+#  --weight-decay 5e-2 \
+#  --batch-mix-prob 0.45 \
+#  --pt-resample-prob 0.25 \
+#  --node-eta-phi-rotation-prob 0.20 \
+#  --eta-phi-shuffle-prob 0.05 \
+#  --identity-shuffle-prob 0.05 \
