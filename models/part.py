@@ -2073,6 +2073,64 @@ class TripletLossConfig:
     normalize_representations_for_triplet: bool = False
     use_global_views_as_positives: bool = True
 
+# ------------------------------------------------------------
+# Mahalanobis negative loss config
+# ------------------------------------------------------------
+
+@dataclass
+class MahalanobisNegativeLossConfig:
+    """
+    Configuration for LeJEPA + SIGReg + distributional negative exclusion.
+
+    Normal reference distribution:
+        Estimated online from the per-event global-view mean representations:
+
+            anchor_b = mean_{v in global views} z_{v,b}
+
+        These anchors are detached before updating running statistics.
+
+    Running statistics:
+        EMA mean:
+
+            mu_t = beta * mu_{t-1}
+                 + (1 - beta) * batch_mean_t
+
+        EMA raw second moment:
+
+            M_t = beta * M_{t-1}
+                + (1 - beta) * E_batch[z z^T]
+
+        Covariance:
+
+            Sigma_t = M_t - mu_t mu_t^T
+
+    Negative objective:
+        Corrupted negative representations are assigned a Mahalanobis distance
+        from the running normal QCD distribution.
+
+        Default objective:
+
+            L_maha = -mean(log(D_M^2 / D + eps))
+
+        where D is representation dimension.
+
+        This continuously encourages larger negative Mahalanobis distance,
+        without a hard margin/boundary. Compared with directly minimizing
+        -D_M^2, the logarithm gives a weaker gradient once negatives are already
+        far away.
+
+    Important:
+        Running statistics are detached state. Gradients flow only through
+        negative representations, not through the EMA mean/covariance.
+    """
+
+    mahalanobis_weight: float = 0.1
+
+    # EMA decay for both first and raw second moments.
+    ema_decay: float = 0.99
+
+    # Small epsilon inside log.
+    log_eps: float = 1e-8
 
 class LeJEPASIGRegLoss(nn.Module):
     """
@@ -2293,6 +2351,488 @@ class LeJEPASIGRegTripletLoss(nn.Module):
         return output
 
 
+# ------------------------------------------------------------
+# LeJEPA + SIGReg + Mahalanobis negative exclusion
+# ------------------------------------------------------------
+
+class LeJEPASIGRegMahalanobisLoss(nn.Module):
+    """
+    LeJEPA invariant + SIGReg with distributional negative exclusion.
+
+    Normal distribution:
+        Estimated from the per-event global-view mean representations.
+
+        Given:
+            z_views: (V, B, D)
+
+        and G global views:
+
+            normal_anchor_b
+                = mean_{v=1..G} z_{v,b}
+
+        producing:
+            normal_anchors: (B, D)
+
+    Running normal statistics:
+        EMA first moment:
+            mu ~= E[z]
+
+        EMA raw second moment:
+            M ~= E[z z^T]
+
+        Covariance:
+            Sigma = M - mu mu^T
+
+    Negative score:
+        For each corrupted negative representation z^-:
+
+            D_M^2(z^-)
+                = (z^- - mu)^T Sigma^{-1} (z^- - mu)
+
+    Continuously maximize Mahalanobis distance through:
+
+            L_maha
+                = -mean(log(D_M^2 / D + eps))
+
+        There is no hard margin or boundary.
+
+    Important:
+        - EMA statistics are updated from detached normal anchors.
+        - EMA statistics do not receive gradients.
+        - Gradients from the Mahalanobis objective flow only through
+          z_negatives.
+        - No teacher encoder is introduced.
+    """
+
+    def __init__(
+        self,
+        lejepa_config: LeJEPALossConfig,
+        mahalanobis_config: MahalanobisNegativeLossConfig,
+        representation_dim: int,
+    ):
+        super().__init__()
+
+        if representation_dim <= 0:
+            raise ValueError(
+                f"representation_dim must be positive, got {representation_dim}."
+            )
+
+        if not (0.0 <= mahalanobis_config.ema_decay < 1.0):
+            raise ValueError(
+                "ema_decay must satisfy 0 <= ema_decay < 1, got "
+                f"{mahalanobis_config.ema_decay}."
+            )
+
+        if mahalanobis_config.objective not in {
+            "negative_log",
+            "negative_distance",
+        }:
+            raise ValueError(
+                "Unsupported Mahalanobis objective "
+                f"{mahalanobis_config.objective!r}. "
+                "Expected 'negative_log' or 'negative_distance'."
+            )
+
+        self.lejepa_loss = LeJEPASIGRegLoss(lejepa_config)
+        self.mahalanobis_config = mahalanobis_config
+        self.representation_dim = representation_dim
+
+        # Running first moment:
+        #     mu ~= E[z]
+        self.register_buffer(
+            "ema_mean",
+            torch.zeros(
+                representation_dim,
+                dtype=torch.float32,
+            ),
+        )
+
+        # Running raw second moment:
+        #     M ~= E[z z^T]
+        self.register_buffer(
+            "ema_raw_second_moment",
+            torch.zeros(
+                representation_dim,
+                representation_dim,
+                dtype=torch.float32,
+            ),
+        )
+
+        # Explicit initialization state.
+        self.register_buffer(
+            "ema_initialized",
+            torch.tensor(False, dtype=torch.bool),
+        )
+
+        # Useful diagnostic / checkpoint state.
+        self.register_buffer(
+            "ema_num_updates",
+            torch.zeros((), dtype=torch.long),
+        )
+
+    @torch.no_grad()
+    def _compute_batch_moments(
+        self,
+        normal_samples: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Compute current-batch first and raw second moments.
+
+        Input:
+            normal_samples: (B, D)
+
+        Returns:
+            batch_mean: (D,)
+
+            batch_raw_second_moment: (D, D)
+                = (1 / B) sum_i z_i z_i^T
+        """
+
+        if normal_samples.ndim != 2:
+            raise ValueError(
+                "Expected normal_samples shape (B, D), got "
+                f"{tuple(normal_samples.shape)}."
+            )
+
+        if normal_samples.size(1) != self.representation_dim:
+            raise ValueError(
+                f"Expected representation dimension {self.representation_dim}, "
+                f"got {normal_samples.size(1)}."
+            )
+
+        samples = normal_samples.detach().float()
+
+        batch_size = samples.size(0)
+        if batch_size <= 0:
+            raise ValueError("normal_samples must contain at least one sample.")
+
+        batch_mean = samples.mean(dim=0)
+
+        # Raw second moment:
+        #
+        #     E[z z^T]
+        #
+        # Shape:
+        #     (D, B) @ (B, D) -> (D, D)
+        batch_raw_second_moment = (
+            samples.transpose(0, 1) @ samples
+        ) / float(batch_size)
+
+        return batch_mean, batch_raw_second_moment
+
+    @torch.no_grad()
+    def _initialize_statistics(
+        self,
+        normal_samples: torch.Tensor,
+    ) -> None:
+        """
+        Initialize EMA statistics directly from the first observed batch.
+
+        We do not initialize from zeros and then apply EMA, because that would
+        introduce a large zero-initialization bias during early training.
+        """
+
+        batch_mean, batch_raw_second_moment = self._compute_batch_moments(
+            normal_samples
+        )
+
+        self.ema_mean.copy_(batch_mean)
+        self.ema_raw_second_moment.copy_(batch_raw_second_moment)
+        self.ema_initialized.fill_(True)
+        self.ema_num_updates.add_(1)
+
+    @torch.no_grad()
+    def _update_statistics(
+        self,
+        normal_samples: torch.Tensor,
+    ) -> None:
+        """
+        EMA update of first and raw second moments.
+        """
+
+        batch_mean, batch_raw_second_moment = self._compute_batch_moments(
+            normal_samples
+        )
+
+        beta = self.mahalanobis_config.ema_decay
+        one_minus_beta = 1.0 - beta
+
+        self.ema_mean.mul_(beta).add_(
+            batch_mean,
+            alpha=one_minus_beta,
+        )
+
+        self.ema_raw_second_moment.mul_(beta).add_(
+            batch_raw_second_moment,
+            alpha=one_minus_beta,
+        )
+
+        self.ema_num_updates.add_(1)
+
+    def _covariance(self) -> torch.Tensor:
+        """
+        Construct the covariance matrix from EMA first and raw second moments.
+
+        Running statistics:
+
+            mu ~= E[z]
+
+            M ~= E[z z^T]
+
+        Covariance:
+
+            Sigma = E[z z^T] - E[z] E[z]^T
+
+                = M - mu mu^T
+
+        The result is symmetrized to remove small floating-point asymmetry:
+
+            Sigma <- 0.5 * (Sigma + Sigma^T)
+
+        Returns:
+            covariance: (D, D), fp32
+
+        Important:
+            No covariance shrinkage or diagonal jitter is applied.
+        """
+
+        mean = self.ema_mean.detach()
+        raw_second = self.ema_raw_second_moment.detach()
+
+        covariance = (
+            raw_second
+            - torch.outer(mean, mean)
+        )
+
+        # Theoretical covariance is symmetric. Remove small numerical asymmetry
+        # introduced by floating-point computation.
+        covariance = 0.5 * (
+            covariance + covariance.transpose(0, 1)
+        )
+
+        return covariance
+
+    def _mahalanobis_squared(
+        self,
+        samples: torch.Tensor,
+        covariance: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Compute squared Mahalanobis distance without explicit matrix inverse.
+
+        Input:
+            samples: (..., D)
+            covariance: (D, D)
+
+        Returns:
+            maha_sq: samples.shape[:-1]
+
+        Uses:
+            covariance = L L^T
+
+            y = L^{-1} (z - mu)
+
+            D_M^2 = ||y||^2
+        """
+
+        original_shape = samples.shape[:-1]
+
+        flat_samples = samples.reshape(
+            -1,
+            self.representation_dim,
+        ).float()
+
+        centered = flat_samples - self.ema_mean.detach().unsqueeze(0)
+
+        # Cholesky is preferred over explicit covariance inversion.
+        chol = torch.linalg.cholesky(covariance)
+
+        # Solve:
+        #
+        #     L y^T = centered^T
+        #
+        # Shapes:
+        #     L:              (D, D)
+        #     centered.T:     (D, M)
+        #     whitened.T:     (D, M)
+        whitened_t = torch.linalg.solve_triangular(
+            chol,
+            centered.transpose(0, 1),
+            upper=False,
+        )
+
+        maha_sq = whitened_t.square().sum(dim=0)
+
+        return maha_sq.view(*original_shape)
+
+    def forward(
+        self,
+        z_views: torch.Tensor,
+        z_negatives: torch.Tensor,
+        num_global_views: int,
+    ) -> Dict[str, torch.Tensor]:
+        if z_views.ndim != 3:
+            raise ValueError(
+                f"Expected z_views shape (V, B, D), got {tuple(z_views.shape)}."
+            )
+
+        if z_negatives.ndim != 3:
+            raise ValueError(
+                "Expected z_negatives shape (K, B, D), got "
+                f"{tuple(z_negatives.shape)}."
+            )
+
+        if z_views.size(1) != z_negatives.size(1):
+            raise ValueError(
+                f"Batch size mismatch: z_views has B={z_views.size(1)}, "
+                f"z_negatives has B={z_negatives.size(1)}."
+            )
+
+        if z_views.size(2) != self.representation_dim:
+            raise ValueError(
+                f"Expected z_views D={self.representation_dim}, "
+                f"got D={z_views.size(2)}."
+            )
+
+        if z_negatives.size(2) != self.representation_dim:
+            raise ValueError(
+                f"Expected z_negatives D={self.representation_dim}, "
+                f"got D={z_negatives.size(2)}."
+            )
+
+        if not (1 <= num_global_views <= z_views.size(0)):
+            raise ValueError(
+                f"Expected num_global_views in [1, {z_views.size(0)}], "
+                f"got {num_global_views}."
+            )
+
+        # Numerically sensitive statistical losses are evaluated in fp32.
+        z_views = z_views.float()
+        z_negatives = z_negatives.float()
+
+        # ----------------------------------------------------
+        # 1. Standard LeJEPA invariant + SIGReg
+        # ----------------------------------------------------
+        base_loss = self.lejepa_loss(
+            z_views=z_views,
+            num_global_views=num_global_views,
+        )
+
+        # ----------------------------------------------------
+        # 2. Build one normal representation per event
+        # ----------------------------------------------------
+        #
+        # Same global-view anchor used conceptually by the invariant loss:
+        #
+        #     normal_anchor_b
+        #         = mean over global views for event b
+        #
+        # Shape:
+        #     (B, D)
+        #
+        # We use one representation per event rather than flattening all views,
+        # avoiding repeated weighting of correlated augmentations.
+        normal_anchors = (
+            z_views[:num_global_views]
+            .mean(dim=0)
+            .detach()
+        )
+
+        # ----------------------------------------------------
+        # 3. Initialize running statistics if needed
+        # ----------------------------------------------------
+        #
+        # On the first step only, initialize from the current batch.
+        # For later steps, the current Mahalanobis loss uses statistics from
+        # PREVIOUS steps. This reduces same-step moving-target coupling.
+        was_initialized = bool(
+            self.ema_initialized.item()
+        )
+
+        if not was_initialized:
+            if not self.training:
+                raise RuntimeError(
+                    "Mahalanobis EMA statistics are not initialized. "
+                    "Run at least one training forward pass before evaluation."
+                )
+
+            self._initialize_statistics(
+                normal_anchors
+            )
+
+        # ----------------------------------------------------
+        # 4. Construct detached covariance
+        # ----------------------------------------------------
+        covariance = self._covariance()
+
+        # ----------------------------------------------------
+        # 5. Negative Mahalanobis distances
+        # ----------------------------------------------------
+        #
+        # z_negatives:
+        #     (K, B, D)
+        #
+        # maha_sq:
+        #     (K, B)
+        maha_sq = self._mahalanobis_squared(
+            samples=z_negatives,
+            covariance=covariance,
+        )
+
+        dim_scale = float(self.representation_dim)
+        normalized_maha_sq = maha_sq / dim_scale
+
+        # ----------------------------------------------------
+        # 6. Unbounded, no-margin negative objective
+        # ----------------------------------------------------
+        
+        mahalanobis_loss = -torch.log(
+            normalized_maha_sq
+            + self.mahalanobis_config.log_eps
+        ).mean()
+
+        total_loss = (
+            base_loss["total_loss"]
+            + self.mahalanobis_config.mahalanobis_weight
+            * mahalanobis_loss
+        )
+
+        # ----------------------------------------------------
+        # 7. Update EMA statistics AFTER loss geometry is fixed
+        # ----------------------------------------------------
+        #
+        # Except on the first step, where initialization already used this batch.
+        #
+        # This gives:
+        #
+        #   current negative loss
+        #       -> previous running QCD geometry
+        #
+        #   current normal anchors
+        #       -> update geometry for next step
+        #
+        # which reduces immediate target chasing.
+        if self.training and was_initialized:
+            self._update_statistics(normal_anchors)
+
+        output = {
+            **base_loss,
+
+            "mahalanobis_loss": mahalanobis_loss,
+
+            # Diagnostics
+            "negative_mahalanobis_sq_mean": maha_sq.mean(),
+            "negative_mahalanobis_mean": torch.sqrt(
+                maha_sq.clamp_min(0.0)
+            ).mean(),
+
+            "ema_mean_norm": self.ema_mean.norm(),
+
+            "total_loss": total_loss,
+        }
+
+        return output
+    
 # ------------------------------------------------------------
 # Main SSL model
 # ------------------------------------------------------------
@@ -2559,6 +3099,254 @@ class LeJEPATripletParticleTransformerRepresentation(MinimalParticleTransformerR
             output["view_types"] = view_types
             output["negative_views"] = negative_views
             output["negative_padding_masks"] = negative_padding_masks
+            output["negative_types"] = negative_types
+
+        return output
+
+# ------------------------------------------------------------
+# LeJEPA + Mahalanobis-negative SSL model
+# ------------------------------------------------------------
+
+class LeJEPAMahalanobisParticleTransformerRepresentation(
+    MinimalParticleTransformerRepresentation
+):
+    """
+    ParticleTransformer representation model with:
+
+        1. LeJEPA invariant loss
+        2. SIGReg
+        3. Mahalanobis-based corrupted-negative exclusion
+
+    Normal distribution:
+        Maintained entirely as running feature statistics inside self.loss.
+
+        No teacher model is introduced.
+
+        Statistics:
+            EMA mean:
+                mu ~= E[z]
+
+            EMA raw second moment:
+                M ~= E[z z^T]
+
+            covariance:
+                Sigma = M - mu mu^T
+
+    Normal samples:
+        One per event, defined as the mean of that event's global-view
+        representations.
+
+    Negatives:
+        Corrupted views generated by CorruptedNegativeAugmentation.
+
+    Negative objective:
+        Continuously maximize distance from the running normal QCD
+        representation distribution.
+
+        Default:
+            -log(D_M^2 / D + eps)
+
+    During representation extraction:
+        use the inherited forward method.
+    """
+
+    def __init__(
+        self,
+        model_config: ParticleTransformerConfig,
+        augmentation_config: Optional[
+            MultiViewAugmentationConfig
+        ] = None,
+        negative_augmentation_config: Optional[
+            CorruptedNegativeAugmentationConfig
+        ] = None,
+        loss_config: Optional[
+            LeJEPALossConfig
+        ] = None,
+        mahalanobis_loss_config: Optional[
+            MahalanobisNegativeLossConfig
+        ] = None,
+    ):
+        super().__init__(model_config)
+
+        if augmentation_config is None:
+            augmentation_config = MultiViewAugmentationConfig()
+
+        if negative_augmentation_config is None:
+            negative_augmentation_config = (
+                CorruptedNegativeAugmentationConfig()
+            )
+
+        if loss_config is None:
+            loss_config = LeJEPALossConfig()
+
+        if mahalanobis_loss_config is None:
+            mahalanobis_loss_config = (
+                MahalanobisNegativeLossConfig()
+            )
+
+        self.augmentation = MultiViewAugmentation(
+            augmentation_config
+        )
+
+        self.negative_augmentation = CorruptedNegativeAugmentation(
+            negative_augmentation_config
+        )
+
+        self.loss = LeJEPASIGRegMahalanobisLoss(
+            lejepa_config=loss_config,
+            mahalanobis_config=mahalanobis_loss_config,
+            representation_dim=model_config.representation_dim,
+        )
+
+    def forward_pretrain(
+        self,
+        x: torch.Tensor,
+        padding_mask: Optional[torch.Tensor] = None,
+        normalize_output: bool = False,
+        return_views: bool = False,
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Pretraining forward pass.
+
+        Input:
+            x:
+                (B, N, F)
+
+            padding_mask:
+                optional bool tensor (B, N)
+
+        Output dictionary includes:
+            total_loss
+            invariant_loss
+            sigreg_loss
+            mahalanobis_loss
+
+            negative_mahalanobis_sq_mean
+            negative_mahalanobis_mean
+            ema_mean_norm
+
+            z_views:
+                (V, B, D)
+
+            z_negatives:
+                (K, B, D)
+        """
+
+        with record_function("positive_augmentation"):
+            (
+                views,
+                view_padding_masks,
+                view_types,
+            ) = self.augmentation(
+                x=x,
+                padding_mask=padding_mask,
+                return_types=return_views,
+            )
+
+        with record_function("negative_augmentation"):
+            (
+                negative_views,
+                negative_padding_masks,
+                negative_types,
+            ) = self.negative_augmentation(
+                x=x,
+                padding_mask=padding_mask,
+                return_types=return_views,
+            )
+
+        num_views = len(views)
+        num_negative_views = len(negative_views)
+        batch_size = x.size(0)
+
+        with record_function("batch_concat"):
+            batched_views = torch.cat(
+                views,
+                dim=0,
+            )
+
+            batched_view_masks = torch.cat(
+                view_padding_masks,
+                dim=0,
+            )
+
+            batched_negatives = torch.cat(
+                negative_views,
+                dim=0,
+            )
+
+            batched_negative_masks = torch.cat(
+                negative_padding_masks,
+                dim=0,
+            )
+
+            all_inputs = torch.cat(
+                [
+                    batched_views,
+                    batched_negatives,
+                ],
+                dim=0,
+            )
+
+            all_masks = torch.cat(
+                [
+                    batched_view_masks,
+                    batched_negative_masks,
+                ],
+                dim=0,
+            )
+
+        with record_function("backbone_forward"):
+            all_z = super().forward(
+                all_inputs,
+                padding_mask=all_masks,
+                normalize_output=normalize_output,
+            )
+
+        with record_function("reshape_representations"):
+            z_views_flat = all_z[
+                : num_views * batch_size
+            ]
+
+            z_negatives_flat = all_z[
+                num_views * batch_size :
+            ]
+
+            z_views = z_views_flat.view(
+                num_views,
+                batch_size,
+                -1,
+            )
+
+            z_negatives = z_negatives_flat.view(
+                num_negative_views,
+                batch_size,
+                -1,
+            )
+
+        with record_function("ssl_loss"):
+            loss_dict = self.loss(
+                z_views=z_views,
+                z_negatives=z_negatives,
+                num_global_views=(
+                    self.augmentation.config.num_global_views
+                ),
+            )
+
+        output: Dict[str, torch.Tensor] = {
+            **loss_dict,
+            "z_views": z_views,
+            "z_negatives": z_negatives,
+        }
+
+        if return_views:
+            output["views"] = views
+            output["view_padding_masks"] = view_padding_masks
+            output["view_types"] = view_types
+
+            output["negative_views"] = negative_views
+            output["negative_padding_masks"] = (
+                negative_padding_masks
+            )
             output["negative_types"] = negative_types
 
         return output

@@ -68,6 +68,8 @@ from models.part import (
     CorruptedNegativeAugmentationConfig,
     LeJEPALossConfig,
     LeJEPATripletParticleTransformerRepresentation,
+    LeJEPAMahalanobisParticleTransformerRepresentation,
+    MahalanobisNegativeLossConfig,
     ParticleTransformerConfig,
     MultiViewAugmentationConfig,
     TripletLossConfig,
@@ -334,15 +336,51 @@ def autocast_enabled_for_precision(precision: str) -> bool:
     return precision in {"bf16", "fp16"}
 
 
-class TrainLeJEPATripletParticleTransformer:
+class TrainLeJEPAParticleTransformer:
     """
-    Driver class for LeJEPA + corrupted-negative triplet SSL pretraining.
+    Shared driver for LeJEPA ParticleTransformer SSL pretraining.
+
+    Supported models:
+        triplet:
+            LeJEPA + SIGReg + corrupted-negative triplet loss
+
+        mahalanobis:
+            LeJEPA + SIGReg + corrupted-negative Mahalanobis objective
+            with EMA normal-distribution statistics
     """
 
     TRAIN_SPLIT = 0.8
 
     def __init__(self):
         self.args = parser.parse_args()
+        
+        self.model_name = self.args.model
+
+        if self.model_name == "triplet":
+            self.ssl_metric_keys = [
+                "total_loss",
+                "invariant_loss",
+                "sigreg_loss",
+                "triplet_loss",
+                "triplet_pos_distance",
+                "triplet_neg_distance",
+            ]
+
+        elif self.model_name == "mahalanobis":
+            self.ssl_metric_keys = [
+                "total_loss",
+                "invariant_loss",
+                "sigreg_loss",
+                "mahalanobis_loss",
+                "negative_mahalanobis_sq_mean",
+                "negative_mahalanobis_mean",
+                "ema_mean_norm",
+            ]
+
+        else:
+            raise ValueError(
+                f"Unsupported model {self.model_name!r}."
+            )
 
         self.bg_file = self.args.background
         self.sg_file = self.args.signal
@@ -774,6 +812,67 @@ class TrainLeJEPATripletParticleTransformer:
 
         return train_loader, bg_val_loader, signal_loader
 
+    def _extract_ssl_metrics(
+        self,
+        output: Dict[str, torch.Tensor],
+    ) -> Dict[str, float]:
+        """
+        Extract the active model's scalar training metrics.
+
+        The metric set depends on --model.
+        """
+
+        metrics: Dict[str, float] = {}
+
+        for key in self.ssl_metric_keys:
+            if key not in output:
+                raise KeyError(
+                    f"Expected metric {key!r} in model output. "
+                    f"Available keys: {list(output.keys())}"
+                )
+
+            metrics[key] = float(
+                output[key].detach().float().cpu()
+            )
+
+        return metrics
+
+    def _progress_postfix(
+        self,
+        metrics: Dict[str, float],
+    ) -> Dict[str, str]:
+        """
+        Compact tqdm postfix for the active SSL objective.
+        """
+
+        if self.model_name == "triplet":
+            return {
+                "total": f"{metrics['total_loss']:.4g}",
+                "inv": f"{metrics['invariant_loss']:.4g}",
+                "sig": f"{metrics['sigreg_loss']:.4g}",
+                "tri": f"{metrics['triplet_loss']:.4g}",
+                "d+": f"{metrics['triplet_pos_distance']:.4g}",
+                "d-": f"{metrics['triplet_neg_distance']:.4g}",
+            }
+
+        if self.model_name == "mahalanobis":
+            return {
+                "total": f"{metrics['total_loss']:.4g}",
+                "inv": f"{metrics['invariant_loss']:.4g}",
+                "sig": f"{metrics['sigreg_loss']:.4g}",
+                "maha": f"{metrics['mahalanobis_loss']:.4g}",
+                "DM2": (
+                    f"{metrics['negative_mahalanobis_sq_mean']:.4g}"
+                ),
+                "DM": (
+                    f"{metrics['negative_mahalanobis_mean']:.4g}"
+                ),
+            }
+
+        raise RuntimeError(
+            f"Unsupported model {self.model_name!r}."
+        )
+        
     def build_model(self) -> None:
         model_config = ParticleTransformerConfig(
             input_dim=len(self.node_feature_names),
@@ -848,28 +947,70 @@ class TrainLeJEPATripletParticleTransformer:
             normalize_representations_for_sigreg=self.args.normalize_sigreg_representations,
         )
 
-        triplet_loss_config = TripletLossConfig(
-            triplet_weight=self.args.triplet_weight,
-            triplet_margin=self.args.triplet_margin,
-            normalize_representations_for_triplet=self.args.normalize_triplet_representations,
-            use_global_views_as_positives=not self.args.use_all_views_as_triplet_positives,
-        )
+        if self.model_name == "triplet":
+            triplet_loss_config = TripletLossConfig(
+                triplet_weight=self.args.triplet_weight,
+                triplet_margin=self.args.triplet_margin,
+                normalize_representations_for_triplet=(
+                    self.args.normalize_triplet_representations
+                ),
+                use_global_views_as_positives=(
+                    not self.args.use_all_views_as_triplet_positives
+                ),
+            )
 
-        self.model = LeJEPATripletParticleTransformerRepresentation(
-            model_config=model_config,
-            augmentation_config=augmentation_config,
-            negative_augmentation_config=negative_augmentation_config,
-            loss_config=loss_config,
-            triplet_loss_config=triplet_loss_config,
-        ).to(DEVICE)
+            self.model = (
+                LeJEPATripletParticleTransformerRepresentation(
+                    model_config=model_config,
+                    augmentation_config=augmentation_config,
+                    negative_augmentation_config=(
+                        negative_augmentation_config
+                    ),
+                    loss_config=loss_config,
+                    triplet_loss_config=triplet_loss_config,
+                )
+                .to(DEVICE)
+            )
 
+        elif self.model_name == "mahalanobis":
+            mahalanobis_loss_config = (
+                MahalanobisNegativeLossConfig(
+                    mahalanobis_weight=(
+                        self.args.mahalanobis_weight
+                    ),
+                    ema_decay=(
+                        self.args.mahalanobis_ema_decay
+                    ),
+                    log_eps=(
+                        self.args.mahalanobis_log_eps
+                    ),
+                )
+            )
+
+            self.model = (
+                LeJEPAMahalanobisParticleTransformerRepresentation(
+                    model_config=model_config,
+                    augmentation_config=augmentation_config,
+                    negative_augmentation_config=(
+                        negative_augmentation_config
+                    ),
+                    loss_config=loss_config,
+                    mahalanobis_loss_config=(
+                        mahalanobis_loss_config
+                    ),
+                )
+                .to(DEVICE)
+            )
+
+        else:
+            raise ValueError(
+                f"Unsupported model {self.model_name!r}."
+            )
+
+        print(f"Selected SSL model: {self.model_name}")
         print(f"Model summary:\n{self.model}")
-        print(f"Model summary:\n{self.model}")
-
-        self.num_params = sum(
-            p.numel() for p in self.model.parameters() if p.requires_grad
-        )
-        print(f"Number of trainable parameters: {self.num_params}")
+        
+        self.num_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         print(f"Number of trainable parameters: {self.num_params}")
 
     def plot_progress(
@@ -892,21 +1033,38 @@ class TrainLeJEPATripletParticleTransformer:
         if len(train_history["total_loss"]) == 0:
             return
 
-        loss_keys = [
-            "total_loss",
-            "invariant_loss",
-            "sigreg_loss",
-            "triplet_loss",
-            "triplet_pos_distance",
-            "triplet_neg_distance",
-        ]
+        title_map = {
+            "total_loss": "Total Loss",
+            "invariant_loss": "Invariant Loss",
+            "sigreg_loss": "SIGReg Loss",
+
+            "triplet_loss": "Triplet Loss",
+            "triplet_pos_distance": (
+                "Triplet Positive Distance"
+            ),
+            "triplet_neg_distance": (
+                "Triplet Negative Distance"
+            ),
+
+            "mahalanobis_loss": (
+                "Mahalanobis Negative Loss"
+            ),
+            "negative_mahalanobis_sq_mean": (
+                "Negative Mean Squared Mahalanobis Distance"
+            ),
+            "negative_mahalanobis_mean": (
+                "Negative Mean Mahalanobis Distance"
+            ),
+            "ema_mean_norm": (
+                "EMA Normal Mean Norm"
+            ),
+        }
+
+        loss_keys = list(self.ssl_metric_keys)
+
         titles = [
-            "Total Loss",
-            "Invariant Loss",
-            "SIGReg Loss",
-            "Triplet Loss",
-            "Triplet Positive Distance",
-            "Triplet Negative Distance",
+            title_map[key]
+            for key in loss_keys
         ]
 
         num_subplots = len(loss_keys) + 1
@@ -1062,7 +1220,13 @@ class TrainLeJEPATripletParticleTransformer:
             top_ax.set_xticklabels(epoch_ids[::stride])
             top_ax.set_xlabel("Epoch")
 
-        fig.suptitle("LeJEPA + Triplet SSL Training Progress")
+        model_title = {
+            "triplet": "LeJEPA + Triplet SSL",
+            "mahalanobis": (
+                "LeJEPA + Mahalanobis Negative SSL"
+            ),
+        }[self.model_name]
+        fig.suptitle(f"{model_title} Training Progress")
         fig.tight_layout()
         fig.savefig(os.path.join(self.output_dir, "loss.png"))
         plt.close(fig)
@@ -1345,6 +1509,8 @@ class TrainLeJEPATripletParticleTransformer:
         summary_path = os.path.join(self.output_dir, "summary.json")
 
         summary = {
+            "model": self.model_name,
+            
             # Run status.
             "status": "initialized",
             "current_epoch": 0,
@@ -1395,14 +1561,6 @@ class TrainLeJEPATripletParticleTransformer:
             "epps_pulley_num_points": self.args.epps_pulley_num_points,
             "num_slices": self.args.num_slices,
 
-            # Triplet loss.
-            "triplet_weight": self.args.triplet_weight,
-            "triplet_margin": self.args.triplet_margin,
-            "normalize_triplet_representations":
-                self.args.normalize_triplet_representations,
-            "use_all_views_as_triplet_positives":
-                self.args.use_all_views_as_triplet_positives,
-
             # Negative augmentation.
             "num_negative_views": self.args.num_negative_views,
             "batch_mix_prob": self.args.batch_mix_prob,
@@ -1436,6 +1594,42 @@ class TrainLeJEPATripletParticleTransformer:
             "latest_train_losses": None,
             "latest_val_losses": None,
         }
+        
+        if self.model_name == "triplet":
+            summary.update(
+                {
+                    "triplet_weight": (
+                        self.args.triplet_weight
+                    ),
+                    "triplet_margin": (
+                        self.args.triplet_margin
+                    ),
+                    "normalize_triplet_representations": (
+                        self.args.normalize_triplet_representations
+                    ),
+                    "use_all_views_as_triplet_positives": (
+                        self.args.use_all_views_as_triplet_positives
+                    ),
+                }
+            )
+
+        elif self.model_name == "mahalanobis":
+            summary.update(
+                {
+                    "mahalanobis_weight": (
+                        self.args.mahalanobis_weight
+                    ),
+                    "mahalanobis_ema_decay": (
+                        self.args.mahalanobis_ema_decay
+                    ),
+                    "mahalanobis_log_eps": (
+                        self.args.mahalanobis_log_eps
+                    ),
+                    "mahalanobis_objective": (
+                        self.args.mahalanobis_objective
+                    ),
+                }
+            )
 
         def update_summary(**updates) -> None:
             summary.update(updates)
@@ -1479,20 +1673,12 @@ class TrainLeJEPATripletParticleTransformer:
         use_autocast = autocast_enabled_for_precision(self.args.precision)
 
         train_history = {
-            "total_loss": [],
-            "invariant_loss": [],
-            "sigreg_loss": [],
-            "triplet_loss": [],
-            "triplet_pos_distance": [],
-            "triplet_neg_distance": [],
+            key: []
+            for key in self.ssl_metric_keys
         }
         val_history = {
-            "total_loss": [],
-            "invariant_loss": [],
-            "sigreg_loss": [],
-            "triplet_loss": [],
-            "triplet_pos_distance": [],
-            "triplet_neg_distance": [],
+            key: []
+            for key in self.ssl_metric_keys
         }
         auc_history = {
             "auc_bgtrain_vs_signal": [],
@@ -1517,12 +1703,8 @@ class TrainLeJEPATripletParticleTransformer:
             self.model.train()
 
             epoch_train = {
-                "total_loss": [],
-                "invariant_loss": [],
-                "sigreg_loss": [],
-                "triplet_loss": [],
-                "triplet_pos_distance": [],
-                "triplet_neg_distance": [],
+                key: []
+                for key in self.ssl_metric_keys
             }
 
             pbar = tqdm(
@@ -1593,25 +1775,9 @@ class TrainLeJEPATripletParticleTransformer:
                         scheduler.step()
 
                     with record_function("metrics_to_cpu"):
-                        loss_values = torch.stack(
-                            [
-                                output["total_loss"].detach(),
-                                output["invariant_loss"].detach(),
-                                output["sigreg_loss"].detach(),
-                                output["triplet_loss"].detach(),
-                                output["triplet_pos_distance"].detach(),
-                                output["triplet_neg_distance"].detach(),
-                            ]
-                        ).float().cpu().tolist()
-
-                    step_losses = {
-                        "total_loss": loss_values[0],
-                        "invariant_loss": loss_values[1],
-                        "sigreg_loss": loss_values[2],
-                        "triplet_loss": loss_values[3],
-                        "triplet_pos_distance": loss_values[4],
-                        "triplet_neg_distance": loss_values[5],
-                    }
+                        step_losses = self._extract_ssl_metrics(
+                            output
+                        )
 
                     for key in train_history:
                         train_history[key].append(step_losses[key])
@@ -1620,14 +1786,9 @@ class TrainLeJEPATripletParticleTransformer:
                     with record_function("progress_bar_update"):
                         if step % 10 == 0:
                             pbar.set_postfix(
-                                {
-                                    "total": f"{step_losses['total_loss']:.4g}",
-                                    "inv": f"{step_losses['invariant_loss']:.4g}",
-                                    "sig": f"{step_losses['sigreg_loss']:.4g}",
-                                    "tri": f"{step_losses['triplet_loss']:.4g}",
-                                    "d+": f"{step_losses['triplet_pos_distance']:.4g}",
-                                    "d-": f"{step_losses['triplet_neg_distance']:.4g}",
-                                }
+                                self._progress_postfix(
+                                    step_losses
+                                )
                             )
                     # Advance profiler state once per training iteration.
                     if should_profile:
@@ -1656,12 +1817,8 @@ class TrainLeJEPATripletParticleTransformer:
 
             self.model.eval()
             epoch_val = {
-                "total_loss": [],
-                "invariant_loss": [],
-                "sigreg_loss": [],
-                "triplet_loss": [],
-                "triplet_pos_distance": [],
-                "triplet_neg_distance": [],
+                key: []
+                for key in self.ssl_metric_keys
             }
 
             with torch.no_grad():
@@ -1681,27 +1838,17 @@ class TrainLeJEPATripletParticleTransformer:
                             normalize_output=self.args.normalize_output_representations,
                         )
 
-                    step_losses = {
-                        "total_loss": float(output["total_loss"].detach().cpu()),
-                        "invariant_loss": float(output["invariant_loss"].detach().cpu()),
-                        "sigreg_loss": float(output["sigreg_loss"].detach().cpu()),
-                        "triplet_loss": float(output["triplet_loss"].detach().cpu()),
-                        "triplet_pos_distance": float(output["triplet_pos_distance"].detach().cpu()),
-                        "triplet_neg_distance": float(output["triplet_neg_distance"].detach().cpu()),
-                    }
+                    step_losses = (
+                        self._extract_ssl_metrics(output)
+                    )
 
                     for key in epoch_val:
                         epoch_val[key].append(step_losses[key])
 
                     pbar.set_postfix(
-                        {
-                            "total": f"{step_losses['total_loss']:.4g}",
-                            "inv": f"{step_losses['invariant_loss']:.4g}",
-                            "sig": f"{step_losses['sigreg_loss']:.4g}",
-                            "tri": f"{step_losses['triplet_loss']:.4g}",
-                            "d+": f"{step_losses['triplet_pos_distance']:.4g}",
-                            "d-": f"{step_losses['triplet_neg_distance']:.4g}",
-                        }
+                        self._progress_postfix(
+                            step_losses
+                        )
                     )
 
             mean_val = {
@@ -1826,8 +1973,30 @@ class TrainLeJEPATripletParticleTransformer:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        prog="Train LeJEPA Triplet ParticleTransformer Representation",
-        description="Train a ParticleTransformer representation model with LeJEPA + corrupted-negative triplet SSL.",
+        prog="Train LeJEPA ParticleTransformer Representation",
+        description=(
+            "Train a ParticleTransformer representation model with "
+            "LeJEPA + SIGReg and selectable corrupted-negative SSL objective."
+        ),
+    )
+    # SSL model.
+    parser.add_argument(
+        "--model",
+        type=str,
+        choices=[
+            "triplet",
+            "mahalanobis",
+        ],
+        default="triplet",
+        help=(
+            "SSL objective/model variant. "
+            "'triplet' uses LeJEPA + SIGReg + corrupted-negative "
+            "triplet loss. "
+            "'mahalanobis' uses LeJEPA + SIGReg + EMA normal "
+            "distribution statistics and corrupted-negative "
+            "Mahalanobis loss. "
+            "Default: triplet."
+        ),
     )
     # Profile
     parser.add_argument(
@@ -2133,6 +2302,41 @@ if __name__ == "__main__":
         default=True,
         help="Match corrupted negative log_pt mean/std to the original event. Default: True.",
     )
+    
+    # Mahalanobis corrupted-negative objective.
+    parser.add_argument(
+        "--mahalanobis-weight",
+        type=float,
+        default=0.1,
+        help=(
+            "Weight for the corrupted-negative Mahalanobis loss. "
+            "Used only with --model mahalanobis. "
+            "Default: 0.1."
+        ),
+    )
+
+    parser.add_argument(
+        "--mahalanobis-ema-decay",
+        type=float,
+        default=0.99,
+        help=(
+            "EMA decay for running normal representation mean "
+            "and raw second moment. "
+            "Used only with --model mahalanobis. "
+            "Default: 0.99."
+        ),
+    )
+
+    parser.add_argument(
+        "--mahalanobis-log-eps",
+        type=float,
+        default=1e-8,
+        help=(
+            "Numerical epsilon inside the Mahalanobis negative-log "
+            "objective. Used only with --model mahalanobis. "
+            "Default: 1e-8."
+        ),
+    )
 
     # Optimization.
     parser.add_argument(
@@ -2245,7 +2449,7 @@ if __name__ == "__main__":
         help="Maximum points per class in latent-space plots. Use no value by editing to None. Default: 5000.",
     )
 
-    trainer = TrainLeJEPATripletParticleTransformer()
+    trainer = TrainLeJEPAParticleTransformer()
     trainer.load()
     trainer.build_node_datasets()
     trainer.plot_features()
