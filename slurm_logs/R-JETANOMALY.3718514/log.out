@@ -920,3 +920,50 @@ Updated run summary at plots/run-lejepa-mahala-0.02/summary.json
 
 Epoch [37/50]
 Learning rate: 0.00027373175
+Collecting background train latents...
+Collecting background validation latents...
+Collecting signal latents...
+Background train latents: (99979, 128)
+Background val latents: (24995, 128)
+Signal latents: (4064, 128)
+Mahalanobis metrics saved to plots/run-lejepa-mahala-0.02/mahalanobis_eval/epoch_0037/mahalanobis_metrics.json
+Mahalanobis AUC, QCD train vs WJet: 0.552162
+Mahalanobis AUC, QCD val vs WJet: 0.554142
+Epoch 37 train losses: {'total_loss': 0.3748396139620515, 'invariant_loss': 0.3106630186900458, 'sigreg_loss': 6.274696291560102, 'mahalanobis_loss': -3.065084859233378, 'negative_mahalanobis_sq_mean': 36189.93699798194, 'negative_mahalanobis_mean': 126.33096087131354, 'ema_mean_norm': 0.19474309759066843}
+Epoch 37 val losses: {'total_loss': 0.3222424187222306, 'invariant_loss': 0.18685309923425011, 'sigreg_loss': 10.31951530612245, 'mahalanobis_loss': -3.5512053796223233, 'negative_mahalanobis_sq_mean': 50624.251474808676, 'negative_mahalanobis_mean': 160.46377111940967, 'ema_mean_norm': 0.19762744009494781}
+Updated run summary at plots/run-lejepa-mahala-0.02/summary.json
+
+Epoch [38/50]
+Learning rate: 0.00023951197
+Saved new best model to plots/run-lejepa-mahala-0.02/best_model.pth
+Collecting background train latents...
+Collecting background validation latents...
+Collecting signal latents...
+Background train latents: (99979, 128)
+Background val latents: (24995, 128)
+Signal latents: (4064, 128)
+Mahalanobis metrics saved to plots/run-lejepa-mahala-0.02/mahalanobis_eval/epoch_0038/mahalanobis_metrics.json
+Mahalanobis AUC, QCD train vs WJet: 0.565351
+Mahalanobis AUC, QCD val vs WJet: 0.564836
+Epoch 38 train losses: {'total_loss': 0.3712477123798312, 'invariant_loss': 0.30915270162665326, 'sigreg_loss': 6.308903452685422, 'mahalanobis_loss': -3.204629975816478, 'negative_mahalanobis_sq_mean': 46422.868101622444, 'negative_mahalanobis_mean': 143.2527189718183, 'ema_mean_norm': 0.19710389869597256}
+Epoch 38 val losses: {'total_loss': 0.31499259782080746, 'invariant_loss': 0.18778008481069486, 'sigreg_loss': 9.909119897959183, 'mahalanobis_loss': -3.549989221047382, 'negative_mahalanobis_sq_mean': 52705.42402742347, 'negative_mahalanobis_mean': 161.52319522779814, 'ema_mean_norm': 0.20169179141521454}
+Updated run summary at plots/run-lejepa-mahala-0.02/summary.json
+
+Epoch [39/50]
+Learning rate: 0.00020690127
+Saved new best model to plots/run-lejepa-mahala-0.02/best_model.pth
+Collecting background train latents...
+Collecting background validation latents...
+Collecting signal latents...
+Background train latents: (99979, 128)
+Background val latents: (24995, 128)
+Signal latents: (4064, 128)
+Mahalanobis metrics saved to plots/run-lejepa-mahala-0.02/mahalanobis_eval/epoch_0039/mahalanobis_metrics.json
+Mahalanobis AUC, QCD train vs WJet: 0.556645
+Mahalanobis AUC, QCD val vs WJet: 0.557137
+Epoch 39 train losses: {'total_loss': 0.36109633465557145, 'invariant_loss': 0.3061854866002222, 'sigreg_loss': 6.27565537084399, 'mahalanobis_loss': -3.5297458866977935, 'negative_mahalanobis_sq_mean': 57024.33218610134, 'negative_mahalanobis_mean': 164.89457839224346, 'ema_mean_norm': 0.19879678791136388}
+Epoch 39 val losses: {'total_loss': 0.2915575286867667, 'invariant_loss': 0.20008560391713162, 'sigreg_loss': 8.713647959183673, 'mahalanobis_loss': -4.1402313149705225, 'negative_mahalanobis_sq_mean': 85088.13616071429, 'negative_mahalanobis_mean': 215.00802238620057, 'ema_mean_norm': 0.19245223701000214}
+Updated run summary at plots/run-lejepa-mahala-0.02/summary.json
+
+Epoch [40/50]
+Learning rate: 0.0001761007

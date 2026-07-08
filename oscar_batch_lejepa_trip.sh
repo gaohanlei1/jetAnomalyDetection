@@ -34,34 +34,57 @@ conda activate jet
 # check pytorch version
 python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 
+# python -u scripts/run_train_lejepa_trip_part.py \
+#   --background "data/processed/qcd-vs-wjet-pt-200to400/QCD_scaled_scaled.pkl" \
+#   --signal "data/processed/qcd-vs-wjet-pt-200to400/WJet_scaled_scaled.pkl" \
+#   --model "mahalanobis" \
+#   --mahalanobis-weight 0.02 \
+#   --mahalanobis-target-radius 20.0 \
+#   --embed-dim 128 \
+#   --representation-dim 128 \
+#   --num-layers 8 \
+#   --num-heads 8 \
+#   --batch-size 256 \
+#   --epochs 50 \
+#   --learning-rate 1e-3 \
+#   --weight-decay 5e-2 \
+#   --precision bf16 \
+#   --num-global-views 2 \
+#   --num-local-views 3 \
+#   --num-negative-views 3 \
+#   --global-drop-pt-frac-min 0.0 \
+#   --global-drop-pt-frac-max 0.50 \
+#   --local-drop-pt-frac-min 0.50 \
+#   --local-drop-pt-frac-max 0.95 \
+#   --batch-mix-prob 0.00 \
+#   --pt-resample-prob 0.30 \
+#   --node-eta-phi-rotation-prob 0.1 \
+#   --eta-phi-shuffle-prob 0.3 \
+#   --identity-shuffle-prob 0.3 \
+#   --pairwise-hidden-dim 16 \
+#   --output-dir "plots/run-lejepa-mahala-0.02-radius-20.0"
+
 python -u scripts/run_train_lejepa_trip_part.py \
   --background "data/processed/qcd-vs-wjet-pt-200to400/QCD_scaled_scaled.pkl" \
   --signal "data/processed/qcd-vs-wjet-pt-200to400/WJet_scaled_scaled.pkl" \
-  --model "mahalanobis" \
-  --mahalanobis-weight 0.02 \
+  --model "lejepa" \
   --embed-dim 128 \
   --representation-dim 128 \
   --num-layers 8 \
   --num-heads 8 \
   --batch-size 256 \
   --epochs 50 \
-  --learning-rate 1e-3 \
+  --learning-rate 5e-4 \
   --weight-decay 5e-2 \
   --precision bf16 \
   --num-global-views 2 \
-  --num-local-views 3 \
-  --num-negative-views 3 \
+  --num-local-views 6 \
   --global-drop-pt-frac-min 0.0 \
   --global-drop-pt-frac-max 0.50 \
   --local-drop-pt-frac-min 0.50 \
   --local-drop-pt-frac-max 0.95 \
-  --batch-mix-prob 0.00 \
-  --pt-resample-prob 0.30 \
-  --node-eta-phi-rotation-prob 0.1 \
-  --eta-phi-shuffle-prob 0.3 \
-  --identity-shuffle-prob 0.3 \
   --pairwise-hidden-dim 16 \
-  --output-dir "plots/run-lejepa-mahala-0.02"
+  --output-dir "plots/run-lejepa"
 
 #  --triplet-weight 0.1 \
 #  --triplet-margin 1.0 \

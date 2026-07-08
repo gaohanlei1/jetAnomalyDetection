@@ -67,6 +67,7 @@ from helpers import helpers_main
 from models.part import (
     CorruptedNegativeAugmentationConfig,
     LeJEPALossConfig,
+    LeJEPAParticleTransformerRepresentation,
     LeJEPATripletParticleTransformerRepresentation,
     LeJEPAMahalanobisParticleTransformerRepresentation,
     MahalanobisNegativeLossConfig,
@@ -375,6 +376,13 @@ class TrainLeJEPAParticleTransformer:
                 "negative_mahalanobis_mean",
                 "negative_outside_radius_fraction",
             ]
+        
+        elif self.model_name == "lejepa":
+            self.ssl_metric_keys = [
+                "total_loss",
+                "invariant_loss",
+                "sigreg_loss",
+            ]
 
         else:
             raise ValueError(
@@ -593,14 +601,15 @@ class TrainLeJEPAParticleTransformer:
                     padding_mask=padding_mask_batch,
                     return_types=True,
                 )
-
-                negative_views, negative_padding_masks, negative_types = (
-                    self.model.negative_augmentation(
-                        x=x_batch,
-                        padding_mask=padding_mask_batch,
-                        return_types=True,
+                
+                if self.model_name != "lejepa":
+                    negative_views, negative_padding_masks, negative_types = (
+                        self.model.negative_augmentation(
+                            x=x_batch,
+                            padding_mask=padding_mask_batch,
+                            return_types=True,
+                        )
                     )
-                )
 
                 remaining = num_samples - num_plotted
                 if remaining <= 0:
@@ -633,18 +642,19 @@ class TrainLeJEPAParticleTransformer:
                             )
                         )
 
-                    for neg_i, (neg_x, neg_mask, neg_types_for_view) in enumerate(
-                        zip(negative_views, negative_padding_masks, negative_types),
-                        start=1,
-                    ):
-                        event_neg_type = neg_types_for_view[row_idx]
-                        panels.append(
-                            (
-                                neg_x[row_idx],
-                                neg_mask[row_idx],
-                                f"neg {neg_i}: {event_neg_type}",
+                    if self.model_name != "lejepa":
+                        for neg_i, (neg_x, neg_mask, neg_types_for_view) in enumerate(
+                            zip(negative_views, negative_padding_masks, negative_types),
+                            start=1,
+                        ):
+                            event_neg_type = neg_types_for_view[row_idx]
+                            panels.append(
+                                (
+                                    neg_x[row_idx],
+                                    neg_mask[row_idx],
+                                    f"neg {neg_i}: {event_neg_type}",
+                                )
                             )
-                        )
 
                     output_path = os.path.join(
                         self.augmentation_plot_dir,
@@ -860,12 +870,19 @@ class TrainLeJEPAParticleTransformer:
                 "inv": f"{metrics['invariant_loss']:.4g}",
                 "sig": f"{metrics['sigreg_loss']:.4g}",
                 "maha": f"{metrics['mahalanobis_loss']:.4g}",
-                "DM2": (
-                    f"{metrics['negative_mahalanobis_sq_mean']:.4g}"
+                "frac": (
+                    f"{metrics['negative_outside_radius_fraction']:.4g}"
                 ),
                 "DM": (
                     f"{metrics['negative_mahalanobis_mean']:.4g}"
                 ),
+            }
+        
+        if self.model_name == "lejepa":
+            return {
+                "total": f"{metrics['total_loss']:.4g}",
+                "inv": f"{metrics['invariant_loss']:.4g}",
+                "sig": f"{metrics['sigreg_loss']:.4g}",
             }
 
         raise RuntimeError(
@@ -980,8 +997,8 @@ class TrainLeJEPAParticleTransformer:
                     ema_decay=(
                         self.args.mahalanobis_ema_decay
                     ),
-                    log_eps=(
-                        self.args.mahalanobis_log_eps
+                    target_radius=(
+                        self.args.mahalanobis_target_radius
                     ),
                 )
             )
@@ -997,6 +1014,16 @@ class TrainLeJEPAParticleTransformer:
                     mahalanobis_loss_config=(
                         mahalanobis_loss_config
                     ),
+                )
+                .to(DEVICE)
+            )
+        
+        elif self.model_name == "lejepa":
+            self.model = (
+                LeJEPAParticleTransformerRepresentation(
+                    model_config=model_config,
+                    augmentation_config=augmentation_config,
+                    loss_config=loss_config,
                 )
                 .to(DEVICE)
             )
@@ -1046,13 +1073,13 @@ class TrainLeJEPAParticleTransformer:
             ),
 
             "mahalanobis_loss": (
-                "Mahalanobis Negative Loss"
+                "Negative Samples Mahalanobis Loss"
             ),
-            "negative_mahalanobis_sq_mean": (
-                "Negative Mean Squared Mahalanobis Distance"
+            "negative_outside_radius_fraction": (
+                "Fraction of Negative Samples Outside Target Radius"
             ),
             "negative_mahalanobis_mean": (
-                "Negative Mean Mahalanobis Distance"
+                "Negative Samples Mean Mahalanobis Distance"
             ),
             "ema_mean_norm": (
                 "EMA Normal Mean Norm"
@@ -1224,6 +1251,7 @@ class TrainLeJEPAParticleTransformer:
             "mahalanobis": (
                 "LeJEPA + Mahalanobis Negative SSL"
             ),
+            "lejepa": "LeJEPA SSL",
         }[self.model_name]
         fig.suptitle(f"{model_title} Training Progress")
         fig.tight_layout()
@@ -1621,11 +1649,14 @@ class TrainLeJEPAParticleTransformer:
                     "mahalanobis_ema_decay": (
                         self.args.mahalanobis_ema_decay
                     ),
-                    "mahalanobis_log_eps": (
-                        self.args.mahalanobis_log_eps
+                    "mahalanobis_target_radius": (
+                        self.args.mahalanobis_target_radius
                     ),
                 }
             )
+        
+        elif self.model_name == "lejepa":
+            pass
 
         def update_summary(**updates) -> None:
             summary.update(updates)
@@ -1982,6 +2013,7 @@ if __name__ == "__main__":
         choices=[
             "triplet",
             "mahalanobis",
+            "lejepa"
         ],
         default="triplet",
         help=(
@@ -1991,6 +2023,7 @@ if __name__ == "__main__":
             "'mahalanobis' uses LeJEPA + SIGReg + EMA normal "
             "distribution statistics and corrupted-negative "
             "Mahalanobis loss. "
+            "'lejepa' uses LeJEPA + SIGReg only, without any corrupted-negative loss. "
             "Default: triplet."
         ),
     )
@@ -2324,13 +2357,12 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--mahalanobis-log-eps",
+        "--mahalanobis-target-radius",
         type=float,
-        default=1e-8,
+        default=5.0,
         help=(
-            "Numerical epsilon inside the Mahalanobis negative-log "
-            "objective. Used only with --model mahalanobis. "
-            "Default: 1e-8."
+            "Target radius for the Mahalanobis loss. Used only with --model mahalanobis. "
+            "Default: 5.0."
         ),
     )
 
