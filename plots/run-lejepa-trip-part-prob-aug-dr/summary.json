@@ -1,7 +1,7 @@
 {
-  "status": "training",
-  "current_epoch": 82,
-  "completed_epochs": 82,
+  "status": "completed",
+  "current_epoch": 100,
+  "completed_epochs": 100,
   "background": "data/processed/qcd-vs-wjet-pt-200to400/QCD_scaled_scaled.pkl",
   "signal": "data/processed/qcd-vs-wjet-pt-200to400/WJet_scaled_scaled.pkl",
   "node_features": [
@@ -74,24 +74,24 @@
   "seed": 42,
   "device": "cuda",
   "warmup_steps": 7820,
-  "current_learning_rate": 9.63960113097138e-05,
-  "best_val_loss": 0.2838842543412228,
-  "final_val_loss": 0.2840667643717357,
+  "current_learning_rate": 1e-06,
+  "best_val_loss": 0.2773028787757669,
+  "final_val_loss": 0.27798451924202394,
   "latest_train_losses": {
-    "total_loss": 0.3192789933032087,
-    "invariant_loss": 0.1657057629369409,
-    "sigreg_loss": 7.26858216112532,
-    "triplet_loss": 0.08192169341399237,
-    "triplet_pos_distance": 0.050839557767371694,
-    "triplet_neg_distance": 1.9421492813493284
+    "total_loss": 0.3126353781546473,
+    "invariant_loss": 0.1612894212269722,
+    "sigreg_loss": 7.1606857416879794,
+    "triplet_loss": 0.08105340677187266,
+    "triplet_pos_distance": 0.04964578395132976,
+    "triplet_neg_distance": 1.979147402984102
   },
   "latest_val_losses": {
-    "total_loss": 0.2840667643717357,
-    "invariant_loss": 0.11614382867606318,
-    "sigreg_loss": 7.993941326530612,
-    "triplet_loss": 0.08023283320802208,
-    "triplet_pos_distance": 0.027105579466311907,
-    "triplet_neg_distance": 1.807819981964267
+    "total_loss": 0.27798451924202394,
+    "invariant_loss": 0.11110337979483362,
+    "sigreg_loss": 7.94547193877551,
+    "triplet_loss": 0.07975489115912696,
+    "triplet_pos_distance": 0.026827673413505664,
+    "triplet_neg_distance": 1.8511458495441748
   },
   "total_training_steps": 78200
 }

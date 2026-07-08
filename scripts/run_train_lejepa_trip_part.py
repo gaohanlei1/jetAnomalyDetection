@@ -1205,10 +1205,6 @@ class TrainLeJEPATripletParticleTransformer:
         mahal_dir = os.path.join(self.output_dir, "mahalanobis_eval", f"epoch_{epoch:04d}")
         os.makedirs(mahal_dir, exist_ok=True)
 
-        np.save(os.path.join(mahal_dir, "background_train_latents.npy"), bg_train_latents)
-        np.save(os.path.join(mahal_dir, "background_val_latents.npy"), bg_val_latents)
-        np.save(os.path.join(mahal_dir, "signal_latents.npy"), signal_latents)
-
         mean, precision = self.fit_mahalanobis_background(bg_train_latents)
 
         background_train_scores = self.mahalanobis_scores(
@@ -1229,19 +1225,6 @@ class TrainLeJEPATripletParticleTransformer:
 
         auc_bgtrain_vs_signal = self.compute_auc(background_train_scores, signal_scores)
         auc_bgval_vs_signal = self.compute_auc(background_val_scores, signal_scores)
-
-        np.save(
-            os.path.join(mahal_dir, "background_train_mahalanobis_scores.npy"),
-            background_train_scores,
-        )
-        np.save(
-            os.path.join(mahal_dir, "background_val_mahalanobis_scores.npy"),
-            background_val_scores,
-        )
-        np.save(
-            os.path.join(mahal_dir, "signal_mahalanobis_scores.npy"),
-            signal_scores,
-        )
 
         metrics = {
             "epoch": int(epoch),
@@ -1817,13 +1800,9 @@ class TrainLeJEPATripletParticleTransformer:
                 bg_val_loader=bg_val_loader,
                 signal_loader=signal_loader,
             )
-            np.save(os.path.join(self.output_dir, "background_train_latents.npy"), bg_train_latents)
         else:
             bg_val_latents = self.collect_representations(bg_val_loader)
             sg_latents = self.collect_representations(signal_loader)
-
-        np.save(os.path.join(self.output_dir, "background_val_latents.npy"), bg_val_latents)
-        np.save(os.path.join(self.output_dir, "signal_latents.npy"), sg_latents)
 
         update_summary(
             status="completed",
@@ -1842,22 +1821,7 @@ class TrainLeJEPATripletParticleTransformer:
             },
         )
 
-        history_path = os.path.join(self.output_dir, "loss_history.json")
-        with open(history_path, "w") as f:
-            json.dump(
-                {
-                    "train": train_history,
-                    "val": val_history,
-                    "auc": auc_history,
-                    "epoch_end_steps": epoch_end_steps,
-                    "mahalanobis_eval_steps": mahalanobis_eval_steps,
-                },
-                f,
-                indent=2,
-            )
-
         print(f"Saved run summary to {summary_path}")
-        print(f"Saved loss history to {history_path}")
 
 
 if __name__ == "__main__":

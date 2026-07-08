@@ -1,9 +1,0 @@
-Traceback (most recent call last):
-  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_train_lejepa_trip_part.py", line 64, in <module>
-    from visualize.plot_metrics import plot_anomaly_score, plot_roc_curve
-  File "/oscar/home/lwang223/jetAnomalyDetection/visualize/plot_metrics.py", line 19, in <module>
-    from helpers import helpers_main
-  File "/oscar/home/lwang223/jetAnomalyDetection/helpers/helpers_main.py", line 30, in <module>
-    if config["dbg"]["measure_perf"]:
-       ~~~~~~^^^^^^^
-KeyError: 'dbg'

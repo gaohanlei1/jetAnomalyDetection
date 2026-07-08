@@ -1,8 +1,0 @@
-Traceback (most recent call last):
-  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_eval_lejepa_part.py", line 669, in <module>
-    evaluator.run()
-  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_eval_lejepa_part.py", line 581, in run
-    self.load_summary()
-  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_eval_lejepa_part.py", line 318, in load_summary
-    raise FileNotFoundError(f"summary.json not found: {self.summary_path}")
-FileNotFoundError: summary.json not found: plots/run-lejepa-trip-part-prob-aug-fracb-augb-3n/summary.json

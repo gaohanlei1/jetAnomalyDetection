@@ -68,3 +68,5 @@ events.out.tfevents.*
 
 # local test files
 .untracked/
+
+*.npy

@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --nodes=1               # node count
-#SBATCH --nodelist=gpu2708      # the L40S GPU!! 3001-3005, 3101-3102, 2708 are L40S
+#SBATCH --nodelist=gpu3102      # the L40S GPU!! 3001-3005, 3101-3102, 2708 are L40S
 #SBATCH -p gpu --gres=gpu:1     # number of gpus per node
 #SBATCH --ntasks-per-node=1     # total number of tasks across all nodes
 #SBATCH --cpus-per-task=4       # cpu-cores per task (>1 if multi-threaded tasks)
@@ -41,31 +41,31 @@ python -u scripts/run_train_lejepa_trip_part.py \
   --representation-dim 128 \
   --num-layers 8 \
   --num-heads 8 \
-  --batch-size 128 \
-  --epochs 100 \
-  --learning-rate 5e-4 \
-  --weight-decay 5e-2 \
+  --batch-size 256 \
+  --epochs 50 \
+  --learning-rate 1e-3 \
+  --weight-decay 0 \
   --precision bf16 \
   --triplet-weight 0.1 \
   --triplet-margin 1.0 \
   --num-global-views 2 \
   --num-local-views 3 \
-  --num-negative-views 4 \
+  --num-negative-views 3 \
   --global-drop-pt-frac-min 0.0 \
   --global-drop-pt-frac-max 0.50 \
   --local-drop-pt-frac-min 0.50 \
   --local-drop-pt-frac-max 0.95 \
-  --batch-mix-prob 0.50 \
-  --pt-resample-prob 0.30 \
-  --node-eta-phi-rotation-prob 0.10 \
-  --eta-phi-shuffle-prob 0.05 \
-  --identity-shuffle-prob 0.05 \
+  --batch-mix-prob 0.00 \
+  --pt-resample-prob 0.50 \
+  --node-eta-phi-rotation-prob 0.25 \
+  --eta-phi-shuffle-prob 0.25 \
+  --identity-shuffle-prob 0.00 \
   --pairwise-hidden-dim 16 \
-  --output-dir "plots/run-lejepa-trip-part-prob-aug-rbm-dr2-m1.0-ph16"
+  --output-dir "plots/run-lejepa-trip-part-prob-ph16-replicate-dr-nowd"
 
 
 # --learning-rate 5e-4 \
-
+# --weight-decay 5e-2 \
 # --batch-mix-prob 0.45 \
 # --pt-resample-prob 0.25 \
 # --node-eta-phi-rotation-prob 0.20 \
