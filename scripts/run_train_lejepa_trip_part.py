@@ -48,7 +48,7 @@ import math
 import os
 import random
 import sys
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Literal, Optional, Sequence, Tuple
 
 # Add parent directory to import local project modules.
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -1046,7 +1046,7 @@ class TrainLeJEPAParticleTransformer:
         epoch_end_steps: List[int],
         best_val_loss: float,
         auc_history: Dict[str, List[float]],
-        mahalanobis_eval_steps: List[int],
+        roc_eval_steps: List[int],
     ) -> None:
         """
         Plot train/validation curves for total, invariant, SIGReg, triplet
@@ -1171,7 +1171,7 @@ class TrainLeJEPAParticleTransformer:
         auc_ax = axes[-1]
 
         eval_steps = np.asarray(
-            mahalanobis_eval_steps,
+            roc_eval_steps,
             dtype=np.int64,
         )
         auc_bgtrain = np.asarray(
@@ -1259,7 +1259,7 @@ class TrainLeJEPAParticleTransformer:
         plt.close(fig)
 
     @torch.no_grad()
-    def collect_representations(self, loader: DataLoader) -> np.ndarray:
+    def collect_representations(self, loader: DataLoader) -> torch.Tensor:
         """
         Compute full-jet representations without augmentation/crop/drop.
         """
@@ -1284,35 +1284,117 @@ class TrainLeJEPAParticleTransformer:
                     normalize_output=self.args.normalize_output_representations,
                 )
 
-            latents.append(z.detach().float().cpu().numpy())
+            latents.append(z.detach().float().cpu())
 
-        return np.concatenate(latents, axis=0)
-
-    def collect_evaluation_latents(
+        return torch.stack(latents, dim=0)
+    
+    @torch.no_grad()
+    def collect_view_representations(
         self,
-        bg_train_loader: DataLoader,
-        bg_val_loader: DataLoader,
-        signal_loader: DataLoader,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        dataloader,
+        which_view: Literal["view", "negative", "all"] = "view"
+    ) -> torch.Tensor:
         """
-        Collect all latent arrays needed by both latent-space plotting and
-        Mahalanobis/ROC evaluation exactly once.
+        Collect augmented view representations for a full dataset.
+
+        Unlike collect_representations(), this function calls:
+
+            self.model.forward_pretrain(...)
+
+        so that the model's existing MultiViewAugmentation is reused exactly.
+
+        Output:
+            z_views:
+                Tensor of shape:
+
+                    (V, N_events, D)
+
+                where V is the total number of positive views.
+            
+            z_negatives:
+                Tensor of shape:
+
+                    (K, N_events, D)
+
+                where K is the total number of negative views.
+
+        Important:
+            If which_view is set to "view", the z_negatives is returned as None.
+            If which_view is set to "negative", the z_views is returned as None.
         """
+        
+        assert which_view in {"view", "negative", "all"}, (
+            f"Invalid which_view: {which_view}. Choose from 'view', 'negative', or 'all'."
+        )
 
-        print("Collecting background train latents...")
-        bg_train_latents = self.collect_representations(bg_train_loader)
+        self.model.eval()
 
-        print("Collecting background validation latents...")
-        bg_val_latents = self.collect_representations(bg_val_loader)
+        collected_z_views = []
+        collected_z_negatives = []
 
-        print("Collecting signal latents...")
-        signal_latents = self.collect_representations(signal_loader)
+        with torch.no_grad():
+            for batch in tqdm(
+                dataloader,
+                desc="Collecting positive-view representations",
+                leave=False,
+            ):
+                x = batch["x"].to(DEVICE, non_blocking=True)
+                padding_mask = batch["padding_mask"].to(DEVICE, non_blocking=True)
 
-        print(f"Background train latents: {bg_train_latents.shape}")
-        print(f"Background val latents: {bg_val_latents.shape}")
-        print(f"Signal latents: {signal_latents.shape}")
+                dtype = precision_to_dtype(self.args.precision)
+                use_autocast = autocast_enabled_for_precision(self.args.precision)
+        
+                with torch.autocast(
+                    device_type=DEVICE.type,
+                    dtype=dtype,
+                    enabled=use_autocast,
+                ):
+                    output = self.model.forward_pretrain(
+                        x,
+                        padding_mask=padding_mask,
+                        normalize_output=self.args.normalize_output_representations,
+                    )
+                
+                if which_view == "view" or which_view == "all":
+                    # Shape:
+                    #     (V, B, D)
+                    z_views = output["z_views"]
 
-        return bg_train_latents, bg_val_latents, signal_latents
+                    collected_z_views.append(
+                        z_views.detach().float().cpu()
+                    )
+                if which_view == "negative" or which_view == "all":
+                    # Shape:
+                    #     (K, B, D)
+                    z_negatives = output["z_negatives"]
+
+                    collected_z_negatives.append(
+                        z_negatives.detach().float().cpu()
+                    )
+
+        if which_view == "view" or which_view == "all":
+            # Concatenate over event/batch dimension:
+            #     list of (V, B_i, D)
+            # ->  (V, sum_i B_i, D)
+            z_views = torch.cat(
+                collected_z_views,
+                dim=1,
+            )
+        if which_view == "negative" or which_view == "all":
+            # Concatenate over event/batch dimension:
+            #     list of (K, B_i, D)
+            # ->  (K, sum_i B_i, D)
+            z_negatives = torch.cat(
+                collected_z_negatives,
+                dim=1,
+            )
+
+        if which_view == "view":
+            return z_views, None
+        elif which_view == "negative":
+            return None, z_negatives
+        else:  # which_view == "all"
+            return z_views, z_negatives
 
     def fit_mahalanobis_background(
         self,
@@ -1361,6 +1443,113 @@ class TrainLeJEPAParticleTransformer:
         # scores = np.einsum("nd,dd,nd->n", centered, precision, centered)
         scores = np.einsum("ni,ij,nj->n", centered, precision, centered)
         return scores.astype(np.float64)
+    
+    @staticmethod
+    def local_global_consistency_scores(
+        z_views: torch.Tensor,
+        num_global_views: int,
+    ) -> torch.Tensor:
+        """
+        Compute one local-global consistency anomaly score per event.
+
+        Input:
+            z_views:
+                Tensor of shape:
+
+                    (V, B, D)
+
+                where:
+                    V = total number of positive views
+                    B = batch size / number of events
+                    D = representation dimension
+
+                View ordering must match MultiViewAugmentation:
+
+                    first G views:
+                        global views
+
+                    remaining V - G views:
+                        local views
+
+            num_global_views:
+                Number of global views G.
+
+        Output:
+            scores:
+                Tensor of shape:
+
+                    (B,)
+
+                One anomaly score per event.
+
+        Definition:
+            For event b, first construct the global anchor:
+
+                anchor_b
+                    = mean_g z_global[g, b]
+
+            Then compute the mean squared representation distance from every
+            local view to that event-specific global anchor:
+
+                score_b
+                    = mean_l mean_d
+                        (z_local[l, b, d] - anchor_b[d])^2
+
+        Interpretation:
+            Larger score means the event's local representations are less
+            consistent with its global representation.
+
+            The encoder is trained only on QCD positive-view consistency, so
+            an unseen anomaly may receive a larger score if its local and global
+            structure do not satisfy the learned QCD consistency relation.
+        """
+
+        if z_views.ndim != 3:
+            raise ValueError(
+                "Expected z_views shape (V, B, D), got "
+                f"{tuple(z_views.shape)}."
+            )
+
+        num_views = z_views.size(0)
+
+        if not (1 <= num_global_views < num_views):
+            raise ValueError(
+                "local_global_consistency_scores requires at least one global "
+                "and one local view. Got "
+                f"num_global_views={num_global_views}, "
+                f"num_views={num_views}."
+            )
+
+        # Shape:
+        #     global_views: (G, B, D)
+        #     local_views:  (L, B, D)
+        global_views = z_views[:num_global_views]
+        local_views = z_views[num_global_views:]
+
+        # Event-specific global anchor:
+        #
+        #     anchor_b = mean over global views
+        #
+        # Shape:
+        #     (B, D)
+        anchor = global_views.mean(dim=0)
+
+        # Per-local-view MSE to the event-specific global anchor.
+        #
+        # Shape after mean over representation dimension:
+        #     (L, B)
+        local_anchor_mse = (
+            local_views
+            - anchor.unsqueeze(0)
+        ).square().mean(dim=-1)
+
+        # Mean over local views.
+        #
+        # Shape:
+        #     (B,)
+        scores = local_anchor_mse.mean(dim=0)
+
+        return scores
 
     @staticmethod
     def compute_auc(background_scores: np.ndarray, signal_scores: np.ndarray) -> float:
@@ -1373,30 +1562,50 @@ class TrainLeJEPAParticleTransformer:
         y_score = np.concatenate([background_scores, signal_scores])
         return float(roc_auc_score(y_true, y_score))
 
-    def evaluate_mahalanobis_for_epoch(
+    @torch.no_grad()
+    def compute_mahalanobis_anomaly_scores(
         self,
-        bg_train_latents: np.ndarray,
-        bg_val_latents: np.ndarray,
-        signal_latents: np.ndarray,
-        epoch: int,
-    ) -> Tuple[float, float]:
+        background_train_loader,
+        background_val_loader,
+        signal_loader,
+        plot_latent: bool = False,
+        epoch: Optional[int] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
-        Evaluate Mahalanobis anomaly scores from already-collected latents.
-
-        The background-only Gaussian model is fit on background train latents.
-        ROC/AUC is reported for both:
-            - background train vs signal
-            - background validation vs signal
+        Compute downstream Mahalanobis anomaly scores.
         
+        If plot_latent is True, also plot the representation distribution 
+        of background validation and signal events.
+        Epoch must be provided for plotting.
+
         Returns:
-            auc_bgtrain_vs_signal: float
-            auc_bgval_vs_signal: float
+            background_train_scores
+            background_val_scores
+            signal_scores
         """
 
-        mahal_dir = os.path.join(self.output_dir, "mahalanobis_eval", f"epoch_{epoch:04d}")
-        os.makedirs(mahal_dir, exist_ok=True)
+        bg_train_latents = self.collect_representations(
+            background_train_loader
+        )
 
-        mean, precision = self.fit_mahalanobis_background(bg_train_latents)
+        bg_val_latents = self.collect_representations(
+            background_val_loader
+        )
+
+        signal_latents = self.collect_representations(
+            signal_loader
+        )
+
+        # If plot_latent is True, plot the mean of global views for background validation and signal events.
+        if plot_latent:
+            assert epoch is not None, "Epoch must be provided when plot_latent is True."
+            self.plot_latent_space_for_epoch(
+                bg_val_latents.numpy(),
+                signal_latents.numpy(),
+                epoch=epoch,
+            ) 
+            
+        mean, precision = self.fit_mahalanobis_background(background_train_loader)
 
         background_train_scores = self.mahalanobis_scores(
             bg_train_latents,
@@ -1414,6 +1623,155 @@ class TrainLeJEPAParticleTransformer:
             precision,
         )
 
+        return (
+            background_train_scores,
+            background_val_scores,
+            signal_scores,
+        )
+    
+    @torch.no_grad()
+    def compute_local_global_anomaly_scores(
+        self,
+        background_train_loader,
+        background_val_loader,
+        signal_loader,
+        plot_latent: bool = False,
+        epoch: Optional[int] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Compute event-wise local-global consistency anomaly scores.
+        
+        If plot_latent is True, also plot the mean of global views for 
+        background validation and signal events.
+        Epoch must be provided for plotting.
+
+        For every event:
+            1. Generate positive global and local views using the model's existing
+            MultiViewAugmentation configuration.
+            2. Encode all views with the same model.
+            3. Compute the event-specific anchor as the mean global representation.
+            4. Compute the mean local-to-anchor representation MSE.
+
+        No signal information is used for training or fitting.
+        No synthetic negative views enter the score definition.
+        
+        Important:
+            This process is repeated for self.args.local_global_eval_repeats times.
+            Each repeat independently resamples positive augmentations.
+            Final event score is averaged across repeats.
+
+        Returns:
+            background_train_scores
+            background_val_scores
+            signal_scores
+        """
+
+        num_repeats = self.args.local_global_eval_repeats
+        if num_repeats < 1:
+            raise ValueError(
+                f"local_global_eval_repeats must be >= 1, got {num_repeats}."
+            )
+        
+        background_train_scores_all = []
+        background_val_scores_all = []
+        signal_scores_all = []
+        
+        for i in range(num_repeats):
+            bg_train_latents = self.collect_view_representations(
+                background_train_loader
+            )
+            bg_val_latents = self.collect_view_representations(
+                background_val_loader
+            )
+            signal_latents = self.collect_view_representations(
+                signal_loader
+            )
+            
+            # If plot_latent is True, plot the mean of global views for background validation and signal events.
+            if plot_latent and i == 0: # plot only for first run
+                assert epoch is not None, "Epoch must be provided when plot_latent is True."
+                bg_val_global_latents = bg_val_latents[:self.args.num_global_views].mean(dim=0)
+                signal_global_latents = signal_latents[:self.args.num_global_views].mean(dim=0)
+                self.plot_latent_space_for_epoch(
+                    bg_val_global_latents.numpy(),
+                    signal_global_latents.numpy(),
+                    epoch=epoch,
+                ) 
+
+            background_train_scores = self.local_global_consistency_scores(
+                bg_train_latents, 
+                self.args.num_global_views,
+            )
+            background_val_scores = self.local_global_consistency_scores(
+                bg_val_latents,
+                self.args.num_global_views,
+            )
+            signal_scores = self.local_global_consistency_scores(
+                signal_latents,
+                self.args.num_global_views
+            )
+
+            background_train_scores_all.append(background_train_scores)
+            background_val_scores_all.append(background_val_scores)
+            signal_scores_all.append(signal_scores)
+
+        # Average scores across repeats
+        background_train_scores = torch.stack(background_train_scores_all).mean(dim=0)
+        background_val_scores = torch.stack(background_val_scores_all).mean(dim=0)
+        signal_scores = torch.stack(signal_scores_all).mean(dim=0)
+
+        return (
+            background_train_scores,
+            background_val_scores,
+            signal_scores,
+        )
+    
+    def evaluate_anomaly_score_for_epoch(
+        self,
+        bg_train_loader,
+        bg_val_loader,
+        sg_loader,
+        epoch: int,
+        score_fn,
+        score_name,
+    ) -> Tuple[float, float]:
+        """
+        Evaluate anomaly scores from already-collected latents.
+        This function also automatically plots the latent space distribution 
+        of background val and signal events.
+
+        The score_fn must have the following signature:
+            score_fn(
+                self,
+                background_train_loader,
+                background_val_loader,
+                signal_loader,
+                plot_latent: bool,
+                epoch: Optional[int],
+            ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        
+        
+        Returns:
+            auc_bgtrain_vs_signal: float
+            auc_bgval_vs_signal: float
+        """
+
+        eval_dir = os.path.join(self.output_dir, f"{score_name}_eval", f"epoch_{epoch:04d}")
+        os.makedirs(eval_dir, exist_ok=True)
+
+        (
+            background_train_scores,
+            background_val_scores,
+            signal_scores,
+        ) = score_fn(
+            self,
+            bg_train_loader,
+            bg_val_loader,
+            sg_loader,
+            plot_latent=True,
+            epoch=epoch,
+        )
+
         auc_bgtrain_vs_signal = self.compute_auc(background_train_scores, signal_scores)
         auc_bgval_vs_signal = self.compute_auc(background_val_scores, signal_scores)
 
@@ -1427,13 +1785,9 @@ class TrainLeJEPAParticleTransformer:
             "background_train_score_median": float(np.median(background_train_scores)),
             "background_val_score_median": float(np.median(background_val_scores)),
             "signal_score_median": float(np.median(signal_scores)),
-            "mahalanobis_cov_eps": float(self.args.mahalanobis_cov_eps),
-            "background_train_latent_shape": list(bg_train_latents.shape),
-            "background_val_latent_shape": list(bg_val_latents.shape),
-            "signal_latent_shape": list(signal_latents.shape),
         }
 
-        metrics_path = os.path.join(mahal_dir, "mahalanobis_metrics.json")
+        metrics_path = os.path.join(eval_dir, f"{score_name}_metrics.json")
         with open(metrics_path, "w") as f:
             json.dump(metrics, f, indent=2)
 
@@ -1442,7 +1796,7 @@ class TrainLeJEPAParticleTransformer:
             signal_scores,
             background_label="QCD (Val)",
             signal_label="WJet",
-            save_path=os.path.join(mahal_dir, "bgval-vs-signal-mahalanobis-score.png"),
+            save_path=os.path.join(eval_dir, "bgval-vs-signal-score.png"),
         )
 
         plot_anomaly_score(
@@ -1450,7 +1804,7 @@ class TrainLeJEPAParticleTransformer:
             signal_scores,
             background_label="QCD (Train)",
             signal_label="WJet",
-            save_path=os.path.join(mahal_dir, "bgtrain-vs-signal-mahalanobis-score.png"),
+            save_path=os.path.join(eval_dir, "bgtrain-vs-signal-score.png"),
         )
 
         plot_roc_curve(
@@ -1458,7 +1812,7 @@ class TrainLeJEPAParticleTransformer:
             signal_scores,
             background_label="QCD (Val)",
             signal_label="WJet",
-            savepath=os.path.join(mahal_dir, "roc-bgval-vs-signal-mahalanobis.png"),
+            savepath=os.path.join(eval_dir, "roc-bgval-vs-signal.png"),
             examples=False,
             loss_fn=torch.nn.MSELoss(reduction="mean"),
         )
@@ -1468,22 +1822,22 @@ class TrainLeJEPAParticleTransformer:
             signal_scores,
             background_label="QCD (Train)",
             signal_label="WJet",
-            savepath=os.path.join(mahal_dir, "roc-bgtrain-vs-signal-mahalanobis.png"),
+            savepath=os.path.join(eval_dir, "roc-bgtrain-vs-signal.png"),
             examples=False,
             loss_fn=torch.nn.MSELoss(reduction="mean"),
         )
 
-        latest_dir = os.path.join(self.output_dir, "mahalanobis_eval", "latest")
+        latest_dir = os.path.join(self.output_dir, f"{score_name}_eval", "latest")
         os.makedirs(latest_dir, exist_ok=True)
 
-        latest_metrics_path = os.path.join(latest_dir, "mahalanobis_metrics.json")
+        latest_metrics_path = os.path.join(latest_dir, f"{score_name}_metrics.json")
         with open(latest_metrics_path, "w") as f:
             json.dump(metrics, f, indent=2)
 
-        print(f"Mahalanobis metrics saved to {metrics_path}")
-        print(f"Mahalanobis AUC, QCD train vs WJet: {auc_bgtrain_vs_signal:.6f}")
-        print(f"Mahalanobis AUC, QCD val vs WJet: {auc_bgval_vs_signal:.6f}")
-        
+        print(f"{score_name.capitalize()} metrics saved to {metrics_path}")
+        print(f"{score_name.capitalize()} AUC, QCD train vs WJet: {auc_bgtrain_vs_signal:.6f}")
+        print(f"{score_name.capitalize()} AUC, QCD val vs WJet: {auc_bgval_vs_signal:.6f}")
+
         return auc_bgtrain_vs_signal, auc_bgval_vs_signal
         
     def plot_latent_space_for_epoch(
@@ -1535,6 +1889,7 @@ class TrainLeJEPAParticleTransformer:
 
         summary_path = os.path.join(self.output_dir, "summary.json")
 
+        # Write a first summary of the run
         summary = {
             "model": self.model_name,
             
@@ -1588,25 +1943,9 @@ class TrainLeJEPAParticleTransformer:
             "epps_pulley_num_points": self.args.epps_pulley_num_points,
             "num_slices": self.args.num_slices,
 
-            # Negative augmentation.
-            "num_negative_views": self.args.num_negative_views,
-            "batch_mix_prob": self.args.batch_mix_prob,
-            "pt_resample_prob": self.args.pt_resample_prob,
-            "node_eta_phi_rotation_prob":
-                self.args.node_eta_phi_rotation_prob,
-            "eta_phi_shuffle_prob": self.args.eta_phi_shuffle_prob,
-            "identity_shuffle_prob": self.args.identity_shuffle_prob,
-            "corrupt_node_frac": self.args.corrupt_node_frac,
-            "batch_mix_anchor_frac_min": self.args.batch_mix_anchor_frac_min,
-            "batch_mix_anchor_frac_max": self.args.batch_mix_anchor_frac_max,
-            "renormalize_negative_pt_sum":
-                self.args.renormalize_negative_pt_sum,
-            "renormalize_negative_log_pt_stats":
-                self.args.renormalize_negative_log_pt_stats,
-
             # Evaluation.
-            "mahalanobis_eval": not self.args.no_mahalanobis_eval,
-            "mahalanobis_cov_eps": self.args.mahalanobis_cov_eps,
+            "anomaly_score": self.args.anomaly_score,
+            "local_global_eval_repeats": self.args.local_global_eval_repeats,
 
             # Misc.
             "normalize_features": self.args.normalize_features,
@@ -1622,6 +1961,28 @@ class TrainLeJEPAParticleTransformer:
             "latest_val_losses": None,
         }
         
+        # Add info about negative augmentation only if the model uses it.
+        if self.model_name in ["triplet", "mahalanobis"]:
+            summary.update(
+                {
+                    # Negative augmentation.
+                    "num_negative_views": self.args.num_negative_views,
+                    "batch_mix_prob": self.args.batch_mix_prob,
+                    "pt_resample_prob": self.args.pt_resample_prob,
+                    "node_eta_phi_rotation_prob":
+                        self.args.node_eta_phi_rotation_prob,
+                    "eta_phi_shuffle_prob": self.args.eta_phi_shuffle_prob,
+                    "identity_shuffle_prob": self.args.identity_shuffle_prob,
+                    "corrupt_node_frac": self.args.corrupt_node_frac,
+                    "batch_mix_anchor_frac_min": self.args.batch_mix_anchor_frac_min,
+                    "batch_mix_anchor_frac_max": self.args.batch_mix_anchor_frac_max,
+                    "renormalize_negative_pt_sum":
+                        self.args.renormalize_negative_pt_sum,
+                    "renormalize_negative_log_pt_stats":
+                        self.args.renormalize_negative_log_pt_stats,
+                }
+            )
+        # Add model-specific hyperparameters to the summary.
         if self.model_name == "triplet":
             summary.update(
                 {
@@ -1639,7 +2000,6 @@ class TrainLeJEPAParticleTransformer:
                     ),
                 }
             )
-
         elif self.model_name == "mahalanobis":
             summary.update(
                 {
@@ -1655,8 +2015,6 @@ class TrainLeJEPAParticleTransformer:
                 }
             )
         
-        elif self.model_name == "lejepa":
-            pass
 
         def update_summary(**updates) -> None:
             summary.update(updates)
@@ -1712,7 +2070,7 @@ class TrainLeJEPAParticleTransformer:
             "auc_bgval_vs_signal": [],
         }
         epoch_end_steps: List[int] = []
-        mahalanobis_eval_steps: List[int] = []
+        roc_eval_steps: List[int] = []
 
         best_val_loss = float("inf")
         best_model_path = os.path.join(self.output_dir, "best_model.pth")
@@ -1893,31 +2251,25 @@ class TrainLeJEPAParticleTransformer:
                 torch.save(self.model, best_model_path)
                 print(f"Saved new best model to {best_model_path}")
 
-            if ( # Plot latent space and evaluate Mahalanobis only at specified intervals or at the final epoch.
-                self.args.latent_plot_every > 0
-                and (epoch % self.args.latent_plot_every == 0 or epoch == self.args.epochs)
+            if ( # Plot latent space and evaluate ROC only at specified intervals or at the final epoch.
+                self.args.roc_eval_every > 0
+                and (epoch % self.args.roc_eval_every == 0 or epoch == self.args.epochs)
             ):
-                bg_train_latents, bg_val_latents, signal_latents = self.collect_evaluation_latents(
-                    bg_train_loader=train_loader,
-                    bg_val_loader=bg_val_loader,
-                    signal_loader=signal_loader,
-                )
-
-                self.plot_latent_space_for_epoch(
-                    bg_val_latents=bg_val_latents,
-                    signal_latents=signal_latents,
-                    epoch=epoch,
-                )
-
-                if not self.args.no_mahalanobis_eval:
                     (
                         auc_bgtrain_vs_signal,
                         auc_bgval_vs_signal,
-                    ) = self.evaluate_mahalanobis_for_epoch(
-                        bg_train_latents=bg_train_latents,
-                        bg_val_latents=bg_val_latents,
-                        signal_latents=signal_latents,
+                    ) = self.evaluate_anomaly_score_for_epoch(
+                        bg_train_loader=train_loader,
+                        bg_val_loader=bg_val_loader,
+                        sg_loader=signal_loader,
                         epoch=epoch,
+                        score_name=self.args.anomaly_score,
+                        score_fn=(
+                            {
+                                "mahalanobis": self.compute_mahalanobis_anomaly_scores,
+                                "local-global": self.compute_local_global_anomaly_scores,
+                            }[self.args.anomaly_score]
+                        )
                     )
 
                     auc_history["auc_bgtrain_vs_signal"].append(
@@ -1927,7 +2279,7 @@ class TrainLeJEPAParticleTransformer:
                         float(auc_bgval_vs_signal)
                     )
 
-                    mahalanobis_eval_steps.append(
+                    roc_eval_steps.append(
                         len(train_history["total_loss"])
                     )
 
@@ -1937,7 +2289,7 @@ class TrainLeJEPAParticleTransformer:
                 epoch_end_steps=epoch_end_steps,
                 best_val_loss=best_val_loss,
                 auc_history=auc_history,
-                mahalanobis_eval_steps=mahalanobis_eval_steps,
+                roc_eval_steps=roc_eval_steps,
             )
             
             print(f"Epoch {epoch} train losses: {mean_train}")
@@ -1961,22 +2313,6 @@ class TrainLeJEPAParticleTransformer:
             )
 
             print(f"Updated run summary at {summary_path}")
-
-        # Final full-jet representation arrays for downstream inspection.
-        # Reuse the last evaluation latents when the final epoch already ran
-        # latent-space/Mahalanobis evaluation. Otherwise collect them once here.
-        if (
-            self.args.latent_plot_every > 0
-            and (self.args.epochs % self.args.latent_plot_every == 0)
-        ):
-            bg_train_latents, bg_val_latents, sg_latents = self.collect_evaluation_latents(
-                bg_train_loader=train_loader,
-                bg_val_loader=bg_val_loader,
-                signal_loader=signal_loader,
-            )
-        else:
-            bg_val_latents = self.collect_representations(bg_val_loader)
-            sg_latents = self.collect_representations(signal_loader)
 
         update_summary(
             status="completed",
@@ -2025,6 +2361,36 @@ if __name__ == "__main__":
             "Mahalanobis loss. "
             "'lejepa' uses LeJEPA + SIGReg only, without any corrupted-negative loss. "
             "Default: triplet."
+        ),
+    )
+    # Anomaly score function.
+    parser.add_argument(
+        "--anomaly-score",
+        type=str,
+        choices=[
+            "mahalanobis",
+            "local-global",
+        ],
+        default="mahalanobis",
+        help=(
+            "Epoch-level anomaly score used for ROC/AUC evaluation. "
+            "'mahalanobis' fits a normal latent distribution from background "
+            "training representations. "
+            "'local-global' generates positive global/local views using the "
+            "same MultiViewAugmentation hyperparameters as training and scores "
+            "each event by the mean local-to-global-anchor representation MSE. "
+            "Default: mahalanobis."
+        ),
+    )
+    parser.add_argument(
+        "--local-global-eval-repeats",
+        type=int,
+        default=1,
+        help=(
+            "Number of independent positive-augmentation draws used for "
+            "local-global consistency evaluation. Event scores are averaged "
+            "over repeats. Used only with --anomaly-score local-global. "
+            "Default: 1."
         ),
     )
     # Profile
@@ -2448,15 +2814,10 @@ if __name__ == "__main__":
         help="Use pinned host memory in DataLoader. Default: True on CUDA, else False.",
     )
     parser.add_argument(
-        "--latent-plot-every",
+        "--roc-eval-every",
         type=int,
         default=1,
-        help="Plot full-jet latent space every N epochs. Use 0 to disable. Default: 1.",
-    )
-    parser.add_argument(
-        "--no-mahalanobis-eval",
-        action="store_true",
-        help="Disable Mahalanobis anomaly-score and ROC evaluation during latent plotting epochs.",
+        help="Plot full-jet latent space and compute ROC every N epochs. Use 0 to disable. Default: 1.",
     )
     parser.add_argument(
         "--mahalanobis-cov-eps",

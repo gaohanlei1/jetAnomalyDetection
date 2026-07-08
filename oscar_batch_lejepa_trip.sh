@@ -68,6 +68,7 @@ python -u scripts/run_train_lejepa_trip_part.py \
   --background "data/processed/qcd-vs-wjet-pt-200to400/QCD_scaled_scaled.pkl" \
   --signal "data/processed/qcd-vs-wjet-pt-200to400/WJet_scaled_scaled.pkl" \
   --model "lejepa" \
+  --anomaly-score "local-global" \
   --embed-dim 128 \
   --representation-dim 128 \
   --num-layers 8 \
