@@ -302,9 +302,15 @@ class JetClassIterableDataset(IterableDataset):
             self.world_size * local_num_workers
         )
 
-        # Fixed ownership: every rank/worker permanently owns a disjoint
-        # subset of ROOT shards.
-        worker_groups: List[List[str]] = []
+        # Build one globally interleaved file list before sharding.
+        #
+        # Example:
+        #   QCD_0, Hbb_0, Hcc_0,
+        #   QCD_1, Hbb_1, Hcc_1,
+        #   ...
+        #
+        # Sharding happens only after this interleaving step.
+        label_groups: List[List[str]] = []
 
         for label in self.labels_to_load:
             prefix = LABEL_TO_FILE_PREFIX[label]
@@ -318,19 +324,34 @@ class JetClassIterableDataset(IterableDataset):
                 )
             )
 
-            worker_groups.append(
-                label_files[
-                    global_worker_id::global_num_workers
-                ]
-            )
+            label_groups.append(label_files)
 
-        if not any(worker_groups):
+        all_files: List[str] = []
+
+        max_group_len = max(
+            (
+                len(group)
+                for group in label_groups
+            ),
+            default=0,
+        )
+
+        for i in range(max_group_len):
+            for group in label_groups:
+                if i < len(group):
+                    all_files.append(group[i])
+
+        # Shard the interleaved stream across all DDP ranks and DataLoader workers
+        worker_base_files = all_files[
+            global_worker_id::global_num_workers
+        ]
+
+        if not worker_base_files:
             raise RuntimeError(
                 "This rank/worker received no ROOT shards. "
                 f"global_worker_id={global_worker_id}, "
-                f"global_num_workers={global_num_workers}. "
-                "Reduce world size / DataLoader workers or "
-                "provide more shards."
+                f"global_num_workers={global_num_workers}, "
+                f"total_files={len(all_files)}."
             )
 
         worker_quota = None
@@ -359,32 +380,10 @@ class JetClassIterableDataset(IterableDataset):
                 + 104729 * pass_index
             )
 
-            # Copy before shuffling so shard ownership stays fixed.
-            pass_groups = [
-                list(group)
-                for group in worker_groups
-            ]
+            worker_files = list(worker_base_files) # copy the list of shards for shuffling
 
             if self.shuffle_files:
-                for group in pass_groups:
-                    rng.shuffle(group)
-
-            # Interleave labels so the active shard pool is not
-            # accidentally class-pure.
-            worker_files: List[str] = []
-
-            max_group_len = max(
-                (
-                    len(group)
-                    for group in pass_groups
-                ),
-                default=0,
-            )
-
-            for i in range(max_group_len):
-                for group in pass_groups:
-                    if i < len(group):
-                        worker_files.append(group[i])
+                rng.shuffle(worker_files)
 
             yielded = 0
 
@@ -394,37 +393,21 @@ class JetClassIterableDataset(IterableDataset):
                     x_particles, y = (
                         load_and_preprocess_jetclass_file(
                             filepath=filepath,
-                            particle_features=(
-                                self.particle_features
-                            ),
-                            max_num_particles=(
-                                self.max_num_particles
-                            ),
+                            particle_features=self.particle_features,
+                            max_num_particles=self.max_num_particles,
                         )
                     )
 
-                    for event_x, event_y in zip(
-                        x_particles,
-                        y,
-                    ):
-                        if (
-                            worker_quota is not None
-                            and yielded >= worker_quota
-                        ):
+                    for event_x, event_y in zip(x_particles, y):
+                        if worker_quota is not None and yielded >= worker_quota:
                             break
 
-                        yield (
-                            torch.from_numpy(event_x),
-                            torch.from_numpy(event_y),
-                        )
+                        yield torch.from_numpy(event_x), torch.from_numpy(event_y)
 
                         yielded += 1
 
-                    if (
-                        worker_quota is not None
-                        and yielded >= worker_quota
-                    ):
-                        break
+                    if worker_quota is not None and yielded >= worker_quota:
+                        break # quit also the outside for-loop
 
             else:
                 file_iter = iter(worker_files)
@@ -439,19 +422,12 @@ class JetClassIterableDataset(IterableDataset):
                     x_particles, y = (
                         load_and_preprocess_jetclass_file(
                             filepath=filepath,
-                            particle_features=(
-                                self.particle_features
-                            ),
-                            max_num_particles=(
-                                self.max_num_particles
-                            ),
+                            particle_features=self.particle_features,
+                            max_num_particles=self.max_num_particles,
                         )
                     )
 
-                    order = np.arange(
-                        len(x_particles),
-                        dtype=np.int64,
-                    )
+                    order = np.arange(len(x_particles), dtype=np.int64,)
 
                     np.random.default_rng(
                         rng.randrange(2**32)
@@ -461,7 +437,7 @@ class JetClassIterableDataset(IterableDataset):
                         "x": x_particles,
                         "y": y,
                         "order": order,
-                        "cursor": 0,
+                        "cursor": 0, # has yielded to which jet?
                     }
 
                 for _ in range(
@@ -476,15 +452,10 @@ class JetClassIterableDataset(IterableDataset):
                         active.append(shard)
 
                 while active:
-                    if (
-                        worker_quota is not None
-                        and yielded >= worker_quota
-                    ):
+                    if worker_quota is not None and yielded >= worker_quota:
                         break
 
-                    shard_idx = rng.randrange(
-                        len(active)
-                    )
+                    shard_idx = rng.randrange(len(active)) # randomly pick a shard from active shards
                     shard = active[shard_idx]
 
                     event_idx = int(
@@ -495,29 +466,21 @@ class JetClassIterableDataset(IterableDataset):
 
                     shard["cursor"] += 1
 
-                    yield (
-                        torch.from_numpy(
-                            shard["x"][event_idx]
-                        ),
-                        torch.from_numpy(
-                            shard["y"][event_idx]
-                        ),
+                    yield ( # randomly select an event from the shard
+                        torch.from_numpy(shard["x"][event_idx]),
+                        torch.from_numpy(shard["y"][event_idx]),
                     )
 
                     yielded += 1
-
-                    if (
-                        shard["cursor"]
-                        >= len(shard["order"])
-                    ):
+                    
+                    # if run out of events in this shard, replace with a new shard
+                    if shard["cursor"] >= len(shard["order"]): 
                         replacement = load_next_shard()
 
                         if replacement is None:
                             active.pop(shard_idx)
                         else:
-                            active[shard_idx] = (
-                                replacement
-                            )
+                            active[shard_idx] = replacement
 
             if not self.infinite:
                 break
@@ -857,11 +820,11 @@ class TrainLeJEPAParticleTransformer:
 
     def load(self) -> None:
         """Construct lazy datasets for the official JetClass splits."""
-
-        print(f"JetClass root: {self.dataset_root}")
-        print(f"Background labels: {self.background_labels}")
-        print(f"Signal labels: {self.signal_labels}")
-        print(f"Particle features: {self.particle_feature_names}")
+        if self.is_main_process:
+            print(f"JetClass root: {self.dataset_root}")
+            print(f"Background labels: {self.background_labels}")
+            print(f"Signal labels: {self.signal_labels}")
+            print(f"Particle features: {self.particle_feature_names}")
 
         self.bg_train_dataset = JetClassIterableDataset(
             split_dir=self.train_dir,
@@ -869,6 +832,21 @@ class TrainLeJEPAParticleTransformer:
             particle_features=self.particle_feature_names,
             max_num_particles=self.args.max_num_particles,
             max_events=self.args.max_train_events,
+            shuffle_active_shards=self.args.shuffle_active_shards,
+            infinite=True,
+            shuffle_files=True,
+            seed=self.args.seed,
+            rank=self.rank,
+            world_size=self.world_size,
+        )
+        # bg_train_eval_dataset is used for collecting train set representations only
+        # it has the same data as bg_train_dataset
+        self.bg_train_eval_dataset = JetClassIterableDataset(
+            split_dir=self.train_dir,
+            labels_to_load=self.background_labels,
+            particle_features=self.particle_feature_names,
+            max_num_particles=self.args.max_num_particles,
+            max_events=self.args.max_val_events, # use max_val_events for eval
             shuffle_active_shards=self.args.shuffle_active_shards,
             infinite=True,
             shuffle_files=True,
@@ -917,17 +895,18 @@ class TrainLeJEPAParticleTransformer:
     def build_node_datasets(self) -> None:
         """Report lazy dataset metadata without materializing any events."""
 
-        print(
-            "Lazy JetClass datasets ready; no full split has been loaded into RAM."
-        )
-        print(f"Background train ROOT shards: {len(self.bg_train_dataset.filepaths)}")
-        print(f"Background val ROOT shards: {len(self.bg_val_dataset.filepaths)}")
-        # print(f"Background test ROOT shards: {len(self.bg_test_dataset.filepaths)}")
-        print(f"Signal test ROOT shards: {len(self.sg_dataset.filepaths)}")
-        print(
-            "Per-event particle shape: "
-            f"({self.args.max_num_particles}, {len(self.particle_feature_names)})"
-        )
+        if self.is_main_process:
+            print(
+                "Lazy JetClass datasets ready; no full split has been loaded into RAM."
+            )
+            print(f"Background train ROOT shards: {len(self.bg_train_dataset.filepaths)}")
+            print(f"Background val ROOT shards: {len(self.bg_val_dataset.filepaths)}")
+            # print(f"Background test ROOT shards: {len(self.bg_test_dataset.filepaths)}")
+            print(f"Signal test ROOT shards: {len(self.sg_dataset.filepaths)}")
+            print(
+                "Per-event particle shape: "
+                f"({self.args.max_num_particles}, {len(self.particle_feature_names)})"
+            )
 
     def plot_features(self) -> None:
         """Plot particle features from a bounded streaming training sample."""
@@ -974,8 +953,8 @@ class TrainLeJEPAParticleTransformer:
 
     def make_dataloaders(
         self,
-    ) -> Tuple[DataLoader, DataLoader, DataLoader, DataLoader]:
-        common_kwargs = {
+    ) -> Tuple[DataLoader, DataLoader, DataLoader, DataLoader, DataLoader]:
+        train_kwargs = {
             "batch_size": self.per_rank_batch_size,
             "num_workers": self.args.num_workers,
             "pin_memory": self.args.pin_memory,
@@ -983,18 +962,33 @@ class TrainLeJEPAParticleTransformer:
             "persistent_workers": self.args.num_workers > 0,
             "drop_last": True,
         }
+
+        eval_kwargs = {
+            "batch_size": self.per_rank_batch_size,
+            "num_workers": 1,
+            "pin_memory": self.args.pin_memory,
+            "collate_fn": collate_jetclass_tensors,
+            "persistent_workers": True,
+            "drop_last": True,
+        }
+
         if self.args.num_workers > 0:
-            common_kwargs["prefetch_factor"] = self.args.prefetch_factor
+            train_kwargs["prefetch_factor"] = self.args.prefetch_factor
+
+        eval_kwargs["prefetch_factor"] = 1
 
         # IterableDataset owns sample order; DataLoader shuffle is invalid here.
-        train_loader = DataLoader(self.bg_train_dataset, **common_kwargs)
-        bg_val_loader = DataLoader(self.bg_val_dataset, **common_kwargs)
-        # bg_test_loader = DataLoader(self.bg_test_dataset, **common_kwargs)
+        train_loader = DataLoader(self.bg_train_dataset, **train_kwargs)
+        # train_eval_loader is used for collecting train set representations only
+        # it has the same data as train_loader
+        train_eval_loader = DataLoader(self.bg_train_eval_dataset, **eval_kwargs)
+        bg_val_loader = DataLoader(self.bg_val_dataset, **eval_kwargs)
+        # bg_test_loader = DataLoader(self.bg_test_dataset, **eval_kwargs)
         bg_test_loader = None  # Disabled for now; can be re-enabled if needed
         
-        signal_loader = DataLoader(self.sg_dataset, **common_kwargs)
+        signal_loader = DataLoader(self.sg_dataset, **eval_kwargs)
 
-        return train_loader, bg_val_loader, bg_test_loader, signal_loader
+        return train_loader, train_eval_loader, bg_val_loader, bg_test_loader, signal_loader
 
     def _extract_ssl_metrics(
         self,
@@ -1283,11 +1277,11 @@ class TrainLeJEPAParticleTransformer:
                 f"Unsupported model {self.model_name!r}."
             )
 
-        print(f"Selected SSL model: {self.model_name}")
-        print(f"Model summary:\n{core_model}")
-        
         self.num_params = sum(p.numel() for p in core_model.parameters() if p.requires_grad)
-        print(f"Number of trainable parameters: {self.num_params}")
+        if self.is_main_process:
+            print(f"Selected SSL model: {self.model_name}")
+            print(f"Model summary:\n{core_model}")
+            print(f"Number of trainable parameters: {self.num_params}")
         
         self.model_core = core_model # used for inference, visualization, and direct encoder calls
 
@@ -1521,9 +1515,15 @@ class TrainLeJEPAParticleTransformer:
         dtype = precision_to_dtype(self.args.precision)
         use_autocast = autocast_enabled_for_precision(self.args.precision)
 
-        for batch_idx, batch in enumerate(loader):
-            if batch_idx >= self.args.eval_steps:
-                break
+        loader_iter = iter(loader)
+        
+        for batch_idx in tqdm(
+            range(self.args.eval_steps),
+            desc="Collecting representations",
+            leave=False,
+            disable=not self.is_main_process,
+        ):
+            batch = next(loader_iter)
             x_particles = batch["x_particles"].to(DEVICE, non_blocking=True)
             padding_mask = batch["padding_mask"].to(DEVICE, non_blocking=True)
 
@@ -1603,6 +1603,7 @@ class TrainLeJEPAParticleTransformer:
                     total=self.args.eval_steps,
                     desc="Collecting positive-view representations",
                     leave=False,
+                    disable=not self.is_main_process,
                 )
             ):
                 if batch_idx >= self.args.eval_steps:
@@ -2039,7 +2040,9 @@ class TrainLeJEPAParticleTransformer:
             epoch=epoch,
         )
 
-        if not self.is_main_process:
+        # latent-collection and score computation is done in DDP
+        # but we only keep history and plot in the main process
+        if not self.is_main_process: 
             return 0.0, 0.0
         
         def scores_to_numpy(scores) -> np.ndarray:
@@ -2163,7 +2166,7 @@ class TrainLeJEPAParticleTransformer:
     def train(self) -> None:
         os.makedirs(self.output_dir, exist_ok=True)
 
-        train_loader, bg_val_loader, bg_test_loader, signal_loader = self.make_dataloaders()
+        train_loader, train_eval_loader, bg_val_loader, bg_test_loader, signal_loader = self.make_dataloaders()
         self.build_model()
 
         summary_path = os.path.join(self.output_dir, "summary.json")
@@ -2371,7 +2374,8 @@ class TrainLeJEPAParticleTransformer:
         train_iter = iter(train_loader) # infinite stream of training batches
         
         for epoch in range(1, self.args.epochs + 1):
-            print(f"\nEpoch [{epoch}/{self.args.epochs}]")
+            if self.is_main_process:
+                print(f"\nEpoch [{epoch}/{self.args.epochs}]")
 
             self.model.train()
 
@@ -2463,17 +2467,16 @@ class TrainLeJEPAParticleTransformer:
                         epoch_train[key].append(step_losses[key])
 
                     with record_function("progress_bar_update"):
-                        if step % 10 == 0:
-                            pbar.set_postfix(
-                                self._progress_postfix(
-                                    step_losses
-                                )
+                        pbar.set_postfix(
+                            self._progress_postfix(
+                                step_losses
                             )
+                        )
                     # Advance profiler state once per training iteration.
                     if should_profile:
                         prof.step()
 
-            if should_profile:
+            if should_profile and self.is_main_process:
                 print(
                     prof.key_averages().table(
                         sort_by="cuda_time_total",
@@ -2494,7 +2497,7 @@ class TrainLeJEPAParticleTransformer:
                 for key, values in epoch_train.items()
             }
 
-            self.model.eval()
+            self.model.eval() # val stage
             epoch_val = {
                 key: []
                 for key in self.ssl_metric_keys
@@ -2569,11 +2572,11 @@ class TrainLeJEPAParticleTransformer:
                 self.args.roc_eval_every > 0
                 and (epoch % self.args.roc_eval_every == 0 or epoch == self.args.epochs)
             ):
-                    (
+                    ( # eval stage
                         auc_bgtrain_vs_signal,
                         auc_bgval_vs_signal,
                     ) = self.evaluate_anomaly_score_for_epoch(
-                        bg_train_loader=train_loader,
+                        bg_train_loader=train_eval_loader, # use a separate loader to avoid messing up the iterator state
                         bg_val_loader=bg_val_loader,
                         sg_loader=signal_loader,
                         epoch=epoch,
@@ -2926,6 +2929,12 @@ if __name__ == "__main__":
         type=int,
         default=1024,
         help="Number of random slices for multivariate SIGReg. Default: 1024.",
+    )
+    parser.add_argument(
+        "--classification-weight",
+        type=float,
+        default=0.1,
+        help="Weight for classification loss. Default: 0.1.",
     )
 
     # Triplet / corrupted-negative objective.

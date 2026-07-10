@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --nodes=1               # node count
-#SBATCH --nodelist=gpu3102      # the L40S GPU!! 3001-3005, 3101-3102, 2708 are L40S
+#SBATCH --nodelist=gpu3003      # the L40S GPU!! 3001-3005, 3101-3102, 2708 are L40S
 #SBATCH -p gpu --gres=gpu:2     # number of gpus per node
 #SBATCH --ntasks-per-node=1     # total number of tasks across all nodes
-#SBATCH --cpus-per-task=16       # cpu-cores per task (>1 if multi-threaded tasks)
+#SBATCH --cpus-per-task=12       # cpu-cores per task (>1 if multi-threaded tasks)
 #SBATCH -t 12:00:00             # total run time limit (HH:MM:SS)
-#SBATCH --mem=32000MB           # INCREASED from 16GB to 32GB
+#SBATCH --mem=96000MB           # CPU RAM
 #SBATCH --job-name='JETANOMALY-JETCLASS'
 #SBATCH --output=slurm_logs/R-%x.%j/log.out
 #SBATCH --error=slurm_logs/R-%x.%j/log.err
@@ -35,6 +35,7 @@ conda activate jet
 python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 
 torchrun --standalone --nproc-per-node=2 \
+# python -u \
     scripts/run_train_lejepa_part_jetclass.py \
     --dataset-root "/HEP/export/home/lwang223/JetClass/JetClass/Pythia" \
     --model semi-sup \
@@ -44,11 +45,11 @@ torchrun --standalone --nproc-per-node=2 \
     --representation-dim 128 \
     --num-layers 8 \
     --num-heads 8 \
-    --batch-size 512 \
-    --steps-per-epoch 10000 \
-    --val-steps 500 \
-    --eval-steps 500 \
-    --epochs 50 \
+    --batch-size 256 \
+    --steps-per-epoch 5 \
+    --val-steps 50 \
+    --eval-steps 50 \
+    --epochs 1000 \
     --learning-rate 5e-4 \
     --weight-decay 5e-2 \
     --precision bf16 \
@@ -56,4 +57,6 @@ torchrun --standalone --nproc-per-node=2 \
     --num-local-views 6 \
     --anomaly-score mahalanobis \
     --num-workers 4 \
+    --prefetch-factor 2 \
+    --shuffle-active-shards 3 \
     --output-dir "plots/run-lejepa-semi-sup-jetclass-ddp"
