@@ -64,7 +64,7 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #   --pairwise-hidden-dim 16 \
 #   --output-dir "plots/run-lejepa-mahala-0.02-radius-20.0"
 
-python -u scripts/run_train_lejepa_trip_part.py \
+python -u scripts/run_train_lejepa_part.py \
   --background "data/processed/qcd-vs-wjet-pt-200to400/QCD_scaled_scaled.pkl" \
   --signal "data/processed/qcd-vs-wjet-pt-200to400/WJet_scaled_scaled.pkl" \
   --model "lejepa" \

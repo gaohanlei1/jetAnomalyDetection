@@ -1,0 +1,3156 @@
+"""
+Train ParticleTransformer representation models with LeJEPA on JetClass.
+
+The script supports:
+    - LeJEPA + SIGReg self-supervised learning;
+    - LeJEPA + SIGReg + corrupted-negative triplet learning;
+    - LeJEPA + SIGReg + semi-supervised background classification.
+
+JetClass ROOT shards are streamed lazily with an IterableDataset. In DDP
+training, ROOT shards are partitioned across ranks and DataLoader workers,
+while the training loader runs as an infinite stream for a fixed number of
+optimizer steps per epoch.
+
+Epoch-level anomaly evaluation supports:
+    - Mahalanobis distance in the learned representation space;
+    - local-global positive-view consistency.
+
+Single-GPU example:
+
+python -u scripts/run_train_lejepa_part_jetclass.py \
+    --dataset-root "/HEP/export/home/lwang223/JetClass/JetClass/Pythia" \
+    --model semi-sup \
+    --background-labels "label_QCD,label_Hbb,label_Hcc" \
+    --signal-labels "label_Wqq" \
+    --embed-dim 128 \
+    --representation-dim 128 \
+    --num-layers 8 \
+    --num-heads 8 \
+    --batch-size 128 \
+    --steps-per-epoch 10000 \
+    --val-steps 500 \
+    --eval-steps 500 \
+    --epochs 50 \
+    --learning-rate 5e-4 \
+    --weight-decay 5e-2 \
+    --precision bf16 \
+    --num-global-views 2 \
+    --num-local-views 6 \
+    --num-negative-views 4 \
+    --triplet-weight 0.1 \
+    --triplet-margin 1.0 \
+    --anomaly-score mahalanobis \
+    --num-workers 4 \
+    --output-dir "plots/run-lejepa-semi-sup-jetclass"
+
+Four-GPU DDP example:
+
+torchrun --standalone --nproc-per-node=4 \
+    scripts/run_train_lejepa_part_jetclass.py \
+    --dataset-root "/HEP/export/home/lwang223/JetClass/JetClass/Pythia" \
+    --model semi-sup \
+    --background-labels "label_QCD,label_Hbb,label_Hcc" \
+    --signal-labels "label_Wqq" \
+    --embed-dim 128 \
+    --representation-dim 128 \
+    --num-layers 8 \
+    --num-heads 8 \
+    --batch-size 512 \
+    --steps-per-epoch 10000 \
+    --val-steps 500 \
+    --eval-steps 500 \
+    --epochs 50 \
+    --learning-rate 5e-4 \
+    --weight-decay 5e-2 \
+    --precision bf16 \
+    --num-global-views 2 \
+    --num-local-views 6 \
+    --num-negative-views 4 \
+    --triplet-weight 0.1 \
+    --triplet-margin 1.0 \
+    --anomaly-score mahalanobis \
+    --num-workers 4 \
+    --output-dir "plots/run-lejepa-semi-sup-jetclass-ddp"
+"""
+
+import argparse
+import json
+import math
+import os
+import random
+import sys
+from glob import glob
+from typing import Dict, List, Literal, Optional, Sequence, Tuple
+
+# Add parent directory to import local project modules.
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.optim.lr_scheduler import LambdaLR
+from torch.utils.data import DataLoader, IterableDataset, get_worker_info
+from tqdm import tqdm
+from sklearn.metrics import roc_auc_score
+from visualize.plot_metrics import plot_anomaly_score, plot_roc_curve
+
+from helpers import helpers_main
+from helpers.jetclass_dataloader import read_file
+from models.part_jetclass import (
+    CorruptedNegativeAugmentationConfig,
+    LeJEPALossConfig,
+    SemiSupervisedLossConfig,
+    LeJEPAParticleTransformerRepresentation,
+    LeJEPATripletParticleTransformerRepresentation,
+    ParticleTransformerConfig,
+    MultiViewAugmentationConfig,
+    TripletLossConfig,
+    LeJEPASemiSupervisedParticleTransformerRepresentation,
+)
+from torch.profiler import (
+    profile,
+    ProfilerActivity,
+    record_function,
+    schedule,
+)
+from contextlib import nullcontext
+from visualize.plot_latent_space import reduce_to_2d, plot_latent_space
+
+config = helpers_main.load_config()
+DEVICE = torch.device(helpers_main.get_device())
+
+
+JETCLASS_LABELS = [
+    "label_QCD",
+    "label_Hbb",
+    "label_Hcc",
+    "label_Hgg",
+    "label_H4q",
+    "label_Hqql",
+    "label_Zqq",
+    "label_Wqq",
+    "label_Tbqq",
+    "label_Tbl",
+]
+
+DEFAULT_PARTICLE_FEATURES = [
+    "part_px",
+    "part_py",
+    "part_pz",
+    "part_energy",
+    "part_pt",
+    "part_eta",
+    "part_phi",
+    "part_deta",
+    "part_dphi",
+    "part_d0val",
+    "part_d0err",
+    "part_dzval",
+    "part_dzerr",
+    "part_charge",
+    "part_isChargedHadron",
+    "part_isNeutralHadron",
+    "part_isPhoton",
+    "part_isElectron",
+    "part_isMuon",
+]
+
+# Jet-level features are not model inputs. They are loaded only for event
+# quality cuts and to convert absolute particle pt into a per-jet pt fraction.
+REQUIRED_JET_FEATURES = [
+    "jet_pt",
+    "jet_eta",
+    "jet_phi",
+    "jet_energy",
+]
+
+LABEL_TO_FILE_PREFIX = {
+    "label_QCD": "ZJetsToNuNu",
+    "label_Hbb": "HToBB",
+    "label_Hcc": "HToCC",
+    "label_Hgg": "HToGG",
+    "label_H4q": "HToWW4Q",
+    "label_Hqql": "HToWW2Q1L",
+    "label_Zqq": "ZToQQ",
+    "label_Wqq": "WToQQ",
+    "label_Tbqq": "TTBar",
+    "label_Tbl": "TTBarLep",
+}
+
+
+class PretrainForwardAdapter(torch.nn.Module):
+    """
+    Expose forward_pretrain through the standard nn.Module
+    forward path so DDP can own the complete training call.
+    """
+
+    def __init__(self, model: torch.nn.Module):
+        super().__init__()
+        self.model = model
+
+    def forward(
+        self,
+        x_particles: torch.Tensor,
+        y: torch.Tensor,
+        padding_mask: Optional[torch.Tensor] = None,
+    ) -> Dict[str, torch.Tensor]:
+        return self.model.forward_pretrain(
+            x_particles,
+            y,
+            padding_mask=padding_mask,
+        )
+        
+def parse_csv_list(value: str) -> List[str]:
+    """Parse a comma-separated CLI list while preserving item order."""
+
+    items = [item.strip() for item in value.split(",") if item.strip()]
+    if not items:
+        raise ValueError("Expected at least one comma-separated item.")
+    return items
+
+
+def validate_requested_labels(labels: Sequence[str]) -> None:
+    """Fail early on typos instead of silently loading the wrong physics sample."""
+
+    unknown = sorted(set(labels) - set(JETCLASS_LABELS))
+    if unknown:
+        raise ValueError(
+            f"Unknown JetClass labels: {unknown}. Available labels: {JETCLASS_LABELS}"
+        )
+
+
+def discover_jetclass_files(
+    split_dir: str,
+    labels: Sequence[str],
+) -> List[str]:
+    """Return all ROOT shards belonging to the requested JetClass labels."""
+
+    files: List[str] = []
+    for label in labels:
+        prefix = LABEL_TO_FILE_PREFIX[label]
+        matches = sorted(glob(os.path.join(split_dir, f"{prefix}_*.root")))
+        if not matches:
+            raise FileNotFoundError(
+                f"No ROOT files found for {label} with prefix {prefix!r} in {split_dir}."
+            )
+        files.extend(matches)
+    return files
+
+
+
+# New JetClass dense tensor dataset and loading functions
+class JetClassIterableDataset(IterableDataset):
+    """
+    Stream JetClass ROOT shards lazily.
+
+    Each worker owns a disjoint subset of ROOT files. A worker loads one shard,
+    preprocesses it in memory, yields events, then releases that shard before
+    moving to the next one. The full split is never materialized in RAM.
+    """
+
+    def __init__(
+        self,
+        split_dir: str,
+        labels_to_load: Sequence[str],
+        particle_features: Sequence[str],
+        max_num_particles: int,
+        max_events: Optional[int] = None,
+        shuffle_files: bool = False,
+        shuffle_active_shards: int = 1,
+        infinite: bool = False,
+        seed: int = 42,
+        rank: int = 0,
+        world_size: int = 1,
+    ):
+        super().__init__()
+        validate_requested_labels(labels_to_load)
+
+        self.split_dir = split_dir
+        self.labels_to_load = list(labels_to_load)
+        self.particle_features = list(particle_features)
+        self.max_num_particles = int(max_num_particles)
+        self.max_events = max_events
+        self.shuffle_files = bool(shuffle_files)
+        self.shuffle_active_shards = max(1, int(shuffle_active_shards))
+        self.seed = int(seed)
+        self.rank = int(rank)
+        self.infinite = bool(infinite)
+        self.world_size = int(world_size)
+
+        self.filepaths = discover_jetclass_files(
+            split_dir,
+            self.labels_to_load,
+        )
+
+    def __iter__(self):
+        worker_info = get_worker_info()
+
+        local_worker_id = (
+            0 if worker_info is None else worker_info.id
+        )
+        local_num_workers = (
+            1 if worker_info is None else worker_info.num_workers
+        )
+
+        global_worker_id = (
+            self.rank * local_num_workers
+            + local_worker_id
+        )
+        global_num_workers = (
+            self.world_size * local_num_workers
+        )
+
+        # Fixed ownership: every rank/worker permanently owns a disjoint
+        # subset of ROOT shards.
+        worker_groups: List[List[str]] = []
+
+        for label in self.labels_to_load:
+            prefix = LABEL_TO_FILE_PREFIX[label]
+
+            label_files = sorted(
+                glob(
+                    os.path.join(
+                        self.split_dir,
+                        f"{prefix}_*.root",
+                    )
+                )
+            )
+
+            worker_groups.append(
+                label_files[
+                    global_worker_id::global_num_workers
+                ]
+            )
+
+        if not any(worker_groups):
+            raise RuntimeError(
+                "This rank/worker received no ROOT shards. "
+                f"global_worker_id={global_worker_id}, "
+                f"global_num_workers={global_num_workers}. "
+                "Reduce world size / DataLoader workers or "
+                "provide more shards."
+            )
+
+        worker_quota = None
+
+        if self.max_events is not None:
+            base = (
+                self.max_events
+                // global_num_workers
+            )
+            remainder = (
+                self.max_events
+                % global_num_workers
+            )
+
+            worker_quota = (
+                base
+                + int(global_worker_id < remainder)
+            )
+
+        pass_index = 0
+
+        while True:
+            rng = random.Random(
+                self.seed
+                + 9176 * global_worker_id
+                + 104729 * pass_index
+            )
+
+            # Copy before shuffling so shard ownership stays fixed.
+            pass_groups = [
+                list(group)
+                for group in worker_groups
+            ]
+
+            if self.shuffle_files:
+                for group in pass_groups:
+                    rng.shuffle(group)
+
+            # Interleave labels so the active shard pool is not
+            # accidentally class-pure.
+            worker_files: List[str] = []
+
+            max_group_len = max(
+                (
+                    len(group)
+                    for group in pass_groups
+                ),
+                default=0,
+            )
+
+            for i in range(max_group_len):
+                for group in pass_groups:
+                    if i < len(group):
+                        worker_files.append(group[i])
+
+            yielded = 0
+
+            if not self.shuffle_files:
+                # Deterministic finite evaluation pass.
+                for filepath in worker_files:
+                    x_particles, y = (
+                        load_and_preprocess_jetclass_file(
+                            filepath=filepath,
+                            particle_features=(
+                                self.particle_features
+                            ),
+                            max_num_particles=(
+                                self.max_num_particles
+                            ),
+                        )
+                    )
+
+                    for event_x, event_y in zip(
+                        x_particles,
+                        y,
+                    ):
+                        if (
+                            worker_quota is not None
+                            and yielded >= worker_quota
+                        ):
+                            break
+
+                        yield (
+                            torch.from_numpy(event_x),
+                            torch.from_numpy(event_y),
+                        )
+
+                        yielded += 1
+
+                    if (
+                        worker_quota is not None
+                        and yielded >= worker_quota
+                    ):
+                        break
+
+            else:
+                file_iter = iter(worker_files)
+                active = []
+
+                def load_next_shard():
+                    try:
+                        filepath = next(file_iter)
+                    except StopIteration:
+                        return None
+
+                    x_particles, y = (
+                        load_and_preprocess_jetclass_file(
+                            filepath=filepath,
+                            particle_features=(
+                                self.particle_features
+                            ),
+                            max_num_particles=(
+                                self.max_num_particles
+                            ),
+                        )
+                    )
+
+                    order = np.arange(
+                        len(x_particles),
+                        dtype=np.int64,
+                    )
+
+                    np.random.default_rng(
+                        rng.randrange(2**32)
+                    ).shuffle(order)
+
+                    return {
+                        "x": x_particles,
+                        "y": y,
+                        "order": order,
+                        "cursor": 0,
+                    }
+
+                for _ in range(
+                    min(
+                        self.shuffle_active_shards,
+                        len(worker_files),
+                    )
+                ):
+                    shard = load_next_shard()
+
+                    if shard is not None:
+                        active.append(shard)
+
+                while active:
+                    if (
+                        worker_quota is not None
+                        and yielded >= worker_quota
+                    ):
+                        break
+
+                    shard_idx = rng.randrange(
+                        len(active)
+                    )
+                    shard = active[shard_idx]
+
+                    event_idx = int(
+                        shard["order"][
+                            shard["cursor"]
+                        ]
+                    )
+
+                    shard["cursor"] += 1
+
+                    yield (
+                        torch.from_numpy(
+                            shard["x"][event_idx]
+                        ),
+                        torch.from_numpy(
+                            shard["y"][event_idx]
+                        ),
+                    )
+
+                    yielded += 1
+
+                    if (
+                        shard["cursor"]
+                        >= len(shard["order"])
+                    ):
+                        replacement = load_next_shard()
+
+                        if replacement is None:
+                            active.pop(shard_idx)
+                        else:
+                            active[shard_idx] = (
+                                replacement
+                            )
+
+            if not self.infinite:
+                break
+
+            if yielded == 0:
+                raise RuntimeError(
+                    "Infinite JetClass stream completed "
+                    "a pass without yielding any events on "
+                    f"global_worker_id={global_worker_id}."
+                )
+
+            pass_index += 1
+
+def load_and_preprocess_jetclass_file(
+    filepath: str,
+    particle_features: Sequence[str],
+    max_num_particles: int,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Load and preprocess one ROOT shard.
+
+    This function is deliberately shard-local: the caller can stream a dataset
+    without ever concatenating a full JetClass split in CPU memory.
+    """
+
+    # Quality cuts may require features that are not model inputs. Load the
+    # union temporarily, then project back to the requested model feature order.
+    required_particle_features = [
+        "part_px",
+        "part_py",
+        "part_pz",
+        "part_energy",
+        "part_pt",
+        "part_eta",
+    ]
+    loaded_particle_features = list(particle_features)
+    for feature in required_particle_features:
+        if feature not in loaded_particle_features:
+            loaded_particle_features.append(feature)
+
+    feature_index = {
+        name: i for i, name in enumerate(loaded_particle_features)
+    }
+    requested_indices = [feature_index[name] for name in particle_features]
+
+    x_particles, x_jets, y = read_file(
+        filepath,
+        max_num_particles=max_num_particles,
+        particle_features=loaded_particle_features,
+        jet_features=REQUIRED_JET_FEATURES,
+        labels=JETCLASS_LABELS,
+    )
+
+    # read_file returns (B, F, N); the model convention is (B, N, F).
+    x_particles = np.transpose(x_particles, (0, 2, 1)).astype(
+        np.float32,
+        copy=False,
+    )
+    x_jets = np.asarray(x_jets, dtype=np.float32)
+    y = np.asarray(y, dtype=np.float32)
+
+    jet_pt = x_jets[:, 0]
+    jet_eta = x_jets[:, 1]
+    jet_energy = x_jets[:, 3]
+    valid_jets = (
+        (jet_pt > 0)
+        & (jet_energy > 0)
+        & (jet_eta >= -2.5)
+        & (jet_eta <= 2.5)
+    )
+
+    x_particles = x_particles[valid_jets]
+    y = y[valid_jets]
+    jet_pt = jet_pt[valid_jets]
+
+    part_pt = x_particles[:, :, feature_index["part_pt"]]
+    part_eta = x_particles[:, :, feature_index["part_eta"]]
+    part_energy = x_particles[:, :, feature_index["part_energy"]]
+
+    # Invalid constituents become padding rows. This preprocessing happens only
+    # for the current shard, so cleaned arrays can be released after iteration.
+    valid_particles = (
+        (part_pt > 0)
+        & (part_energy > 0)
+        & (part_eta >= -2.5)
+        & (part_eta <= 2.5)
+    )
+    x_particles[~valid_particles] = 0.0
+
+    # Convert absolute constituent pt to a dimensionless per-jet fraction.
+    safe_jet_pt = np.where(jet_pt > 0, jet_pt, 1.0).astype(np.float32)
+    x_particles[:, :, feature_index["part_pt"]] /= safe_jet_pt[:, None]
+
+    # Drop temporary cut-only features before yielding events to the DataLoader.
+    x_particles = np.ascontiguousarray(
+        x_particles[:, :, requested_indices],
+        dtype=np.float32,
+    )
+    y = np.ascontiguousarray(y, dtype=np.float32)
+
+    return x_particles, y
+
+
+def collate_jetclass_tensors(
+    batch: Sequence[Tuple[torch.Tensor, torch.Tensor]],
+) -> Dict[str, torch.Tensor]:
+    """Stack fixed-size jets and derive padding from all-zero particle rows."""
+
+    xs, ys = zip(*batch)
+    x_particles = torch.stack(xs, dim=0)
+    y = torch.stack(ys, dim=0)
+    padding_mask = x_particles.eq(0).all(dim=-1)
+    return {
+        "x_particles": x_particles,
+        "padding_mask": padding_mask,
+        "y": y,
+    }
+
+def make_warmup_cosine_scheduler(
+    optimizer: torch.optim.Optimizer,
+    total_steps: int,
+    warmup_steps: int,
+    final_lr_ratio: float,
+) -> LambdaLR:
+    """
+    Linear warmup followed by cosine decay.
+
+    Final learning rate:
+        initial_lr * final_lr_ratio
+    """
+
+    total_steps = max(1, int(total_steps))
+    warmup_steps = max(0, int(warmup_steps))
+    final_lr_ratio = float(final_lr_ratio)
+
+    def lr_lambda(step: int) -> float:
+        if warmup_steps > 0 and step < warmup_steps:
+            return float(step + 1) / float(warmup_steps)
+
+        if total_steps <= warmup_steps:
+            return 1.0
+
+        progress = float(step - warmup_steps) / float(max(1, total_steps - warmup_steps))
+        progress = min(max(progress, 0.0), 1.0)
+        cosine = 0.5 * (1.0 + math.cos(math.pi * progress))
+        return final_lr_ratio + (1.0 - final_lr_ratio) * cosine
+
+    return LambdaLR(optimizer, lr_lambda=lr_lambda)
+
+
+def precision_to_dtype(precision: str) -> torch.dtype:
+    if precision == "bf16":
+        return torch.bfloat16
+    if precision == "fp16":
+        return torch.float16
+    if precision == "fp32":
+        return torch.float32
+    raise ValueError(f"Unknown precision: {precision}")
+
+
+def autocast_enabled_for_precision(precision: str) -> bool:
+    return precision in {"bf16", "fp16"}
+
+
+class TrainLeJEPAParticleTransformer:
+    """
+    Shared driver for LeJEPA ParticleTransformer SSL pretraining.
+
+    Supported models:
+        triplet:
+            LeJEPA + SIGReg + corrupted-negative triplet loss
+
+        mahalanobis:
+            LeJEPA + SIGReg + corrupted-negative Mahalanobis objective
+            with EMA normal-distribution statistics
+    """
+    
+    def _prepare_labels_for_model(self, y: torch.Tensor) -> torch.Tensor:
+        """Project 10-class JetClass one-hot labels to the selected backgrounds."""
+
+        if self.model_name != "semi-sup":
+            return y
+
+        indices = [
+            JETCLASS_LABELS.index(label)
+            for label in self.background_labels
+        ]
+        return y[:, indices]
+    
+    def _seed_rank_rng(self) -> None:
+        """Create independent stochastic streams on each DDP rank."""
+
+        rank_seed = (
+            self.base_seed
+            + self.rank
+        )
+
+        random.seed(rank_seed)
+        np.random.seed(rank_seed)
+        torch.manual_seed(rank_seed)
+
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(
+                rank_seed
+            )
+
+    def __init__(self):
+        self.args = parser.parse_args()
+        
+        self.world_size = int(os.environ.get("WORLD_SIZE", "1"))
+        self.rank = int(os.environ.get("RANK", "0"))
+        self.local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+
+        self.distributed = self.world_size > 1
+
+        if self.distributed:
+            if not torch.cuda.is_available():
+                raise RuntimeError(
+                    "DDP multi-GPU training requires CUDA."
+                )
+
+            torch.cuda.set_device(self.local_rank)
+
+            dist.init_process_group(
+                backend="nccl",
+                init_method="env://",
+            )
+
+            self.device = torch.device(
+                "cuda",
+                self.local_rank,
+            )
+            global DEVICE
+            DEVICE = self.device
+        else:
+            self.device = DEVICE
+
+        self.is_main_process = self.rank == 0
+        
+        if self.args.batch_size % self.world_size != 0:
+            raise ValueError(
+                "--batch-size must be divisible by "
+                f"world_size={self.world_size}, got "
+                f"{self.args.batch_size}."
+            )
+
+        self.per_rank_batch_size = (
+            self.args.batch_size
+            // self.world_size
+        )
+        
+        self.model_name = self.args.model
+
+        if self.model_name == "triplet":
+            self.ssl_metric_keys = [
+                "total_loss",
+                "invariant_loss",
+                "sigreg_loss",
+                "triplet_loss",
+                "triplet_pos_distance",
+                "triplet_neg_distance",
+            ]
+        
+        elif self.model_name == "lejepa":
+            self.ssl_metric_keys = [
+                "total_loss",
+                "invariant_loss",
+                "sigreg_loss",
+            ]
+        
+        elif self.model_name == "semi-sup":
+            self.ssl_metric_keys = [
+                "total_loss",
+                "invariant_loss",
+                "sigreg_loss",
+                "classification_loss",
+            ]
+
+        else:
+            raise ValueError(
+                f"Unsupported model {self.model_name!r}."
+            )
+
+        self.dataset_root = self.args.dataset_root
+        self.background_labels = parse_csv_list(self.args.background_labels)
+        self.signal_labels = parse_csv_list(self.args.signal_labels)
+        self.background_display_name = "+".join(
+            label.removeprefix("label_")
+            for label in self.background_labels
+        )
+        self.signal_display_name = "+".join(
+            label.removeprefix("label_")
+            for label in self.signal_labels
+        )
+        self.particle_feature_names = parse_csv_list(self.args.particle_features)
+
+        validate_requested_labels(self.background_labels)
+        validate_requested_labels(self.signal_labels)
+
+        overlap = sorted(set(self.background_labels) & set(self.signal_labels))
+        if overlap:
+            raise ValueError(
+                f"Background and signal labels must be disjoint, got overlap: {overlap}."
+            )
+
+        self.train_dir = os.path.join(self.dataset_root, "train_100M")
+        self.val_dir = os.path.join(self.dataset_root, "val_5M")
+        self.test_dir = os.path.join(self.dataset_root, "test_20M")
+
+        for split_dir in (self.train_dir, self.val_dir, self.test_dir):
+            if not os.path.isdir(split_dir):
+                raise FileNotFoundError(f"Missing JetClass split directory: {split_dir}")
+
+        self.pt_index = self.particle_feature_names.index("part_pt")
+
+        self.output_dir = self.args.output_dir
+        self.feature_plot_dir = os.path.join(self.output_dir, "features")
+        self.latent_plot_dir = os.path.join(self.output_dir, "latent_space")
+        self.augmentation_plot_dir = os.path.join(self.output_dir, "augmentation_views")
+
+        os.makedirs(self.output_dir, exist_ok=True)
+        os.makedirs(self.feature_plot_dir, exist_ok=True)
+        os.makedirs(self.latent_plot_dir, exist_ok=True)
+        os.makedirs(self.augmentation_plot_dir, exist_ok=True)
+
+        # Shared base seed for reproducible model construction.
+        self.base_seed = int(self.args.seed)
+
+        random.seed(self.base_seed)
+        np.random.seed(self.base_seed)
+        torch.manual_seed(self.base_seed)
+
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(
+                self.base_seed
+            )
+
+    def load(self) -> None:
+        """Construct lazy datasets for the official JetClass splits."""
+
+        print(f"JetClass root: {self.dataset_root}")
+        print(f"Background labels: {self.background_labels}")
+        print(f"Signal labels: {self.signal_labels}")
+        print(f"Particle features: {self.particle_feature_names}")
+
+        self.bg_train_dataset = JetClassIterableDataset(
+            split_dir=self.train_dir,
+            labels_to_load=self.background_labels,
+            particle_features=self.particle_feature_names,
+            max_num_particles=self.args.max_num_particles,
+            max_events=self.args.max_train_events,
+            shuffle_active_shards=self.args.shuffle_active_shards,
+            infinite=True,
+            shuffle_files=True,
+            seed=self.args.seed,
+            rank=self.rank,
+            world_size=self.world_size,
+        )
+        self.bg_val_dataset = JetClassIterableDataset(
+            split_dir=self.val_dir,
+            labels_to_load=self.background_labels,
+            particle_features=self.particle_feature_names,
+            max_num_particles=self.args.max_num_particles,
+            max_events=self.args.max_val_events,
+            shuffle_active_shards=self.args.shuffle_active_shards,
+            infinite=True,
+            shuffle_files=True,
+            seed=self.args.seed,
+            rank=self.rank,
+            world_size=self.world_size,
+        )
+        # self.bg_test_dataset = JetClassIterableDataset(
+        #     split_dir=self.test_dir,
+        #     labels_to_load=self.background_labels,
+        #     particle_features=self.particle_feature_names,
+        #     max_num_particles=self.args.max_num_particles,
+        #     max_events=self.args.max_test_background_events,
+        #     shuffle_active_shards=self.args.shuffle_active_shards,
+        #     shuffle_files=True,
+        #     seed=self.args.seed,
+        #     rank=self.rank,
+        #     world_size=self.world_size,
+        # )
+        self.sg_dataset = JetClassIterableDataset(
+            split_dir=self.test_dir,
+            labels_to_load=self.signal_labels,
+            particle_features=self.particle_feature_names,
+            max_num_particles=self.args.max_num_particles,
+            max_events=self.args.max_test_signal_events,
+            shuffle_active_shards=self.args.shuffle_active_shards,
+            shuffle_files=True,
+            seed=self.args.seed,
+            rank=self.rank,
+            world_size=self.world_size,
+        )
+
+    def build_node_datasets(self) -> None:
+        """Report lazy dataset metadata without materializing any events."""
+
+        print(
+            "Lazy JetClass datasets ready; no full split has been loaded into RAM."
+        )
+        print(f"Background train ROOT shards: {len(self.bg_train_dataset.filepaths)}")
+        print(f"Background val ROOT shards: {len(self.bg_val_dataset.filepaths)}")
+        # print(f"Background test ROOT shards: {len(self.bg_test_dataset.filepaths)}")
+        print(f"Signal test ROOT shards: {len(self.sg_dataset.filepaths)}")
+        print(
+            "Per-event particle shape: "
+            f"({self.args.max_num_particles}, {len(self.particle_feature_names)})"
+        )
+
+    def plot_features(self) -> None:
+        """Plot particle features from a bounded streaming training sample."""
+        if not self.is_main_process:
+            return
+
+        os.makedirs(self.feature_plot_dir, exist_ok=True)
+        sampled_rows: List[np.ndarray] = []
+        sampled_events = 0
+
+        for event_x, _ in self.bg_train_dataset:
+            valid = ~event_x.eq(0).all(dim=-1)
+            if valid.any():
+                sampled_rows.append(event_x[valid].numpy())
+
+            sampled_events += 1
+            if sampled_events >= self.args.feature_plot_events:
+                break
+
+        if not sampled_rows:
+            print("Warning: no valid particles found for feature plots.")
+            return
+
+        all_features = np.concatenate(sampled_rows, axis=0)
+
+        for i, name in enumerate(self.particle_feature_names):
+            fig, ax = plt.subplots(figsize=(6, 4))
+            ax.hist(
+                all_features[:, i],
+                bins=50,
+                density=True,
+                alpha=0.8,
+                edgecolor="black",
+            )
+            ax.set_title(f"Feature {i}: {name}")
+            ax.set_xlabel("Value")
+            ax.set_ylabel("Density")
+            ax.grid(False)
+            fig.tight_layout()
+            fig.savefig(
+                os.path.join(self.feature_plot_dir, f"feature_{i}_{name}.png")
+            )
+            plt.close(fig)
+
+    def make_dataloaders(
+        self,
+    ) -> Tuple[DataLoader, DataLoader, DataLoader, DataLoader]:
+        common_kwargs = {
+            "batch_size": self.per_rank_batch_size,
+            "num_workers": self.args.num_workers,
+            "pin_memory": self.args.pin_memory,
+            "collate_fn": collate_jetclass_tensors,
+            "persistent_workers": self.args.num_workers > 0,
+            "drop_last": True,
+        }
+        if self.args.num_workers > 0:
+            common_kwargs["prefetch_factor"] = self.args.prefetch_factor
+
+        # IterableDataset owns sample order; DataLoader shuffle is invalid here.
+        train_loader = DataLoader(self.bg_train_dataset, **common_kwargs)
+        bg_val_loader = DataLoader(self.bg_val_dataset, **common_kwargs)
+        # bg_test_loader = DataLoader(self.bg_test_dataset, **common_kwargs)
+        bg_test_loader = None  # Disabled for now; can be re-enabled if needed
+        
+        signal_loader = DataLoader(self.sg_dataset, **common_kwargs)
+
+        return train_loader, bg_val_loader, bg_test_loader, signal_loader
+
+    def _extract_ssl_metrics(
+        self,
+        output: Dict[str, torch.Tensor],
+    ) -> Dict[str, float]:
+        """
+        Extract the active model's scalar training metrics.
+
+        The metric set depends on --model.
+        """
+
+        metrics: Dict[str, float] = {}
+
+        for key in self.ssl_metric_keys:
+            if key not in output:
+                raise KeyError(
+                    f"Expected metric {key!r} in model output. "
+                    f"Available keys: {list(output.keys())}"
+                )
+
+            metrics[key] = float(
+                self._distributed_mean(output[key]).cpu()
+            )
+
+        return metrics
+
+    def _distributed_mean(
+        self,
+        value: torch.Tensor,
+    ) -> torch.Tensor:
+        value = value.detach().float()
+
+        if not self.distributed:
+            return value
+
+        value = value.clone()
+        dist.all_reduce(
+            value,
+            op=dist.ReduceOp.SUM,
+        )
+        value /= self.world_size
+
+        return value
+
+    def _progress_postfix(
+        self,
+        metrics: Dict[str, float],
+    ) -> Dict[str, str]:
+        """
+        Compact tqdm postfix for the active SSL objective.
+        """
+
+        if self.model_name == "triplet":
+            return {
+                "total": f"{metrics['total_loss']:.4g}",
+                "inv": f"{metrics['invariant_loss']:.4g}",
+                "sig": f"{metrics['sigreg_loss']:.4g}",
+                "tri": f"{metrics['triplet_loss']:.4g}",
+                "d+": f"{metrics['triplet_pos_distance']:.4g}",
+                "d-": f"{metrics['triplet_neg_distance']:.4g}",
+            }
+        
+        if self.model_name == "lejepa":
+            return {
+                "total": f"{metrics['total_loss']:.4g}",
+                "inv": f"{metrics['invariant_loss']:.4g}",
+                "sig": f"{metrics['sigreg_loss']:.4g}",
+            }
+        
+        if self.model_name == "semi-sup":
+            return {
+                "total": f"{metrics['total_loss']:.4g}",
+                "inv": f"{metrics['invariant_loss']:.4g}",
+                "sig": f"{metrics['sigreg_loss']:.4g}",
+                "cls": f"{metrics['classification_loss']:.4g}",
+            }
+
+        raise RuntimeError(
+            f"Unsupported model {self.model_name!r}."
+        )
+        
+    def _all_gather_event_tensor(
+        self,
+        tensor: torch.Tensor,
+        event_dim: int,
+    ) -> torch.Tensor:
+        if not self.distributed:
+            return tensor
+
+        tensor = tensor.to(
+            DEVICE,
+            non_blocking=True,
+        )
+        tensor = tensor.movedim(
+            event_dim,
+            0,
+        ).contiguous()
+
+        local_size = torch.tensor(
+            [tensor.size(0)],
+            device=DEVICE,
+            dtype=torch.long,
+        )
+
+        sizes = [
+            torch.zeros_like(local_size)
+            for _ in range(self.world_size)
+        ]
+        dist.all_gather(
+            sizes,
+            local_size,
+        )
+
+        sizes_int = [
+            int(size.item())
+            for size in sizes
+        ]
+        max_size = max(sizes_int)
+
+        if tensor.size(0) < max_size:
+            pad_shape = (
+                max_size - tensor.size(0),
+                *tensor.shape[1:],
+            )
+            padding = torch.zeros(
+                pad_shape,
+                device=tensor.device,
+                dtype=tensor.dtype,
+            )
+            tensor = torch.cat(
+                [tensor, padding],
+                dim=0,
+            )
+
+        gathered = [
+            torch.empty_like(tensor)
+            for _ in range(self.world_size)
+        ]
+        dist.all_gather(
+            gathered,
+            tensor,
+        )
+
+        merged = torch.cat(
+            [
+                rank_tensor[:rank_size]
+                for rank_tensor, rank_size
+                in zip(gathered, sizes_int)
+            ],
+            dim=0,
+        )
+
+        return merged.movedim(
+            0,
+            event_dim,
+        ).cpu()
+        
+    def build_model(self) -> None:
+        model_config = ParticleTransformerConfig(
+            input_dim=len(self.particle_feature_names),
+            embed_dim=self.args.embed_dim,
+            num_heads=self.args.num_heads,
+            num_layers=self.args.num_layers,
+            ffn_mult=self.args.ffn_mult,
+            dropout=self.args.dropout,
+            representation_dim=self.args.representation_dim,
+            use_pairwise_bias=not self.args.no_pairwise_bias,
+            pairwise_hidden_dim=self.args.pairwise_hidden_dim,
+            pairwise_num_features=self.args.pairwise_num_features,
+            compute_dtype=precision_to_dtype(self.args.precision),
+            use_internal_autocast=False,
+            eps=self.args.eps,
+        )
+
+        augmentation_config = MultiViewAugmentationConfig(
+            num_global_views=self.args.num_global_views,
+            num_local_views=self.args.num_local_views,
+            global_drop_pt_frac_range=(
+                self.args.global_drop_pt_frac_min,
+                self.args.global_drop_pt_frac_max,
+            ),
+            local_drop_pt_frac_range=(
+                self.args.local_drop_pt_frac_min,
+                self.args.local_drop_pt_frac_max,
+            ),
+            min_nodes=self.args.min_nodes,
+            px_index=self.particle_feature_names.index("part_px"),
+            py_index=self.particle_feature_names.index("part_py"),
+            pz_index=self.particle_feature_names.index("part_pz"),
+            energy_index=self.particle_feature_names.index("part_energy"),
+            eta_index=self.particle_feature_names.index("part_eta"),
+            phi_index=self.particle_feature_names.index("part_phi"),
+            pt_index=self.particle_feature_names.index("part_pt"),
+            eps=self.args.eps,
+            pt_drop_power=self.args.pt_drop_power,
+            zero_dropped_features=not self.args.keep_dropped_features,
+        )
+
+        loss_config = LeJEPALossConfig(
+            invariant_weight=self.args.invariant_weight,
+            sigreg_weight=self.args.sigreg_weight,
+            epps_pulley_num_points=self.args.epps_pulley_num_points,
+            num_slices=self.args.num_slices,
+        )
+        negative_augmentation_config = None
+        if self.model_name == "triplet":
+            negative_augmentation_config = CorruptedNegativeAugmentationConfig(
+                num_negative_views=self.args.num_negative_views,
+
+                batch_mix_prob=self.args.batch_mix_prob,
+                pt_resample_prob=self.args.pt_resample_prob,
+                node_eta_phi_rotation_prob=self.args.node_eta_phi_rotation_prob,
+                eta_phi_shuffle_prob=self.args.eta_phi_shuffle_prob,
+                identity_shuffle_prob=self.args.identity_shuffle_prob,
+
+                min_nodes=self.args.min_nodes,
+                eps=self.args.eps,
+
+                eta_index=self.particle_feature_names.index("part_eta"),
+                phi_index=self.particle_feature_names.index("part_phi"),
+                pt_index=self.particle_feature_names.index("part_pt"),
+                d0_index=self.particle_feature_names.index("part_d0val"),
+                dz_index=self.particle_feature_names.index("part_dzval"),
+                charge_index=self.particle_feature_names.index("part_charge"),
+                identity_start_index=self.particle_feature_names.index(
+                    "part_isChargedHadron"
+                ),
+                identity_end_index=self.particle_feature_names.index(
+                    "part_isMuon"
+                ) + 1,
+
+                corrupt_node_frac=self.args.corrupt_node_frac,
+                batch_mix_anchor_frac_min=self.args.batch_mix_anchor_frac_min,
+                batch_mix_anchor_frac_max=self.args.batch_mix_anchor_frac_max,
+                renormalize_pt_sum=self.args.renormalize_negative_pt_sum,
+            )
+                
+            triplet_loss_config = TripletLossConfig(
+                triplet_weight=self.args.triplet_weight,
+                triplet_margin=self.args.triplet_margin,
+                use_global_views_as_positives=(
+                    not self.args.use_all_views_as_triplet_positives
+                ),
+            )
+
+            core_model = (
+                LeJEPATripletParticleTransformerRepresentation(
+                    model_config=model_config,
+                    augmentation_config=augmentation_config,
+                    negative_augmentation_config=(
+                        negative_augmentation_config
+                    ),
+                    loss_config=loss_config,
+                    triplet_loss_config=triplet_loss_config,
+                )
+                .to(DEVICE)
+            )
+        
+        elif self.model_name == "lejepa":
+            core_model = (
+                LeJEPAParticleTransformerRepresentation(
+                    model_config=model_config,
+                    augmentation_config=augmentation_config,
+                    loss_config=loss_config,
+                )
+                .to(DEVICE)
+            )
+        
+        elif self.model_name == "semi-sup":
+            semi_supervised_loss_config = SemiSupervisedLossConfig(
+                classification_weight=self.args.classification_weight,
+                num_classes=len(self.background_labels),
+            )
+            core_model = (
+                LeJEPASemiSupervisedParticleTransformerRepresentation(
+                    model_config=model_config,
+                    augmentation_config=augmentation_config,
+                    loss_config=loss_config,
+                    semi_supervised_config=semi_supervised_loss_config,
+                )
+                .to(DEVICE)
+            )
+
+        else:
+            raise ValueError(
+                f"Unsupported model {self.model_name!r}."
+            )
+
+        print(f"Selected SSL model: {self.model_name}")
+        print(f"Model summary:\n{core_model}")
+        
+        self.num_params = sum(p.numel() for p in core_model.parameters() if p.requires_grad)
+        print(f"Number of trainable parameters: {self.num_params}")
+        
+        self.model_core = core_model # used for inference, visualization, and direct encoder calls
+
+        pretrain_model = PretrainForwardAdapter(
+            self.model_core
+        ).to(DEVICE)
+
+        if self.distributed:
+            self.model = DDP(
+                pretrain_model,
+                device_ids=[self.local_rank],
+                output_device=self.local_rank,
+                broadcast_buffers=False,
+            )
+        else:
+            self.model = pretrain_model
+
+        # Model construction used the shared base seed.
+        # Training stochasticity is rank-specific.
+        self._seed_rank_rng()
+
+    def plot_progress(
+        self,
+        train_history: Dict[str, List[float]],
+        val_history: Dict[str, List[float]],
+        epoch_end_steps: List[int],
+        best_val_loss: float,
+        auc_history: Dict[str, List[float]],
+        roc_eval_steps: List[int],
+    ) -> None:
+        """
+        Plot train/validation curves for total, invariant, SIGReg, triplet
+        losses/distances AUC.
+        """
+
+        if len(train_history["total_loss"]) == 0:
+            return
+
+        title_map = {
+            "total_loss": "Total Loss",
+            "invariant_loss": "Invariant Loss",
+            "sigreg_loss": "SIGReg Loss",
+            "classification_loss": "Classification Loss",
+            "triplet_loss": "Triplet Loss",
+            "triplet_pos_distance": (
+                "Triplet Positive Distance"
+            ),
+            "triplet_neg_distance": (
+                "Triplet Negative Distance"
+            ),
+        }
+
+        loss_keys = list(self.ssl_metric_keys)
+
+        titles = [
+            title_map[key]
+            for key in loss_keys
+        ]
+
+        num_subplots = len(loss_keys) + 1
+
+        fig, axes = plt.subplots(
+            num_subplots,
+            1,
+            figsize=(10, 3.8 * num_subplots),
+            sharex=True,
+        )
+
+        step_axis = np.arange(1, len(train_history["total_loss"]) + 1)
+        epoch_end_steps_np = np.asarray(epoch_end_steps)
+
+        # Plot loss curves
+        for ax, key, title in zip(axes[:-1], loss_keys, titles):
+            train_values = np.asarray(train_history[key], dtype=np.float64)
+            val_values = np.asarray(val_history[key], dtype=np.float64)
+
+            ax.plot(
+                step_axis,
+                train_values,
+                label="Train",
+                alpha=0.75,
+            )
+
+            if len(val_values) > 0:
+                repeat_count = int(
+                    np.ceil(len(train_values) / len(val_values))
+                )
+                repeated_val = np.repeat(
+                    val_values,
+                    repeat_count,
+                )[: len(train_values)]
+
+                ax.plot(
+                    step_axis,
+                    repeated_val,
+                    label="Validation",
+                    alpha=0.75,
+                )
+
+            if key == "total_loss" and np.isfinite(best_val_loss):
+                ax.axhline(
+                    y=best_val_loss,
+                    color="black",
+                    linestyle="--",
+                    linewidth=1,
+                    alpha=0.25,
+                    label=f"Best Val: {best_val_loss:.4g}",
+                )
+
+            if len(epoch_end_steps_np) > 0:
+                max_labels = 12
+                stride = max(
+                    1,
+                    int(np.ceil(len(epoch_end_steps_np) / max_labels)),
+                )
+
+                for step_idx in epoch_end_steps_np[::stride]:
+                    ax.axvline(
+                        step_idx,
+                        color="gray",
+                        ls="--",
+                        lw=0.6,
+                        alpha=0.25,
+                    )
+
+            ax.set_ylabel(title)
+
+            if np.all(train_values > 0):
+                ax.set_yscale("log")
+
+            ax.legend()
+            ax.grid(False)
+
+        # Mahalanobis AUC subplot
+        auc_ax = axes[-1]
+
+        eval_steps = np.asarray(
+            roc_eval_steps,
+            dtype=np.int64,
+        )
+        auc_bgtrain = np.asarray(
+            auc_history["auc_bgtrain_vs_signal"],
+            dtype=np.float64,
+        )
+        auc_bgval = np.asarray(
+            auc_history["auc_bgval_vs_signal"],
+            dtype=np.float64,
+        )
+        best_auc_bgval = np.nanmax(auc_bgval) if len(auc_bgval) > 0 else np.nan
+
+        if len(eval_steps) > 0:
+            auc_ax.step(
+                eval_steps,
+                auc_bgtrain,
+                label=f"{self.background_display_name} Train vs {self.signal_display_name}",
+                alpha=0.75,
+            )
+
+            auc_ax.step(
+                eval_steps,
+                auc_bgval,
+                label=f"{self.background_display_name} Val vs {self.signal_display_name}",
+                alpha=0.75,
+            )
+            if np.isfinite(best_auc_bgval):
+                auc_ax.axhline(
+                    y=best_auc_bgval,
+                    color="black",
+                    linestyle="--",
+                    linewidth=1,
+                    alpha=0.25,
+                    label=f"Best Val: {best_auc_bgval:.4f}",
+                )
+
+        # Draw vertical lines for epoch boundaries
+        if len(epoch_end_steps_np) > 0:
+            max_labels = 12
+            stride = max(
+                1,
+                int(np.ceil(len(epoch_end_steps_np) / max_labels)),
+            )
+
+            for step_idx in epoch_end_steps_np[::stride]:
+                auc_ax.axvline(
+                    step_idx,
+                    color="gray",
+                    ls="--",
+                    lw=0.6,
+                    alpha=0.25,
+                )
+
+        auc_ax.set_ylabel("ROC AUC")
+        auc_ax.set_ylim(0.0, 1.0)
+        auc_ax.legend()
+        auc_ax.grid(False)
+
+        axes[-1].set_xlabel("Step Number")
+
+        # Add secondary x-axis for epoch numbers
+        if len(epoch_end_steps_np) > 0:
+            epoch_ids = np.arange(1, len(epoch_end_steps_np) + 1)
+            max_labels = 12
+            stride = max(
+                1,
+                int(np.ceil(len(epoch_end_steps_np) / max_labels)),
+            )
+
+            top_ax = axes[0].secondary_xaxis("top")
+            top_ax.set_xticks(epoch_end_steps_np[::stride])
+            top_ax.set_xticklabels(epoch_ids[::stride])
+            top_ax.set_xlabel("Epoch")
+
+        model_title = {
+            "triplet": "LeJEPA + Triplet SSL",
+            "lejepa": "LeJEPA SSL",
+            "semi-sup": "LeJEPA + Semi-Supervised Classification",
+        }[self.model_name]
+        fig.suptitle(f"{model_title} Training Progress")
+        fig.tight_layout()
+        fig.savefig(os.path.join(self.output_dir, "loss.png"))
+        plt.close(fig)
+
+    @torch.no_grad()
+    def collect_representations(self, loader: DataLoader) -> torch.Tensor:
+        """
+        Compute full-jet representations without augmentation/crop/drop.
+        """
+
+        self.model.eval()
+        latents: List[torch.Tensor] = []
+        dtype = precision_to_dtype(self.args.precision)
+        use_autocast = autocast_enabled_for_precision(self.args.precision)
+
+        for batch_idx, batch in enumerate(loader):
+            if batch_idx >= self.args.eval_steps:
+                break
+            x_particles = batch["x_particles"].to(DEVICE, non_blocking=True)
+            padding_mask = batch["padding_mask"].to(DEVICE, non_blocking=True)
+
+            with torch.autocast(
+                device_type=DEVICE.type,
+                dtype=dtype,
+                enabled=use_autocast,
+            ):
+                z = self.model_core(
+                    x_particles,
+                    padding_mask=padding_mask,
+                )
+
+            latents.append(z.detach().float().cpu())
+
+        latents = torch.cat(
+            latents,
+            dim=0,
+        )
+
+        return self._all_gather_event_tensor(
+            latents,
+            event_dim=0,
+        )
+    
+    @torch.no_grad()
+    def collect_view_representations(
+        self,
+        dataloader,
+        which_view: Literal["view", "negative", "all"] = "view"
+    ) -> Tuple[
+        Optional[torch.Tensor],
+        Optional[torch.Tensor],
+    ]:
+        """
+        Collect augmented view representations for a full dataset.
+
+        Unlike collect_representations(), this function calls:
+
+            self.model.forward_pretrain(...)
+
+        so that the model's existing MultiViewAugmentation is reused exactly.
+
+        Output:
+            z_views:
+                Tensor of shape:
+
+                    (V, N_events, D)
+
+                where V is the total number of positive views.
+            
+            z_negatives:
+                Tensor of shape:
+
+                    (K, N_events, D)
+
+                where K is the total number of negative views.
+
+        Important:
+            If which_view is set to "view", the z_negatives is returned as None.
+            If which_view is set to "negative", the z_views is returned as None.
+        """
+        
+        assert which_view in {"view", "negative", "all"}, (
+            f"Invalid which_view: {which_view}. Choose from 'view', 'negative', or 'all'."
+        )
+
+        self.model.eval()
+
+        collected_z_views = []
+        collected_z_negatives = []
+
+        with torch.no_grad():
+            for batch_idx, batch in enumerate(
+                tqdm(
+                    dataloader,
+                    total=self.args.eval_steps,
+                    desc="Collecting positive-view representations",
+                    leave=False,
+                )
+            ):
+                if batch_idx >= self.args.eval_steps:
+                    break
+                x_particles = batch["x_particles"].to(DEVICE, non_blocking=True)
+                y = batch["y"].to(DEVICE, non_blocking=True)
+                y = self._prepare_labels_for_model(y)
+                padding_mask = batch["padding_mask"].to(DEVICE, non_blocking=True)
+
+                dtype = precision_to_dtype(self.args.precision)
+                use_autocast = autocast_enabled_for_precision(self.args.precision)
+        
+                with torch.autocast(
+                    device_type=DEVICE.type,
+                    dtype=dtype,
+                    enabled=use_autocast,
+                ):
+                    output = self.model( # collect view representations
+                        x_particles,
+                        y,
+                        padding_mask=padding_mask,
+                    )
+                
+                if which_view == "view" or which_view == "all":
+                    # Shape:
+                    #     (V, B, D)
+                    z_views = output["z_views"]
+
+                    collected_z_views.append(
+                        z_views.detach().float().cpu()
+                    )
+                if which_view == "negative" or which_view == "all":
+                    # Shape:
+                    #     (K, B, D)
+                    z_negatives = output["z_negatives"]
+
+                    collected_z_negatives.append(
+                        z_negatives.detach().float().cpu()
+                    )
+
+        if which_view == "view" or which_view == "all":
+            # Concatenate over event/batch dimension:
+            #     list of (V, B_i, D)
+            # ->  (V, sum_i B_i, D)
+            z_views = torch.cat(
+                collected_z_views,
+                dim=1,
+            )
+            z_views = self._all_gather_event_tensor(
+                z_views,
+                event_dim=1,
+            )
+        if which_view == "negative" or which_view == "all":
+            # Concatenate over event/batch dimension:
+            #     list of (K, B_i, D)
+            # ->  (K, sum_i B_i, D)
+            z_negatives = torch.cat(
+                collected_z_negatives,
+                dim=1,
+            )
+            z_negatives = self._all_gather_event_tensor(
+                z_negatives,
+                event_dim=1,
+            )
+
+        if which_view == "view":
+            return z_views, None
+        elif which_view == "negative":
+            return None, z_negatives
+        else:  # which_view == "all"
+            return z_views, z_negatives
+
+    def fit_mahalanobis_background(
+        self,
+        bg_train_latents: np.ndarray,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Fit a Gaussian background model from background train latents.
+
+        Returns:
+            mean: (D,)
+            precision: (D, D)
+        """
+
+        if bg_train_latents.ndim != 2:
+            raise ValueError(
+                f"Expected bg_train_latents shape (N, D), got {bg_train_latents.shape}."
+            )
+
+        mean = bg_train_latents.mean(axis=0)
+        centered = bg_train_latents - mean
+        cov = np.cov(centered, rowvar=False)
+
+        if cov.ndim == 0:
+            cov = np.asarray([[float(cov)]], dtype=np.float64)
+
+        cov = np.asarray(cov, dtype=np.float64)
+        cov = cov + self.args.mahalanobis_cov_eps * np.eye(cov.shape[0], dtype=np.float64)
+        precision = np.linalg.pinv(cov)
+
+        return mean.astype(np.float64), precision.astype(np.float64)
+
+    @staticmethod
+    def mahalanobis_scores(
+        latents: np.ndarray,
+        mean: np.ndarray,
+        precision: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Compute per-event Mahalanobis distance scores.
+
+        No batch averaging is performed. Output shape is (N,).
+        """
+
+        latents = np.asarray(latents, dtype=np.float64)
+        centered = latents - mean
+        # scores = np.einsum("nd,dd,nd->n", centered, precision, centered)
+        scores = np.einsum("ni,ij,nj->n", centered, precision, centered)
+        return scores.astype(np.float64)
+    
+    @staticmethod
+    def local_global_consistency_scores(
+        z_views: torch.Tensor,
+        num_global_views: int,
+    ) -> torch.Tensor:
+        """
+        Compute one local-global consistency anomaly score per event.
+
+        Input:
+            z_views:
+                Tensor of shape:
+
+                    (V, B, D)
+
+                where:
+                    V = total number of positive views
+                    B = batch size / number of events
+                    D = representation dimension
+
+                View ordering must match MultiViewAugmentation:
+
+                    first G views:
+                        global views
+
+                    remaining V - G views:
+                        local views
+
+            num_global_views:
+                Number of global views G.
+
+        Output:
+            scores:
+                Tensor of shape:
+
+                    (B,)
+
+                One anomaly score per event.
+
+        Definition:
+            For event b, first construct the global anchor:
+
+                anchor_b
+                    = mean_g z_global[g, b]
+
+            Then compute the mean squared representation distance from every
+            local view to that event-specific global anchor:
+
+                score_b
+                    = mean_l mean_d
+                        (z_local[l, b, d] - anchor_b[d])^2
+
+        Interpretation:
+            Larger score means the event's local representations are less
+            consistent with its global representation.
+
+            The encoder is trained only on QCD positive-view consistency, so
+            an unseen anomaly may receive a larger score if its local and global
+            structure do not satisfy the learned QCD consistency relation.
+        """
+
+        if z_views.ndim != 3:
+            raise ValueError(
+                "Expected z_views shape (V, B, D), got "
+                f"{tuple(z_views.shape)}."
+            )
+
+        num_views = z_views.size(0)
+
+        if not (1 <= num_global_views < num_views):
+            raise ValueError(
+                "local_global_consistency_scores requires at least one global "
+                "and one local view. Got "
+                f"num_global_views={num_global_views}, "
+                f"num_views={num_views}."
+            )
+
+        # Shape:
+        #     global_views: (G, B, D)
+        #     local_views:  (L, B, D)
+        global_views = z_views[:num_global_views]
+        local_views = z_views[num_global_views:]
+
+        # Event-specific global anchor:
+        #
+        #     anchor_b = mean over global views
+        #
+        # Shape:
+        #     (B, D)
+        anchor = global_views.mean(dim=0)
+
+        # Per-local-view MSE to the event-specific global anchor.
+        #
+        # Shape after mean over representation dimension:
+        #     (L, B)
+        local_anchor_mse = (
+            local_views
+            - anchor.unsqueeze(0)
+        ).square().mean(dim=-1)
+
+        # Mean over local views.
+        #
+        # Shape:
+        #     (B,)
+        scores = local_anchor_mse.mean(dim=0)
+
+        return scores
+
+    @staticmethod
+    def compute_auc(background_scores: np.ndarray, signal_scores: np.ndarray) -> float:
+        y_true = np.concatenate(
+            [
+                np.zeros(len(background_scores), dtype=np.int64),
+                np.ones(len(signal_scores), dtype=np.int64),
+            ]
+        )
+        y_score = np.concatenate([background_scores, signal_scores])
+        return float(roc_auc_score(y_true, y_score))
+
+    @torch.no_grad()
+    def compute_mahalanobis_anomaly_scores(
+        self,
+        background_train_loader,
+        background_val_loader,
+        signal_loader,
+        plot_latent: bool = False,
+        epoch: Optional[int] = None,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Compute downstream Mahalanobis anomaly scores.
+        
+        If plot_latent is True, also plot the representation distribution 
+        of background validation and signal events.
+        Epoch must be provided for plotting.
+
+        Returns:
+            background_train_scores
+            background_val_scores
+            signal_scores
+        """
+
+        bg_train_latents = self.collect_representations(
+            background_train_loader
+        )
+
+        bg_val_latents = self.collect_representations(
+            background_val_loader
+        )
+
+        signal_latents = self.collect_representations(
+            signal_loader
+        )
+
+        # If plot_latent is True, plot the mean of global views for background validation and signal events.
+        if plot_latent and self.is_main_process:
+            assert epoch is not None, "Epoch must be provided when plot_latent is True."
+            self.plot_latent_space_for_epoch(
+                bg_val_latents.numpy(),
+                signal_latents.numpy(),
+                epoch=epoch,
+            ) 
+            
+        mean, precision = self.fit_mahalanobis_background(bg_train_latents.numpy())
+
+        background_train_scores = self.mahalanobis_scores(
+            bg_train_latents.numpy(),
+            mean,
+            precision,
+        )
+        background_val_scores = self.mahalanobis_scores(
+            bg_val_latents.numpy(),
+            mean,
+            precision,
+        )
+        signal_scores = self.mahalanobis_scores(
+            signal_latents.numpy(),
+            mean,
+            precision,
+        )
+
+        return (
+            background_train_scores,
+            background_val_scores,
+            signal_scores,
+        )
+    
+    @torch.no_grad()
+    def compute_local_global_anomaly_scores(
+        self,
+        background_train_loader,
+        background_val_loader,
+        signal_loader,
+        plot_latent: bool = False,
+        epoch: Optional[int] = None,
+    ) -> Tuple[
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+    ]:
+        """
+        Compute one stochastic local-global consistency score
+        per event from one positive-augmentation draw.
+        """
+
+        bg_train_latents, _ = (
+            self.collect_view_representations(
+                background_train_loader,
+                which_view="view",
+            )
+        )
+        bg_val_latents, _ = (
+            self.collect_view_representations(
+                background_val_loader,
+                which_view="view",
+            )
+        )
+        signal_latents, _ = (
+            self.collect_view_representations(
+                signal_loader,
+                which_view="view",
+            )
+        )
+
+        if plot_latent and self.is_main_process:
+            if epoch is None:
+                raise ValueError(
+                    "epoch must be provided when "
+                    "plot_latent=True."
+                )
+
+            bg_val_global_latents = (
+                bg_val_latents[
+                    :self.args.num_global_views
+                ].mean(dim=0)
+            )
+            signal_global_latents = (
+                signal_latents[
+                    :self.args.num_global_views
+                ].mean(dim=0)
+            )
+
+            self.plot_latent_space_for_epoch(
+                bg_val_global_latents.numpy(),
+                signal_global_latents.numpy(),
+                epoch=epoch,
+            )
+
+        background_train_scores = (
+            self.local_global_consistency_scores(
+                bg_train_latents,
+                self.args.num_global_views,
+            )
+        )
+        background_val_scores = (
+            self.local_global_consistency_scores(
+                bg_val_latents,
+                self.args.num_global_views,
+            )
+        )
+        signal_scores = (
+            self.local_global_consistency_scores(
+                signal_latents,
+                self.args.num_global_views,
+            )
+        )
+
+        return (
+            background_train_scores,
+            background_val_scores,
+            signal_scores,
+        )
+    
+    def evaluate_anomaly_score_for_epoch(
+        self,
+        bg_train_loader,
+        bg_val_loader,
+        sg_loader,
+        epoch: int,
+        score_fn,
+        score_name,
+    ) -> Tuple[float, float]:
+        """
+        Evaluate anomaly scores from already-collected latents.
+        This function also automatically plots the latent space distribution 
+        of background val and signal events.
+
+        The score_fn must have the following signature:
+            score_fn(
+                self,
+                background_train_loader,
+                background_val_loader,
+                signal_loader,
+                plot_latent: bool,
+                epoch: Optional[int],
+            ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        
+        
+        Returns:
+            auc_bgtrain_vs_signal: float
+            auc_bgval_vs_signal: float
+        """
+
+        eval_dir = os.path.join(self.output_dir, f"{score_name}_eval", f"epoch_{epoch:04d}")
+        os.makedirs(eval_dir, exist_ok=True)
+
+        (
+            background_train_scores,
+            background_val_scores,
+            signal_scores,
+        ) = score_fn(
+            bg_train_loader,
+            bg_val_loader,
+            sg_loader,
+            plot_latent=True,
+            epoch=epoch,
+        )
+
+        if not self.is_main_process:
+            return 0.0, 0.0
+        
+        def scores_to_numpy(scores) -> np.ndarray:
+            """Accept score functions implemented with either Torch or NumPy."""
+            if isinstance(scores, torch.Tensor):
+                return scores.detach().float().cpu().numpy()
+            return np.asarray(scores, dtype=np.float64)
+
+        background_train_scores = scores_to_numpy(background_train_scores)
+        background_val_scores = scores_to_numpy(background_val_scores)
+        signal_scores = scores_to_numpy(signal_scores)
+        
+        auc_bgtrain_vs_signal = self.compute_auc(background_train_scores, signal_scores)
+        auc_bgval_vs_signal = self.compute_auc(background_val_scores, signal_scores)
+
+        metrics = {
+            "epoch": int(epoch),
+            "auc_bgtrain_vs_signal": float(auc_bgtrain_vs_signal),
+            "auc_bgval_vs_signal": float(auc_bgval_vs_signal),
+            "background_train_score_mean": float(np.mean(background_train_scores)),
+            "background_val_score_mean": float(np.mean(background_val_scores)),
+            "signal_score_mean": float(np.mean(signal_scores)),
+            "background_train_score_median": float(np.median(background_train_scores)),
+            "background_val_score_median": float(np.median(background_val_scores)),
+            "signal_score_median": float(np.median(signal_scores)),
+        }
+
+        metrics_path = os.path.join(eval_dir, f"{score_name}_metrics.json")
+        with open(metrics_path, "w") as f:
+            json.dump(metrics, f, indent=2)
+
+        plot_anomaly_score(
+            background_val_scores,
+            signal_scores,
+            background_label=(f"{self.background_display_name} (Val)"),
+            signal_label=self.signal_display_name,
+            save_path=os.path.join(eval_dir, "bgval-vs-signal-score.png"),
+        )
+
+        plot_anomaly_score(
+            background_train_scores,
+            signal_scores,
+            background_label=(f"{self.background_display_name} (Train)"),
+            signal_label=self.signal_display_name,
+            save_path=os.path.join(eval_dir, "bgtrain-vs-signal-score.png"),
+        )
+
+        plot_roc_curve(
+            background_val_scores,
+            signal_scores,
+            background_label=(f"{self.background_display_name} (Val)"),
+            signal_label=self.signal_display_name,
+            savepath=os.path.join(eval_dir, "roc-bgval-vs-signal.png"),
+            examples=False,
+            loss_fn=None,
+        )
+
+        plot_roc_curve(
+            background_train_scores,
+            signal_scores,
+            background_label=(f"{self.background_display_name} (Train)"),
+            signal_label=self.signal_display_name,
+            savepath=os.path.join(eval_dir, "roc-bgtrain-vs-signal.png"),
+            examples=False,
+            loss_fn=None,
+        )
+
+        latest_dir = os.path.join(self.output_dir, f"{score_name}_eval", "latest")
+        os.makedirs(latest_dir, exist_ok=True)
+
+        latest_metrics_path = os.path.join(latest_dir, f"{score_name}_metrics.json")
+        with open(latest_metrics_path, "w") as f:
+            json.dump(metrics, f, indent=2)
+
+        print(f"{score_name.capitalize()} metrics saved to {metrics_path}")
+        print(f"{score_name.capitalize()} AUC, {self.background_display_name} train vs {self.signal_display_name}: {auc_bgtrain_vs_signal:.6f}")
+        print(f"{score_name.capitalize()} AUC, {self.background_display_name} val vs {self.signal_display_name}: {auc_bgval_vs_signal:.6f}")
+
+        return auc_bgtrain_vs_signal, auc_bgval_vs_signal
+        
+    def plot_latent_space_for_epoch(
+        self,
+        bg_val_latents: np.ndarray,
+        signal_latents: np.ndarray,
+        epoch: int,
+    ) -> None:
+        """
+        Plot background validation and signal full-jet representations from
+        already-collected latents.
+        """
+
+        bg_plot_latents = bg_val_latents
+        sg_plot_latents = signal_latents
+
+        if self.args.max_latent_plot_points is not None:
+            max_points = self.args.max_latent_plot_points
+            if len(bg_plot_latents) > max_points:
+                bg_indices = np.random.choice(len(bg_plot_latents), max_points, replace=False)
+                bg_plot_latents = bg_plot_latents[bg_indices]
+            if len(sg_plot_latents) > max_points:
+                sg_indices = np.random.choice(len(sg_plot_latents), max_points, replace=False)
+                sg_plot_latents = sg_plot_latents[sg_indices]
+
+        bg_2d, sg_2d, x_label, y_label = reduce_to_2d(bg_plot_latents, sg_plot_latents)
+
+        output_path = os.path.join(
+            self.latent_plot_dir,
+            f"latent_epoch_{epoch:04d}.png",
+        )
+
+        plot_latent_space(
+            bg_2d,
+            sg_2d,
+            background_label=(f"{self.background_display_name} (Val)"),
+            signal_label=self.signal_display_name,
+            output_path=output_path,
+            x_label=x_label,
+            y_label=y_label,
+        )
+
+    def train(self) -> None:
+        os.makedirs(self.output_dir, exist_ok=True)
+
+        train_loader, bg_val_loader, bg_test_loader, signal_loader = self.make_dataloaders()
+        self.build_model()
+
+        summary_path = os.path.join(self.output_dir, "summary.json")
+
+        # Write a first summary of the run
+        summary = {
+            "model": self.model_name,
+            
+            # Run status.
+            "status": "initialized",
+            "current_epoch": 0,
+            "completed_epochs": 0,
+
+            # Data.
+            "dataset_root": self.dataset_root,
+            "background_labels": self.background_labels,
+            "signal_labels": self.signal_labels,
+            "particle_features": self.particle_feature_names,
+            "background_train_root_shards": len(self.bg_train_dataset.filepaths),
+            "background_val_root_shards": len(self.bg_val_dataset.filepaths),
+            # "background_test_root_shards": len(self.bg_test_dataset.filepaths),
+            "signal_test_root_shards": len(self.sg_dataset.filepaths),
+            "max_train_events": self.args.max_train_events,
+            "max_val_events": self.args.max_val_events,
+            "max_test_background_events": self.args.max_test_background_events,
+            "max_test_signal_events": self.args.max_test_signal_events,
+
+            # Model.
+            "batch_size": self.args.batch_size,
+            "embed_dim": self.args.embed_dim,
+            "representation_dim": self.args.representation_dim,
+            "num_layers": self.args.num_layers,
+            "num_heads": self.args.num_heads,
+            "ffn_mult": self.args.ffn_mult,
+            "dropout": self.args.dropout,
+            "num_trainable_parameters": int(self.num_params),
+
+            # Optimization.
+            "epochs": self.args.epochs,
+            "learning_rate": self.args.learning_rate,
+            "weight_decay": self.args.weight_decay,
+            "precision": self.args.precision,
+            "final_lr_ratio": self.args.final_lr_ratio,
+
+            # Positive-view augmentation.
+            "num_global_views": self.args.num_global_views,
+            "num_local_views": self.args.num_local_views,
+            "global_drop_pt_frac_range": [
+                self.args.global_drop_pt_frac_min,
+                self.args.global_drop_pt_frac_max,
+            ],
+            "local_drop_pt_frac_range": [
+                self.args.local_drop_pt_frac_min,
+                self.args.local_drop_pt_frac_max,
+            ],
+            "min_nodes": self.args.min_nodes,
+            "pt_drop_power": self.args.pt_drop_power,
+
+            # LeJEPA loss.
+            "invariant_weight": self.args.invariant_weight,
+            "sigreg_weight": self.args.sigreg_weight,
+            "epps_pulley_num_points": self.args.epps_pulley_num_points,
+            "num_slices": self.args.num_slices,
+
+            # Evaluation.
+            "anomaly_score": self.args.anomaly_score,
+
+            "base_seed": self.args.seed,
+            "device": str(DEVICE),
+
+            # Fields populated during training.
+            "warmup_steps": None,
+            "current_learning_rate": None,
+            "best_val_loss": None,
+            "final_val_loss": None,
+            "latest_train_losses": None,
+            "latest_val_losses": None,
+            
+            "distributed": self.distributed,
+            "train_infinite_stream": True,
+            "world_size": self.world_size,
+            "global_batch_size": self.args.batch_size,
+            "per_rank_batch_size": self.per_rank_batch_size,
+            "steps_per_epoch": self.args.steps_per_epoch,
+            "val_steps": self.args.val_steps,
+            "eval_steps": self.args.eval_steps,
+            "num_workers": self.args.num_workers,
+            "prefetch_factor": self.args.prefetch_factor,
+            "shuffle_active_shards": self.args.shuffle_active_shards,
+        }
+        
+        # Add info about negative augmentation only if the model uses it.
+        if self.model_name in ["triplet"]:
+            summary.update(
+                {
+                    # Negative augmentation.
+                    "num_negative_views": self.args.num_negative_views,
+                    "batch_mix_prob": self.args.batch_mix_prob,
+                    "pt_resample_prob": self.args.pt_resample_prob,
+                    "node_eta_phi_rotation_prob":
+                        self.args.node_eta_phi_rotation_prob,
+                    "eta_phi_shuffle_prob": self.args.eta_phi_shuffle_prob,
+                    "identity_shuffle_prob": self.args.identity_shuffle_prob,
+                    "corrupt_node_frac": self.args.corrupt_node_frac,
+                    "batch_mix_anchor_frac_min": self.args.batch_mix_anchor_frac_min,
+                    "batch_mix_anchor_frac_max": self.args.batch_mix_anchor_frac_max,
+                    "renormalize_negative_pt_sum":
+                        self.args.renormalize_negative_pt_sum,
+                }
+            )
+        # Add model-specific hyperparameters to the summary.
+        if self.model_name == "triplet":
+            summary.update(
+                {
+                    "triplet_weight": (
+                        self.args.triplet_weight
+                    ),
+                    "triplet_margin": (
+                        self.args.triplet_margin
+                    ),
+                    "use_all_views_as_triplet_positives": (
+                        self.args.use_all_views_as_triplet_positives
+                    ),
+                }
+            )
+        
+        if self.model_name == "semi-sup":
+            summary.update(
+                {
+                    "classification_weight":
+                        self.args.classification_weight,
+                    "num_classification_classes":
+                        len(self.background_labels),
+                }
+            )
+            
+        
+
+        def update_summary(**updates) -> None:
+            if not self.is_main_process:
+                return
+            summary.update(updates)
+
+            temp_path = summary_path + ".tmp"
+            with open(temp_path, "w") as f:
+                json.dump(summary, f, indent=2)
+
+            os.replace(temp_path, summary_path)
+
+        # Write a partial summary immediately, before optimization starts.
+        update_summary()
+        
+        optimizer = torch.optim.AdamW(
+            self.model.parameters(),
+            lr=self.args.learning_rate,
+            weight_decay=self.args.weight_decay,
+        )
+
+        total_steps = self.args.epochs * self.args.steps_per_epoch
+        warmup_steps = self.args.warmup_steps
+        if warmup_steps is None:
+            warmup_steps = self.args.warmup_epochs * self.args.steps_per_epoch
+
+        scheduler = make_warmup_cosine_scheduler(
+            optimizer=optimizer,
+            total_steps=total_steps,
+            warmup_steps=warmup_steps,
+            final_lr_ratio=self.args.final_lr_ratio,
+        )
+        
+        update_summary(
+            status="training",
+            warmup_steps=int(warmup_steps),
+            total_training_steps=int(total_steps),
+            current_learning_rate=float(optimizer.param_groups[0]["lr"]),
+        )
+
+        dtype = precision_to_dtype(self.args.precision)
+        use_autocast = autocast_enabled_for_precision(self.args.precision)
+
+        train_history = {
+            key: []
+            for key in self.ssl_metric_keys
+        }
+        val_history = {
+            key: []
+            for key in self.ssl_metric_keys
+        }
+        auc_history = {
+            "auc_bgtrain_vs_signal": [],
+            "auc_bgval_vs_signal": [],
+        }
+        epoch_end_steps: List[int] = []
+        roc_eval_steps: List[int] = []
+
+        best_val_loss = float("inf")
+        best_model_path = os.path.join(self.output_dir, "best_model.pth")
+
+        profiler_schedule = schedule(
+            wait=2,
+            warmup=2,
+            active=5,
+            repeat=1,
+        )
+        train_iter = iter(train_loader) # infinite stream of training batches
+        
+        for epoch in range(1, self.args.epochs + 1):
+            print(f"\nEpoch [{epoch}/{self.args.epochs}]")
+
+            self.model.train()
+
+            epoch_train = {
+                key: []
+                for key in self.ssl_metric_keys
+            }
+
+            pbar = tqdm(
+                range(self.args.steps_per_epoch),
+                total=self.args.steps_per_epoch,
+                desc=f"Train Epoch {epoch}/{self.args.epochs}",
+                disable=not self.is_main_process,
+            )
+
+            # Profile only the first epoch.
+            should_profile = self.args.profile and epoch == 1
+
+            profiler_context = (
+                profile(
+                    activities=[
+                        ProfilerActivity.CPU,
+                        ProfilerActivity.CUDA,
+                    ],
+                    schedule=profiler_schedule,
+                    record_shapes=True,
+                    profile_memory=True,
+                    with_stack=False,
+                )
+                if should_profile
+                else nullcontext()
+            )
+
+            with profiler_context as prof:
+                for step in pbar:
+                    batch = next(train_iter)
+                    x_particles = batch["x_particles"].to(
+                        DEVICE,
+                        non_blocking=True,
+                    )
+                    y = batch["y"].to(
+                        DEVICE,
+                        non_blocking=True,
+                    )
+                    y = self._prepare_labels_for_model(y)
+                    padding_mask = batch["padding_mask"].to(
+                        DEVICE,
+                        non_blocking=True,
+                    )
+
+                    optimizer.zero_grad(set_to_none=True)
+
+                    with record_function("training_forward"):
+                        with torch.autocast(
+                            device_type=DEVICE.type,
+                            dtype=dtype,
+                            enabled=use_autocast,
+                        ):
+                            output = self.model( # train forward
+                                x_particles,
+                                y,
+                                padding_mask=padding_mask,
+                            )
+                            loss = output["total_loss"]
+
+                    with record_function("training_backward"):
+                        loss.backward()
+
+                    if self.args.grad_clip_norm is not None:
+                        with record_function("gradient_clipping"):
+                            torch.nn.utils.clip_grad_norm_(
+                                self.model.parameters(),
+                                max_norm=self.args.grad_clip_norm,
+                            )
+
+                    with record_function("optimizer_step"):
+                        optimizer.step()
+
+                    with record_function("scheduler_step"):
+                        scheduler.step()
+
+                    with record_function("metrics_to_cpu"):
+                        step_losses = self._extract_ssl_metrics(
+                            output
+                        )
+
+                    for key in train_history:
+                        train_history[key].append(step_losses[key])
+                        epoch_train[key].append(step_losses[key])
+
+                    with record_function("progress_bar_update"):
+                        if step % 10 == 0:
+                            pbar.set_postfix(
+                                self._progress_postfix(
+                                    step_losses
+                                )
+                            )
+                    # Advance profiler state once per training iteration.
+                    if should_profile:
+                        prof.step()
+
+            if should_profile:
+                print(
+                    prof.key_averages().table(
+                        sort_by="cuda_time_total",
+                        row_limit=50,
+                    )
+                )
+
+                profile_path = os.path.join(
+                    self.output_dir,
+                    "l40s_profile_trace.json",
+                )
+                prof.export_chrome_trace(profile_path)
+
+                print(f"Saved profiler trace to {profile_path}")
+            
+            mean_train = {
+                key: float(np.nanmean(values))
+                for key, values in epoch_train.items()
+            }
+
+            self.model.eval()
+            epoch_val = {
+                key: []
+                for key in self.ssl_metric_keys
+            }
+
+            with torch.no_grad():
+                val_iter = iter(bg_val_loader)
+
+                pbar = tqdm(
+                    range(self.args.val_steps),
+                    total=self.args.val_steps,
+                    desc=f"Val Epoch {epoch}/{self.args.epochs}",
+                    disable=not self.is_main_process,
+                )
+
+                with torch.no_grad():
+                    for val_step in pbar:
+                        batch = next(val_iter)
+                    x_particles = batch["x_particles"].to(DEVICE, non_blocking=True)
+                    y = batch["y"].to(DEVICE, non_blocking=True)
+                    y = self._prepare_labels_for_model(y)
+                    padding_mask = batch["padding_mask"].to(DEVICE, non_blocking=True)
+
+                    with torch.autocast(
+                        device_type=DEVICE.type,
+                        dtype=dtype,
+                        enabled=use_autocast,
+                    ):
+                        output = self.model( # validation forward
+                            x_particles,
+                            y,
+                            padding_mask=padding_mask,
+                        )
+
+                    step_losses = (
+                        self._extract_ssl_metrics(output)
+                    )
+
+                    for key in epoch_val:
+                        epoch_val[key].append(step_losses[key])
+
+                    pbar.set_postfix(
+                        self._progress_postfix(
+                            step_losses
+                        )
+                    )
+
+            mean_val = {
+                key: float(np.nanmean(values))
+                for key, values in epoch_val.items()
+            }
+
+            for key in val_history:
+                val_history[key].append(mean_val[key])
+
+            epoch_end_steps.append(len(train_history["total_loss"]))
+
+            if mean_val["total_loss"] < best_val_loss:
+                best_val_loss = mean_val["total_loss"]
+
+                if self.is_main_process:
+                    torch.save(
+                        self.model_core.state_dict(),
+                        best_model_path,
+                    )
+                    print(
+                        "Saved new best model state_dict to "
+                        f"{best_model_path}"
+                    )
+
+            if ( # Plot latent space and evaluate ROC only at specified intervals or at the final epoch.
+                self.args.roc_eval_every > 0
+                and (epoch % self.args.roc_eval_every == 0 or epoch == self.args.epochs)
+            ):
+                    (
+                        auc_bgtrain_vs_signal,
+                        auc_bgval_vs_signal,
+                    ) = self.evaluate_anomaly_score_for_epoch(
+                        bg_train_loader=train_loader,
+                        bg_val_loader=bg_val_loader,
+                        sg_loader=signal_loader,
+                        epoch=epoch,
+                        score_name=self.args.anomaly_score,
+                        score_fn=(
+                            {
+                                "mahalanobis": self.compute_mahalanobis_anomaly_scores,
+                                "local-global": self.compute_local_global_anomaly_scores,
+                            }[self.args.anomaly_score]
+                        )
+                    )
+
+                    auc_history["auc_bgtrain_vs_signal"].append(
+                        float(auc_bgtrain_vs_signal)
+                    )
+                    auc_history["auc_bgval_vs_signal"].append(
+                        float(auc_bgval_vs_signal)
+                    )
+
+                    roc_eval_steps.append(
+                        len(train_history["total_loss"])
+                    )
+            if self.is_main_process:
+                self.plot_progress(
+                    train_history=train_history,
+                    val_history=val_history,
+                    epoch_end_steps=epoch_end_steps,
+                    best_val_loss=best_val_loss,
+                    auc_history=auc_history,
+                    roc_eval_steps=roc_eval_steps,
+                )
+                
+                print(f"Epoch {epoch} train losses: {mean_train}")
+                print(f"Epoch {epoch} val losses: {mean_val}")
+
+            update_summary(
+                status="training",
+                current_epoch=int(epoch),
+                completed_epochs=int(epoch),
+                current_learning_rate=float(optimizer.param_groups[0]["lr"]),
+                best_val_loss=float(best_val_loss),
+                final_val_loss=float(mean_val["total_loss"]),
+                latest_train_losses={
+                    key: float(value)
+                    for key, value in mean_train.items()
+                },
+                latest_val_losses={
+                    key: float(value)
+                    for key, value in mean_val.items()
+                },
+            )
+
+            print(f"Updated run summary at {summary_path}")
+
+        update_summary(
+            status="completed",
+            current_epoch=int(self.args.epochs),
+            completed_epochs=int(self.args.epochs),
+            current_learning_rate=float(optimizer.param_groups[0]["lr"]),
+            best_val_loss=float(best_val_loss),
+            final_val_loss=float(val_history["total_loss"][-1]),
+            latest_train_losses={
+                key: float(value)
+                for key, value in mean_train.items()
+            },
+            latest_val_losses={
+                key: float(value)
+                for key, value in mean_val.items()
+            },
+        )
+
+        print(f"Saved run summary to {summary_path}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        prog="Train LeJEPA ParticleTransformer Representation",
+        description=(
+            "Train a ParticleTransformer representation model with "
+            "LeJEPA + SIGReg and selectable corrupted-negative SSL objective."
+        ),
+    )
+    # SSL model.
+    parser.add_argument(
+        "--model",
+        type=str,
+        choices=[
+            "triplet",
+            "lejepa",
+            "semi-sup",
+        ],
+        default="semi-sup",
+        help=(
+            "SSL objective/model variant. "
+            "'triplet' uses LeJEPA + SIGReg + corrupted-negative "
+            "triplet loss. "
+            "'lejepa' uses LeJEPA + SIGReg only, without any corrupted-negative loss. "
+            "'semi-sup' uses semi-supervised learning with LeJEPA + SIGReg. "
+            "Default: semi-sup."
+        ),
+    )
+    # Anomaly score function.
+    parser.add_argument(
+        "--anomaly-score",
+        type=str,
+        choices=[
+            "mahalanobis",
+            "local-global",
+        ],
+        default="mahalanobis",
+        help=(
+            "Epoch-level anomaly score used for ROC/AUC evaluation. "
+            "'mahalanobis' fits a normal latent distribution from background "
+            "training representations. "
+            "'local-global' generates positive global/local views using the "
+            "same MultiViewAugmentation hyperparameters as training and scores "
+            "each event by the mean local-to-global-anchor representation MSE. "
+            "Default: mahalanobis."
+        ),
+    )
+    # Profile
+    parser.add_argument(
+        "--profile",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Profile a short training window in the first epoch.",
+    )
+    # Data.
+    parser.add_argument(
+        "--dataset-root",
+        type=str,
+        default="/HEP/export/home/lwang223/JetClass/JetClass/Pythia",
+        help=(
+            "JetClass Pythia root containing train_100M, val_5M, and test_20M."
+        ),
+    )
+    parser.add_argument(
+        "--background-labels",
+        type=str,
+        default="label_QCD,label_Hbb,label_Hcc",
+        help=(
+            "Comma-separated JetClass labels used as normal/background classes."
+        ),
+    )
+    parser.add_argument(
+        "--signal-labels",
+        type=str,
+        default="label_Wqq",
+        help=(
+            "Comma-separated JetClass labels used only as anomaly signals at test time."
+        ),
+    )
+    parser.add_argument(
+        "--particle-features",
+        type=str,
+        default=",".join(DEFAULT_PARTICLE_FEATURES),
+        help=(
+            "Comma-separated particle features passed to JetClass read_file; "
+            "default is the full supported particle-feature set."
+        ),
+    )
+    parser.add_argument(
+        "--max-num-particles",
+        type=int,
+        default=128,
+        help="Maximum particles per jet; shorter jets are zero-padded by read_file.",
+    )
+    parser.add_argument(
+        "--max-train-events",
+        type=int,
+        default=None,
+        help=(
+            "Optional global event cap per training-stream pass. "
+            "With the infinite training stream, the capped subset is "
+            "reshuffled and reused across passes."
+        )
+    )
+    parser.add_argument(
+        "--max-val-events",
+        type=int,
+        default=None,
+        help="Optional cap on loaded background validation events.",
+    )
+    parser.add_argument(
+        "--max-test-background-events",
+        type=int,
+        default=None,
+        help="Optional cap on loaded background test events.",
+    )
+    parser.add_argument(
+        "--max-test-signal-events",
+        type=int,
+        default=None,
+        help="Optional cap on loaded signal test events.",
+    )
+    parser.add_argument(
+        "--shuffle-active-shards",
+        type=int,
+        default=3,
+        help=(
+            "Number of preprocessed training ROOT shards kept active per "
+            "DataLoader worker for cross-class event-level mixing. Higher values "
+            "improve mixing but increase CPU RAM. Default: 3."
+        ),
+    )
+    parser.add_argument(
+        "--feature-plot-events",
+        type=int,
+        default=10000,
+        help="Maximum streamed training events used for feature histograms. Default: 10000.",
+    )
+    parser.add_argument(
+        "--min-nodes",
+        type=int,
+        default=4,
+        help="Minimum number of valid nodes per event and per augmented view. Default: 4.",
+    )
+
+    # Model.
+    parser.add_argument(
+        "--embed-dim",
+        type=int,
+        default=128,
+        help="Transformer embedding dimension. Default: 128.",
+    )
+    parser.add_argument(
+        "--representation-dim",
+        type=int,
+        default=128,
+        help="Output representation dimension. Default: 128.",
+    )
+    parser.add_argument(
+        "--num-layers",
+        type=int,
+        default=8,
+        help="Number of Transformer encoder layers. Default: 8.",
+    )
+    parser.add_argument(
+        "--num-heads",
+        type=int,
+        default=8,
+        help="Number of attention heads. Default: 8.",
+    )
+    parser.add_argument(
+        "--ffn-mult",
+        type=int,
+        default=4,
+        help="SwiGLU FFN expansion multiplier. Default: 4.",
+    )
+    parser.add_argument(
+        "--dropout",
+        type=float,
+        default=0.1,
+        help="Dropout in embedding, attention, FFN, and projection head. Default: 0.1.",
+    )
+    parser.add_argument(
+        "--no-pairwise-bias",
+        action="store_true",
+        help="Disable learned pairwise physics attention bias.",
+    )
+    parser.add_argument(
+        "--pairwise-hidden-dim",
+        type=int,
+        default=64,
+        help="Hidden dimension of pairwise attention-bias MLP. Default: 64.",
+    )
+    parser.add_argument(
+        "--pairwise-num-features",
+        type=int,
+        default=4,
+        help="Number of pairwise physics features. Default: 4.",
+    )
+    parser.add_argument(
+        "--eps",
+        type=float,
+        default=1e-8,
+        help="Numerical epsilon. Default: 1e-8.",
+    )
+
+    # Augmentation.
+    parser.add_argument(
+        "--num-global-views",
+        type=int,
+        default=2,
+        help="Number of global pt-drop views. Default: 2.",
+    )
+    parser.add_argument(
+        "--num-local-views",
+        type=int,
+        default=6,
+        help="Number of local pt-drop views. Default: 6.",
+    )
+    parser.add_argument(
+        "--global-drop-pt-frac-min",
+        type=float,
+        default=0.0,
+        help="Minimum cumulative pt fraction to drop for global views. Default: 0.0.",
+    )
+    parser.add_argument(
+        "--global-drop-pt-frac-max",
+        type=float,
+        default=0.50,
+        help="Maximum cumulative pt fraction to drop for global views. Default: 0.50.",
+    )
+    parser.add_argument(
+        "--local-drop-pt-frac-min",
+        type=float,
+        default=0.50,
+        help="Minimum cumulative pt fraction to drop for local views. Default: 0.50.",
+    )
+    parser.add_argument(
+        "--local-drop-pt-frac-max",
+        type=float,
+        default=0.95,
+        help="Maximum cumulative pt fraction to drop for local views. Default: 0.95.",
+    )
+    parser.add_argument(
+        "--pt-drop-power",
+        type=float,
+        default=1.0,
+        help="Low-pt-biased drop power. Larger values protect high-pt nodes more strongly. Default: 1.0.",
+    )
+    parser.add_argument(
+        "--keep-dropped-features",
+        action="store_true",
+        help="Keep dropped node features instead of zeroing them. Dropped nodes are still masked.",
+    )
+
+    # Loss.
+    parser.add_argument(
+        "--invariant-weight",
+        type=float,
+        default=1.0,
+        help="Weight for invariant loss. Default: 1.0.",
+    )
+    parser.add_argument(
+        "--sigreg-weight",
+        type=float,
+        default=0.02,
+        help="Weight for SIGReg loss, matching LeJEPA lambda by default. Default: 0.02.",
+    )
+    parser.add_argument(
+        "--epps-pulley-num-points",
+        type=int,
+        default=17,
+        help="Number of Epps-Pulley test points for SIGReg. Default: 17.",
+    )
+    parser.add_argument(
+        "--num-slices",
+        type=int,
+        default=1024,
+        help="Number of random slices for multivariate SIGReg. Default: 1024.",
+    )
+
+    # Triplet / corrupted-negative objective.
+    parser.add_argument(
+        "--triplet-weight",
+        type=float,
+        default=0.1,
+        help="Weight for corrupted-negative triplet loss. Default: 0.1.",
+    )
+    parser.add_argument(
+        "--triplet-margin",
+        type=float,
+        default=1.0,
+        help="Margin in ReLU(d_pos - d_neg + margin). Default: 1.0.",
+    )
+    parser.add_argument(
+        "--use-all-views-as-triplet-positives",
+        action="store_true",
+        help="Use all global/local LeJEPA views as triplet positives instead of only global views.",
+    )
+    parser.add_argument(
+        "--num-negative-views",
+        type=int,
+        default=4,
+        help="Number of corrupted negative views generated per batch. Default: 4.",
+    )
+    parser.add_argument(
+        "--batch-mix-prob",
+        type=float,
+        default=0.45,
+        help="Probability of sampling batch_mix for a negative view. Default: 0.45.",
+    )
+    parser.add_argument(
+        "--pt-resample-prob",
+        type=float,
+        default=0.25,
+        help="Probability of sampling pt_resample for a negative view. Default: 0.25.",
+    )
+    parser.add_argument(
+        "--node-eta-phi-rotation-prob",
+        type=float,
+        default=0.20,
+        help="Probability of sampling independent node-level eta-phi rotation. Default: 0.20.",
+    )
+    parser.add_argument(
+        "--eta-phi-shuffle-prob",
+        type=float,
+        default=0.05,
+        help="Probability of sampling eta_phi_shuffle for a negative view. Default: 0.05.",
+    )
+    parser.add_argument(
+        "--identity-shuffle-prob",
+        type=float,
+        default=0.05,
+        help="Probability of sampling identity_shuffle for a negative view. Default: 0.05.",
+    )
+    parser.add_argument(
+        "--corrupt-node-frac",
+        type=float,
+        default=1.0,
+        help="Fraction of valid nodes corrupted in within-event negative modes. Default: 1.0.",
+    )
+    parser.add_argument(
+        "--batch-mix-anchor-frac-min",
+        type=float,
+        default=0.1,
+        help="Minimum fraction of anchor-event nodes kept in batch_mix negatives. Default: 0.1.",
+    )
+    parser.add_argument(
+        "--batch-mix-anchor-frac-max",
+        type=float,
+        default=0.9,
+        help="Maximum fraction of anchor-event nodes kept in batch_mix negatives. Default: 0.9.",
+    )
+    parser.add_argument(
+        "--renormalize-negative-pt-sum",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Renormalize corrupted negative pt sums to the original event pt sum. Default: True.",
+    )
+    
+    # Optimization.
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=config["model"]["batch_size"],
+        help="Training batch size. Defaults to config model.batch_size.",
+    )
+    parser.add_argument(
+        "--steps-per-epoch",
+        type=int,
+        default=10000,
+        help=(
+            "Number of streamed training batches per epoch. Required for lazy "
+            "IterableDataset training because the full dataset length is not materialized. "
+            "Default: 10000."
+        ),
+    )
+    parser.add_argument(
+        "--val-steps",
+        type=int,
+        default=500,
+        help="Maximum streamed validation batches per epoch. Default: 500.",
+    )
+    parser.add_argument(
+        "--eval-steps",
+        type=int,
+        default=500,
+        help=(
+            "Maximum streamed batches collected per dataset for latent-space "
+            "and anomaly-score evaluation. Default: 500."
+        ),
+    )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=config["training"].get("epochs", 100),
+        help="Number of training epochs. Defaults to config training.epochs.",
+    )
+    parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=5e-4,
+        help="AdamW learning rate. LeJEPA recommended starting point: 5e-4.",
+    )
+    parser.add_argument(
+        "--weight-decay",
+        type=float,
+        default=5e-2,
+        help="AdamW weight decay. LeJEPA ViT recommendation: 5e-2.",
+    )
+    parser.add_argument(
+        "--precision",
+        choices=["bf16", "fp32"],
+        default="bf16",
+        help="Mixed precision mode. Default: bf16.",
+    )
+    parser.add_argument(
+        "--warmup-epochs",
+        type=int,
+        default=10,
+        help="Linear warmup epochs. Used if --warmup-steps is not set. Default: 10.",
+    )
+    parser.add_argument(
+        "--warmup-steps",
+        type=int,
+        default=None,
+        help="Optional exact number of warmup steps. Overrides --warmup-epochs.",
+    )
+    parser.add_argument(
+        "--final-lr-ratio",
+        type=float,
+        default=1e-3,
+        help="Final LR ratio for cosine decay. Default: 1e-3, so final_lr = initial_lr / 1000.",
+    )
+    parser.add_argument(
+        "--grad-clip-norm",
+        type=float,
+        default=None,
+        help="Optional gradient clipping max norm.",
+    )
+
+    # Runtime / output.
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed. Default: 42.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="plots/run-lejepa-trip-part",
+        help="Directory for plots, checkpoints, losses, and summary.json.",
+    )
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=4,
+        help="DataLoader workers. Default: 4.",
+    )
+    parser.add_argument(
+        "--prefetch-factor",
+        type=int,
+        default=2,
+        help=(
+            "Number of batches prefetched by each DataLoader worker. Used only "
+            "when --num-workers > 0. Default: 2."
+        ),
+    )
+    parser.add_argument(
+        "--pin-memory",
+        action=argparse.BooleanOptionalAction,
+        default=torch.cuda.is_available(),
+        help="Use pinned host memory in DataLoader. Default: True on CUDA, else False.",
+    )
+    parser.add_argument(
+        "--roc-eval-every",
+        type=int,
+        default=1,
+        help="Plot full-jet latent space and compute ROC every N epochs. Use 0 to disable. Default: 1.",
+    )
+    parser.add_argument(
+        "--mahalanobis-cov-eps",
+        type=float,
+        default=1e-4,
+        help="Diagonal regularization added to the background latent covariance. Default: 1e-4.",
+    )
+    parser.add_argument(
+        "--num-augmentation-plot-samples",
+        type=int,
+        default=3,
+        help="Number of random background events to visualize with their augmented views before training. Default: 3.",
+    )
+    parser.add_argument(
+        "--max-latent-plot-points",
+        type=int,
+        default=5000,
+        help="Maximum points per class in latent-space plots. Use no value by editing to None. Default: 5000.",
+    )
+
+    trainer = TrainLeJEPAParticleTransformer()
+    trainer.load()
+    trainer.build_node_datasets()
+    trainer.plot_features()
+    trainer.train()
+    if trainer.distributed:
+        dist.destroy_process_group()
