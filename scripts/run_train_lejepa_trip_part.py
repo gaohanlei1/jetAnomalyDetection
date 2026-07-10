@@ -1605,20 +1605,20 @@ class TrainLeJEPAParticleTransformer:
                 epoch=epoch,
             ) 
             
-        mean, precision = self.fit_mahalanobis_background(background_train_loader)
+        mean, precision = self.fit_mahalanobis_background(bg_train_latents.numpy())
 
         background_train_scores = self.mahalanobis_scores(
-            bg_train_latents,
+            bg_train_latents.numpy(),
             mean,
             precision,
         )
         background_val_scores = self.mahalanobis_scores(
-            bg_val_latents,
+            bg_val_latents.numpy(),
             mean,
             precision,
         )
         signal_scores = self.mahalanobis_scores(
-            signal_latents,
+            signal_latents.numpy(),
             mean,
             precision,
         )
@@ -1677,14 +1677,17 @@ class TrainLeJEPAParticleTransformer:
         signal_scores_all = []
         
         for i in range(num_repeats):
-            bg_train_latents = self.collect_view_representations(
-                background_train_loader
+            bg_train_latents, _ = self.collect_view_representations(
+                background_train_loader,
+                which_view="view"
             )
-            bg_val_latents = self.collect_view_representations(
-                background_val_loader
+            bg_val_latents, _ = self.collect_view_representations(
+                background_val_loader,
+                which_view="view"
             )
-            signal_latents = self.collect_view_representations(
-                signal_loader
+            signal_latents, _ = self.collect_view_representations(
+                signal_loader,
+                which_view="view"
             )
             
             # If plot_latent is True, plot the mean of global views for background validation and signal events.
@@ -1764,7 +1767,6 @@ class TrainLeJEPAParticleTransformer:
             background_val_scores,
             signal_scores,
         ) = score_fn(
-            self,
             bg_train_loader,
             bg_val_loader,
             sg_loader,
@@ -1772,6 +1774,10 @@ class TrainLeJEPAParticleTransformer:
             epoch=epoch,
         )
 
+        background_train_scores = background_train_scores.detach().cpu().numpy()
+        background_val_scores = background_val_scores.detach().cpu().numpy()
+        signal_scores = signal_scores.detach().cpu().numpy()
+        
         auc_bgtrain_vs_signal = self.compute_auc(background_train_scores, signal_scores)
         auc_bgval_vs_signal = self.compute_auc(background_val_scores, signal_scores)
 

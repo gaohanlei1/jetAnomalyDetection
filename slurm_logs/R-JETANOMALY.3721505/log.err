@@ -1,4 +1,0 @@
-  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_train_lejepa_trip_part.py", line 864
-    f"{metrics['"negative_outside_radius_fraction"']:.4g}"
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-SyntaxError: f-string: unterminated string

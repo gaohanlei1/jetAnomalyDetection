@@ -73,17 +73,17 @@ python -u scripts/run_train_lejepa_trip_part.py \
   --representation-dim 128 \
   --num-layers 8 \
   --num-heads 8 \
-  --batch-size 256 \
-  --epochs 50 \
+  --batch-size 128 \
+  --epochs 200 \
   --learning-rate 5e-4 \
   --weight-decay 5e-2 \
   --precision bf16 \
   --num-global-views 2 \
-  --num-local-views 6 \
+  --num-local-views 4 \
   --global-drop-pt-frac-min 0.0 \
-  --global-drop-pt-frac-max 0.50 \
-  --local-drop-pt-frac-min 0.50 \
-  --local-drop-pt-frac-max 0.95 \
+  --global-drop-pt-frac-max 0.20 \
+  --local-drop-pt-frac-min 0.20 \
+  --local-drop-pt-frac-max 0.60 \
   --pairwise-hidden-dim 16 \
   --output-dir "plots/run-lejepa"
 
