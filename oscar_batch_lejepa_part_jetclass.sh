@@ -4,7 +4,7 @@
 #SBATCH -p gpu --gres=gpu:2     # number of gpus per node
 #SBATCH --ntasks-per-node=1     # total number of tasks across all nodes
 #SBATCH --cpus-per-task=12       # cpu-cores per task (>1 if multi-threaded tasks)
-#SBATCH -t 12:00:00             # total run time limit (HH:MM:SS)
+#SBATCH -t 40:00:00             # total run time limit (HH:MM:SS)
 #SBATCH --mem=96000MB           # CPU RAM
 #SBATCH --job-name='JETANOMALY-JETCLASS'
 #SBATCH --output=slurm_logs/R-%x.%j/log.out
@@ -34,8 +34,8 @@ conda activate jet
 # check pytorch version
 python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 
-torchrun --standalone --nproc-per-node=2 \
 # python -u \
+torchrun --standalone --nproc-per-node=2 \
     scripts/run_train_lejepa_part_jetclass.py \
     --dataset-root "/HEP/export/home/lwang223/JetClass/JetClass/Pythia" \
     --model semi-sup \
@@ -46,10 +46,10 @@ torchrun --standalone --nproc-per-node=2 \
     --num-layers 8 \
     --num-heads 8 \
     --batch-size 256 \
-    --steps-per-epoch 5 \
+    --steps-per-epoch 1000 \
     --val-steps 50 \
     --eval-steps 50 \
-    --epochs 1000 \
+    --epochs 200 \
     --learning-rate 5e-4 \
     --weight-decay 5e-2 \
     --precision bf16 \

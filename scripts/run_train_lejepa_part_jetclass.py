@@ -2389,6 +2389,7 @@ class TrainLeJEPAParticleTransformer:
                 total=self.args.steps_per_epoch,
                 desc=f"Train Epoch {epoch}/{self.args.epochs}",
                 disable=not self.is_main_process,
+                miniters=50,
             )
 
             # Profile only the first epoch.
@@ -2468,9 +2469,8 @@ class TrainLeJEPAParticleTransformer:
 
                     with record_function("progress_bar_update"):
                         pbar.set_postfix(
-                            self._progress_postfix(
-                                step_losses
-                            )
+                            self._progress_postfix(step_losses),
+                            refresh=False,
                         )
                     # Advance profiler state once per training iteration.
                     if should_profile:
@@ -2511,6 +2511,7 @@ class TrainLeJEPAParticleTransformer:
                     total=self.args.val_steps,
                     desc=f"Val Epoch {epoch}/{self.args.epochs}",
                     disable=not self.is_main_process,
+                    miniters=5,
                 )
 
                 with torch.no_grad():
@@ -2542,7 +2543,8 @@ class TrainLeJEPAParticleTransformer:
                     pbar.set_postfix(
                         self._progress_postfix(
                             step_losses
-                        )
+                        ),
+                        refresh=False,
                     )
 
             mean_val = {
