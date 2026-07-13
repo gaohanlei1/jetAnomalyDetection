@@ -1,0 +1,68 @@
+Train Epoch 1/1000:   0%|          | 0/5 [00:00<?, ?it/s]/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/functional.py:5962: UserWarning: Support for mismatched key_padding_mask and attn_mask is deprecated. Use same type for both instead.
+  warnings.warn(
+Train Epoch 1/1000:   0%|          | 0/5 [00:19<?, ?it/s]
+Traceback (most recent call last):
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_train_lejepa_part_jetclass.py", line 3163, in <module>
+    trainer.train()
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_train_lejepa_part_jetclass.py", line 2437, in train
+    output = self.model( # train forward
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_train_lejepa_part_jetclass.py", line 199, in forward
+    return self.model.forward_pretrain(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/home/lwang223/jetAnomalyDetection/models/part_jetclass.py", line 2694, in forward_pretrain
+    [
+  File "/oscar/home/lwang223/jetAnomalyDetection/models/part_jetclass.py", line 2695, in <listcomp>
+    self(
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/home/lwang223/jetAnomalyDetection/models/part_jetclass.py", line 884, in forward
+    h = self.encoder(
+        ^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/home/lwang223/jetAnomalyDetection/models/part_jetclass.py", line 585, in forward
+    h = layer(
+        ^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/home/lwang223/jetAnomalyDetection/models/part_jetclass.py", line 532, in forward
+    h = residual + self.ffn(self.ffn_norm(h))
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/home/lwang223/jetAnomalyDetection/models/part_jetclass.py", line 193, in forward
+    x = self.fc1(x)
+        ^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/linear.py", line 125, in forward
+    return F.linear(input, self.weight, self.bias)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 128.00 MiB. GPU 0 has a total capacity of 44.39 GiB of which 107.19 MiB is free. Including non-PyTorch memory, this process has 44.21 GiB memory in use. Of the allocated memory 43.63 GiB is allocated by PyTorch, and 91.88 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)

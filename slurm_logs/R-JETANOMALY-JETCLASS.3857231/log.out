@@ -1,0 +1,1983 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 3857231
+##  Job Name : JETANOMALY-JETCLASS
+##  Nodelist : gpu3003
+##      CPUs : 1
+##  Mem/Node : 96000 MB
+## Directory : /oscar/home/lwang223/jetAnomalyDetection
+##   Job Started : Fri Jul 10 01:01:18 PM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Fri Jul 10 01:01:18 PM EDT 2026
+Job ID: 3857231
+Node: gpu3003
+==========================================
+
+GPU Information (from host):
+Fri Jul 10 13:01:18 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:21:00.0 Off |                    0 |
+| N/A   45C    P8             37W /  350W |      77MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+|   1  NVIDIA L40S                    On  |   00000000:41:00.0 Off |                    0 |
+| N/A   45C    P8             38W /  350W |      77MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          179375      G   /usr/libexec/Xorg                        64MiB |
+|    1   N/A  N/A          179375      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch version: 2.6.0+cu124
+JetClass root: /HEP/export/home/lwang223/JetClass/JetClass/Pythia
+Background labels: ['label_QCD', 'label_Hbb', 'label_Hcc']
+Signal labels: ['label_Wqq']
+Particle features: ['part_px', 'part_py', 'part_pz', 'part_energy', 'part_pt', 'part_eta', 'part_phi', 'part_deta', 'part_dphi', 'part_d0val', 'part_d0err', 'part_dzval', 'part_dzerr', 'part_charge', 'part_isChargedHadron', 'part_isNeutralHadron', 'part_isPhoton', 'part_isElectron', 'part_isMuon']
+Lazy JetClass datasets ready; no full split has been loaded into RAM.
+Background train ROOT shards: 300
+Background val ROOT shards: 15
+Signal test ROOT shards: 20
+Per-event particle shape: (128, 19)
+Selected SSL model: semi-sup
+Model summary:
+LeJEPASemiSupervisedParticleTransformerRepresentation(
+  (node_embedding): NodeEmbedding(
+    (net): Sequential(
+      (0): Linear(in_features=19, out_features=128, bias=True)
+      (1): GELU(approximate='none')
+      (2): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+      (3): Linear(in_features=128, out_features=512, bias=True)
+      (4): GELU(approximate='none')
+      (5): LayerNorm((512,), eps=1e-05, elementwise_affine=True)
+      (6): Linear(in_features=512, out_features=128, bias=True)
+      (7): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (pairwise_bias): PairwiseAttentionBias(
+    (mlp): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=4, out_features=64, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.1, inplace=False)
+      (4): Linear(in_features=64, out_features=64, bias=True)
+      (5): SiLU()
+      (6): Dropout(p=0.1, inplace=False)
+      (7): Linear(in_features=64, out_features=8, bias=True)
+    )
+  )
+  (encoder): ParticleTransformerEncoder(
+    (layers): ModuleList(
+      (0-7): 8 x ParticleTransformerBlock(
+        (attn_norm): RMSNorm()
+        (self_attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=128, out_features=128, bias=True)
+        )
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (ffn_norm): RMSNorm()
+        (ffn): SwiGLUFFN(
+          (fc1): Linear(in_features=128, out_features=1024, bias=True)
+          (act): SwiGLU()
+          (fc2): Linear(in_features=512, out_features=128, bias=True)
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+      )
+    )
+  )
+  (cls_pooling): CLSPooling(
+    (layers): ModuleList(
+      (0-1): 2 x ClassAttentionBlock(
+        (query_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (context_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=128, out_features=128, bias=True)
+        )
+        (attn_dropout): Dropout(p=0.0, inplace=False)
+        (ffn_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (ffn): Sequential(
+          (0): Linear(in_features=128, out_features=512, bias=True)
+          (1): GELU(approximate='none')
+          (2): Dropout(p=0.0, inplace=False)
+          (3): Linear(in_features=512, out_features=128, bias=True)
+          (4): Dropout(p=0.0, inplace=False)
+        )
+      )
+    )
+  )
+  (augmentation): MultiViewAugmentation()
+  (loss): LeJEPASIGRegClassificationLoss(
+    (sigreg_loss_fn): SlicingUnivariateTest(
+      (univariate_test): EppsPulley()
+    )
+  )
+  (representation_head): RepresentationHead(
+    (net): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=128, out_features=128, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.1, inplace=False)
+      (4): Linear(in_features=128, out_features=128, bias=True)
+    )
+  )
+  (classification_head): CategoricalClassificationHead(
+    (net): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=128, out_features=128, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.1, inplace=False)
+      (4): Linear(in_features=128, out_features=3, bias=True)
+    )
+  )
+)
+Number of trainable parameters: 2700431
+
+Epoch [1/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0001/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.505600
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.509727
+Epoch 1 train losses: {'total_loss': 5.48468534374237, 'invariant_loss': 0.04092147807218134, 'sigreg_loss': 266.7155, 'classification_loss': 1.092326117992401}
+Epoch 1 val losses: {'total_loss': 2.08312557220459, 'invariant_loss': 0.009280227711424232, 'sigreg_loss': 98.31, 'classification_loss': 1.079078302383423}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [2/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0002/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.515487
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.509995
+Epoch 2 train losses: {'total_loss': 1.4767878519296647, 'invariant_loss': 0.07712263498082757, 'sigreg_loss': 64.59025, 'classification_loss': 1.0793474832773209}
+Epoch 2 val losses: {'total_loss': 1.2282988667488097, 'invariant_loss': 0.01855109566822648, 'sigreg_loss': 55.085, 'classification_loss': 1.0841965556144715}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [3/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0003/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.472422
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.473805
+Epoch 3 train losses: {'total_loss': 1.0552486081719399, 'invariant_loss': 0.0923067957535386, 'sigreg_loss': 42.744875, 'classification_loss': 1.0797306306958199}
+Epoch 3 val losses: {'total_loss': 0.9860485911369323, 'invariant_loss': 0.017684457395225762, 'sigreg_loss': 43.015, 'classification_loss': 1.082078833580017}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [4/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0004/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.477256
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.476626
+Epoch 4 train losses: {'total_loss': 0.8755537389516831, 'invariant_loss': 0.10295177749544382, 'sigreg_loss': 33.230875, 'classification_loss': 1.079964935839176}
+Epoch 4 val losses: {'total_loss': 0.8324343037605285, 'invariant_loss': 0.02042395006865263, 'sigreg_loss': 35.1825, 'classification_loss': 1.0818223118782044}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [5/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0005/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.464586
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.462981
+Epoch 5 train losses: {'total_loss': 0.7608869176506996, 'invariant_loss': 0.1135533019080758, 'sigreg_loss': 26.969125, 'classification_loss': 1.0791369294524193}
+Epoch 5 val losses: {'total_loss': 0.7426731944084167, 'invariant_loss': 0.02206102915108204, 'sigreg_loss': 30.62, 'classification_loss': 1.08268413066864}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [6/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0006/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.495861
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.489803
+Epoch 6 train losses: {'total_loss': 0.6972654778957367, 'invariant_loss': 0.11944439283013344, 'sigreg_loss': 23.493625, 'classification_loss': 1.079480365037918}
+Epoch 6 val losses: {'total_loss': 0.6518580496311188, 'invariant_loss': 0.02337757084518671, 'sigreg_loss': 25.9975, 'classification_loss': 1.0828516721725463}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [7/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0007/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.514515
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.505401
+Epoch 7 train losses: {'total_loss': 0.648216703593731, 'invariant_loss': 0.12042216234654188, 'sigreg_loss': 21.001375, 'classification_loss': 1.0779258791208268}
+Epoch 7 val losses: {'total_loss': 0.6214279758930207, 'invariant_loss': 0.023845718167722227, 'sigreg_loss': 24.4575, 'classification_loss': 1.083244457244873}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [8/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0008/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.503684
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.497992
+Epoch 8 train losses: {'total_loss': 0.6075337069630623, 'invariant_loss': 0.12102637666463852, 'sigreg_loss': 18.93775, 'classification_loss': 1.077924877524376}
+Epoch 8 val losses: {'total_loss': 0.5727529287338257, 'invariant_loss': 0.023752728328108787, 'sigreg_loss': 22.0575, 'classification_loss': 1.0790645146369935}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [9/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0009/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.526764
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.515154
+Epoch 9 train losses: {'total_loss': 0.5813222557902337, 'invariant_loss': 0.12249724343419074, 'sigreg_loss': 17.5504375, 'classification_loss': 1.0778009204864503}
+Epoch 9 val losses: {'total_loss': 0.5343254369497299, 'invariant_loss': 0.022553647197782994, 'sigreg_loss': 20.18, 'classification_loss': 1.0821709799766541}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [10/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0010/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.508953
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.499626
+Epoch 10 train losses: {'total_loss': 0.5560293196439743, 'invariant_loss': 0.12287504783272743, 'sigreg_loss': 16.3045625, 'classification_loss': 1.0704684876203536}
+Epoch 10 val losses: {'total_loss': 0.5095185780525208, 'invariant_loss': 0.021092254258692263, 'sigreg_loss': 19.14, 'classification_loss': 1.055747513771057}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [11/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0011/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.521453
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.516957
+Epoch 11 train losses: {'total_loss': 0.5350151417851448, 'invariant_loss': 0.12139289988577366, 'sigreg_loss': 15.3751875, 'classification_loss': 1.06090991127491}
+Epoch 11 val losses: {'total_loss': 0.47774389684200286, 'invariant_loss': 0.016496839001774788, 'sigreg_loss': 17.8325, 'classification_loss': 1.0456736493110657}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [12/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0012/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.487799
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.485537
+Epoch 12 train losses: {'total_loss': 0.513380264222622, 'invariant_loss': 0.12026200053095817, 'sigreg_loss': 14.4311875, 'classification_loss': 1.0452841796875}
+Epoch 12 val losses: {'total_loss': 0.4835090696811676, 'invariant_loss': 0.014273013826459647, 'sigreg_loss': 18.48375, 'classification_loss': 0.9947042679786682}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [13/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0013/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.480231
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.484541
+Epoch 13 train losses: {'total_loss': 0.497296774327755, 'invariant_loss': 0.12110150800645351, 'sigreg_loss': 13.8643125, 'classification_loss': 0.9890717841386795}
+Epoch 13 val losses: {'total_loss': 0.43962423264980316, 'invariant_loss': 0.012996730413287878, 'sigreg_loss': 16.7825, 'classification_loss': 0.9096343898773194}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [14/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0014/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.468976
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.468824
+Epoch 14 train losses: {'total_loss': 0.48096002703905105, 'invariant_loss': 0.12202677246183156, 'sigreg_loss': 13.333625, 'classification_loss': 0.9226137781143189}
+Epoch 14 val losses: {'total_loss': 0.4302418947219849, 'invariant_loss': 0.011844951678067445, 'sigreg_loss': 16.555, 'classification_loss': 0.8730318963527679}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [15/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0015/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.507637
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.508127
+Epoch 15 train losses: {'total_loss': 0.47140800338983535, 'invariant_loss': 0.12244115818291902, 'sigreg_loss': 12.964875, 'classification_loss': 0.8966117808818818}
+Epoch 15 val losses: {'total_loss': 0.4089430832862854, 'invariant_loss': 0.010732896141707898, 'sigreg_loss': 15.735, 'classification_loss': 0.8340549623966217}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [16/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0016/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.516719
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.514061
+Epoch 16 train losses: {'total_loss': 0.4615263154804707, 'invariant_loss': 0.12201949299126863, 'sigreg_loss': 12.57325, 'classification_loss': 0.8803709326982498}
+Epoch 16 val losses: {'total_loss': 0.4116258209943771, 'invariant_loss': 0.009515855256468057, 'sigreg_loss': 15.8425, 'classification_loss': 0.8519589996337891}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [17/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0017/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.497743
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.495977
+Epoch 17 train losses: {'total_loss': 0.4563413235247135, 'invariant_loss': 0.12179929625988006, 'sigreg_loss': 12.383625, 'classification_loss': 0.868613603591919}
+Epoch 17 val losses: {'total_loss': 0.4176292705535889, 'invariant_loss': 0.00839913049712777, 'sigreg_loss': 16.315, 'classification_loss': 0.8294107496738434}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [18/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0018/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.525378
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.519852
+Epoch 18 train losses: {'total_loss': 0.45028557991981505, 'invariant_loss': 0.12199841149151325, 'sigreg_loss': 12.125375, 'classification_loss': 0.8577935300469398}
+Epoch 18 val losses: {'total_loss': 0.41990905106067655, 'invariant_loss': 0.007552116084843874, 'sigreg_loss': 16.6325, 'classification_loss': 0.7973974430561066}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [19/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0019/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.527603
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.518249
+Epoch 19 train losses: {'total_loss': 0.44686432275176047, 'invariant_loss': 0.12185666678100825, 'sigreg_loss': 12.01925, 'classification_loss': 0.8462386378049851}
+Epoch 19 val losses: {'total_loss': 0.39524171471595765, 'invariant_loss': 0.007032188409939408, 'sigreg_loss': 15.0475, 'classification_loss': 0.872720229625702}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [20/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0020/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.525882
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.516853
+Epoch 20 train losses: {'total_loss': 0.44313074052333834, 'invariant_loss': 0.12207682526856661, 'sigreg_loss': 11.812875, 'classification_loss': 0.8478633380532264}
+Epoch 20 val losses: {'total_loss': 0.4033204460144043, 'invariant_loss': 0.007848583357408644, 'sigreg_loss': 15.3875, 'classification_loss': 0.8773748862743378}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [21/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0021/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.533146
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.532429
+Epoch 21 train losses: {'total_loss': 0.43985050931572917, 'invariant_loss': 0.12276988930255174, 'sigreg_loss': 11.6466875, 'classification_loss': 0.8414702400565147}
+Epoch 21 val losses: {'total_loss': 0.3953530770540237, 'invariant_loss': 0.005851306188851595, 'sigreg_loss': 15.15125, 'classification_loss': 0.8633770728111267}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [22/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0022/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.522996
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.521445
+Epoch 22 train losses: {'total_loss': 0.437365972161293, 'invariant_loss': 0.12263361382484436, 'sigreg_loss': 11.5589375, 'classification_loss': 0.8356633928418159}
+Epoch 22 val losses: {'total_loss': 0.3930556511878967, 'invariant_loss': 0.005885119568556547, 'sigreg_loss': 15.16125, 'classification_loss': 0.8381114995479584}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [23/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0023/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.542984
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.535493
+Epoch 23 train losses: {'total_loss': 0.43438173007965086, 'invariant_loss': 0.1230815439298749, 'sigreg_loss': 11.4246875, 'classification_loss': 0.828001826763153}
+Epoch 23 val losses: {'total_loss': 0.3939810746908188, 'invariant_loss': 0.00599132071249187, 'sigreg_loss': 15.1975, 'classification_loss': 0.8396631574630737}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [24/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0024/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.545034
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.541886
+Epoch 24 train losses: {'total_loss': 0.4315749854743481, 'invariant_loss': 0.12328555660694837, 'sigreg_loss': 11.334, 'classification_loss': 0.8161071483492851}
+Epoch 24 val losses: {'total_loss': 0.37246163249015807, 'invariant_loss': 0.005470648035407066, 'sigreg_loss': 14.3325, 'classification_loss': 0.8031129288673401}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [25/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0025/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.549447
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.546173
+Epoch 25 train losses: {'total_loss': 0.42790812757611274, 'invariant_loss': 0.1236096185669303, 'sigreg_loss': 11.22825, 'classification_loss': 0.7972819363474846}
+Epoch 25 val losses: {'total_loss': 0.38697957277297973, 'invariant_loss': 0.005550356237217784, 'sigreg_loss': 15.14, 'classification_loss': 0.7865577745437622}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [26/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0026/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.569463
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.562490
+Epoch 26 train losses: {'total_loss': 0.426476930886507, 'invariant_loss': 0.12416475921869279, 'sigreg_loss': 11.189125, 'classification_loss': 0.7853677824735642}
+Epoch 26 val losses: {'total_loss': 0.3742582941055298, 'invariant_loss': 0.004972806377336383, 'sigreg_loss': 14.58, 'classification_loss': 0.7752767086029053}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [27/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0027/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.536321
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.528951
+Epoch 27 train losses: {'total_loss': 0.42257004177570345, 'invariant_loss': 0.12413420446962119, 'sigreg_loss': 11.0891875, 'classification_loss': 0.7664384196400642}
+Epoch 27 val losses: {'total_loss': 0.36377772569656375, 'invariant_loss': 0.004853451042436063, 'sigreg_loss': 14.08875, 'classification_loss': 0.7720552361011506}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [28/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0028/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.568424
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.559710
+Epoch 28 train losses: {'total_loss': 0.42119899263978006, 'invariant_loss': 0.12447867993265391, 'sigreg_loss': 11.0454375, 'classification_loss': 0.7582187218666077}
+Epoch 28 val losses: {'total_loss': 0.3628950411081314, 'invariant_loss': 0.00499382714740932, 'sigreg_loss': 14.10875, 'classification_loss': 0.7551839661598205}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [29/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0029/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.572938
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.563561
+Epoch 29 train losses: {'total_loss': 0.4167924096286297, 'invariant_loss': 0.12486437319219112, 'sigreg_loss': 11.0266875, 'classification_loss': 0.7139971421957017}
+Epoch 29 val losses: {'total_loss': 0.38662354469299315, 'invariant_loss': 0.005425335224717855, 'sigreg_loss': 15.23375, 'classification_loss': 0.7662789523601532}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [30/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0030/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.520047
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.508950
+Epoch 30 train losses: {'total_loss': 0.41379527950286865, 'invariant_loss': 0.1249732732474804, 'sigreg_loss': 10.9460625, 'classification_loss': 0.6990598861277103}
+Epoch 30 val losses: {'total_loss': 0.3942999863624573, 'invariant_loss': 0.005564498789608479, 'sigreg_loss': 15.46875, 'classification_loss': 0.7943860876560211}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [31/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0031/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.561520
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.550797
+Epoch 31 train losses: {'total_loss': 0.4114102269411087, 'invariant_loss': 0.12473709005117416, 'sigreg_loss': 10.8709375, 'classification_loss': 0.6927469696104527}
+Epoch 31 val losses: {'total_loss': 0.3519997149705887, 'invariant_loss': 0.005832497030496597, 'sigreg_loss': 13.5775, 'classification_loss': 0.7464377760887146}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [32/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0032/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.563068
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.551641
+Epoch 32 train losses: {'total_loss': 0.411278342962265, 'invariant_loss': 0.12498068016767502, 'sigreg_loss': 10.8764375, 'classification_loss': 0.6876641103029251}
+Epoch 32 val losses: {'total_loss': 0.358434818983078, 'invariant_loss': 0.004985787216573953, 'sigreg_loss': 13.99, 'classification_loss': 0.736443440914154}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [33/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0033/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.552980
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.538080
+Epoch 33 train losses: {'total_loss': 0.40875990137457846, 'invariant_loss': 0.12510133282095193, 'sigreg_loss': 10.7799375, 'classification_loss': 0.6805309719741345}
+Epoch 33 val losses: {'total_loss': 0.37232060968875885, 'invariant_loss': 0.0048200952401384715, 'sigreg_loss': 14.54625, 'classification_loss': 0.7656300723552704}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [34/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0034/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.565737
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.549870
+Epoch 34 train losses: {'total_loss': 0.4078917337357998, 'invariant_loss': 0.12526524720340967, 'sigreg_loss': 10.716, 'classification_loss': 0.6831593712568284}
+Epoch 34 val losses: {'total_loss': 0.370990554690361, 'invariant_loss': 0.004700940800830722, 'sigreg_loss': 14.56, 'classification_loss': 0.7503961002826691}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [35/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0035/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.575443
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.558243
+Epoch 35 train losses: {'total_loss': 0.40616187739372256, 'invariant_loss': 0.12515447598695756, 'sigreg_loss': 10.6614375, 'classification_loss': 0.6778278946578503}
+Epoch 35 val losses: {'total_loss': 0.37881855010986326, 'invariant_loss': 0.005362995471805334, 'sigreg_loss': 14.825, 'classification_loss': 0.7701023781299591}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [36/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0036/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.560125
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.538264
+Epoch 36 train losses: {'total_loss': 0.40676823374629023, 'invariant_loss': 0.12512171854078769, 'sigreg_loss': 10.7091875, 'classification_loss': 0.6747366173267364}
+Epoch 36 val losses: {'total_loss': 0.3647845107316971, 'invariant_loss': 0.004522350635379552, 'sigreg_loss': 14.27, 'classification_loss': 0.748910653591156}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [37/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0037/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.560180
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.537784
+Epoch 37 train losses: {'total_loss': 0.4050983726680279, 'invariant_loss': 0.12476458467543125, 'sigreg_loss': 10.64725, 'classification_loss': 0.6738945051133632}
+Epoch 37 val losses: {'total_loss': 0.36592578649520874, 'invariant_loss': 0.0052588748186826705, 'sigreg_loss': 14.335, 'classification_loss': 0.7390909659862518}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [38/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0038/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.566044
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.546903
+Epoch 38 train losses: {'total_loss': 0.40099619334936143, 'invariant_loss': 0.12510749585926534, 'sigreg_loss': 10.588625, 'classification_loss': 0.6412795325815678}
+Epoch 38 val losses: {'total_loss': 0.404999195933342, 'invariant_loss': 0.0051377971097826955, 'sigreg_loss': 15.70375, 'classification_loss': 0.8575983440876007}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [39/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0039/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.562396
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.542965
+Epoch 39 train losses: {'total_loss': 0.3974902110099792, 'invariant_loss': 0.12504554312676192, 'sigreg_loss': 10.5680625, 'classification_loss': 0.6109408049583435}
+Epoch 39 val losses: {'total_loss': 0.36196082055568696, 'invariant_loss': 0.00465033630374819, 'sigreg_loss': 13.67875, 'classification_loss': 0.8371673083305359}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [40/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0040/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.559941
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.545261
+Epoch 40 train losses: {'total_loss': 0.39729747581481933, 'invariant_loss': 0.12483607549220324, 'sigreg_loss': 10.58153125, 'classification_loss': 0.6083835254311561}
+Epoch 40 val losses: {'total_loss': 0.390221688747406, 'invariant_loss': 0.004981559803709388, 'sigreg_loss': 15.0475, 'classification_loss': 0.8438075160980225}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [41/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0041/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.584469
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.565827
+Epoch 41 train losses: {'total_loss': 0.39512511146068574, 'invariant_loss': 0.124820486754179, 'sigreg_loss': 10.482375, 'classification_loss': 0.6066009224057197}
+Epoch 41 val losses: {'total_loss': 0.38836566150188445, 'invariant_loss': 0.0042724287556484344, 'sigreg_loss': 14.96875, 'classification_loss': 0.8467916882038117}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [42/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0042/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.585281
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.570074
+Epoch 42 train losses: {'total_loss': 0.3959469912946224, 'invariant_loss': 0.12500156618654729, 'sigreg_loss': 10.527375, 'classification_loss': 0.604102670609951}
+Epoch 42 val losses: {'total_loss': 0.37689329802989957, 'invariant_loss': 0.0049629928730428215, 'sigreg_loss': 14.345, 'classification_loss': 0.8497717881202698}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [43/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0043/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.563489
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.539490
+Epoch 43 train losses: {'total_loss': 0.39461914491653444, 'invariant_loss': 0.12496694430708885, 'sigreg_loss': 10.4588125, 'classification_loss': 0.6048618415892124}
+Epoch 43 val losses: {'total_loss': 0.36637027442455294, 'invariant_loss': 0.004830597094260156, 'sigreg_loss': 13.77375, 'classification_loss': 0.8610999107360839}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [44/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0044/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.578331
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.560475
+Epoch 44 train losses: {'total_loss': 0.39426994118094444, 'invariant_loss': 0.12483304122835398, 'sigreg_loss': 10.4595, 'classification_loss': 0.6023670352101326}
+Epoch 44 val losses: {'total_loss': 0.3832170873880386, 'invariant_loss': 0.004292354788631201, 'sigreg_loss': 14.67625, 'classification_loss': 0.8548723518848419}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [45/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0045/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.584395
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.570269
+Epoch 45 train losses: {'total_loss': 0.3936608479619026, 'invariant_loss': 0.12534782985597848, 'sigreg_loss': 10.4165625, 'classification_loss': 0.5998196219801902}
+Epoch 45 val losses: {'total_loss': 0.3796744793653488, 'invariant_loss': 0.0044551858678460125, 'sigreg_loss': 14.72125, 'classification_loss': 0.8080523002147675}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [46/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0046/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.576910
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.553650
+Epoch 46 train losses: {'total_loss': 0.3925479537248611, 'invariant_loss': 0.12472396787256003, 'sigreg_loss': 10.3963125, 'classification_loss': 0.5989527312219143}
+Epoch 46 val losses: {'total_loss': 0.3805440467596054, 'invariant_loss': 0.004084241297096014, 'sigreg_loss': 14.6475, 'classification_loss': 0.8337386620044708}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [47/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0047/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.575318
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.563587
+Epoch 47 train losses: {'total_loss': 0.3927661518752575, 'invariant_loss': 0.1251249904707074, 'sigreg_loss': 10.3689375, 'classification_loss': 0.6025346540808678}
+Epoch 47 val losses: {'total_loss': 0.3488680875301361, 'invariant_loss': 0.004069834970869124, 'sigreg_loss': 13.97, 'classification_loss': 0.6542324876785278}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [48/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0048/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.578825
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.560204
+Epoch 48 train losses: {'total_loss': 0.39485768815875055, 'invariant_loss': 0.12491530456393957, 'sigreg_loss': 10.3805, 'classification_loss': 0.6234374957382679}
+Epoch 48 val losses: {'total_loss': 0.36385581374168396, 'invariant_loss': 0.004154638973996043, 'sigreg_loss': 14.68625, 'classification_loss': 0.65990234375}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [49/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0049/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.578794
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.552754
+Epoch 49 train losses: {'total_loss': 0.39503181448578834, 'invariant_loss': 0.1250939544811845, 'sigreg_loss': 10.3815, 'classification_loss': 0.6231090588569641}
+Epoch 49 val losses: {'total_loss': 0.38883007287979127, 'invariant_loss': 0.005078136716037989, 'sigreg_loss': 15.8625, 'classification_loss': 0.6656443357467652}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [50/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0050/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.582750
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.561498
+Epoch 50 train losses: {'total_loss': 0.39450887045264244, 'invariant_loss': 0.1250684835985303, 'sigreg_loss': 10.3605, 'classification_loss': 0.6222651878893375}
+Epoch 50 val losses: {'total_loss': 0.34609713196754455, 'invariant_loss': 0.004670835183933377, 'sigreg_loss': 13.855, 'classification_loss': 0.6423879468441009}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [51/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0051/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.576339
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.554247
+Epoch 51 train losses: {'total_loss': 0.39403936731815337, 'invariant_loss': 0.12510215292871, 'sigreg_loss': 10.33990625, 'classification_loss': 0.6214522063434124}
+Epoch 51 val losses: {'total_loss': 0.35949873328208926, 'invariant_loss': 0.003931694873608648, 'sigreg_loss': 14.57375, 'classification_loss': 0.6410219573974609}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [52/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0052/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.575892
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.556785
+Epoch 52 train losses: {'total_loss': 0.39183144390583036, 'invariant_loss': 0.12486173512786627, 'sigreg_loss': 10.262, 'classification_loss': 0.617382620960474}
+Epoch 52 val losses: {'total_loss': 0.3514279687404633, 'invariant_loss': 0.004242639192380011, 'sigreg_loss': 14.2075, 'classification_loss': 0.6298611104488373}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [53/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0053/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.578376
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.552063
+Epoch 53 train losses: {'total_loss': 0.392250680744648, 'invariant_loss': 0.12513261454552413, 'sigreg_loss': 10.2665625, 'classification_loss': 0.617928690969944}
+Epoch 53 val losses: {'total_loss': 0.3427247029542923, 'invariant_loss': 0.003788670068606734, 'sigreg_loss': 13.7475, 'classification_loss': 0.6395556259155274}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [54/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0054/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.597361
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.581594
+Epoch 54 train losses: {'total_loss': 0.39213270699977876, 'invariant_loss': 0.12494895089417696, 'sigreg_loss': 10.2839375, 'classification_loss': 0.6151187945306301}
+Epoch 54 val losses: {'total_loss': 0.35291715621948244, 'invariant_loss': 0.003952740766108036, 'sigreg_loss': 14.30125, 'classification_loss': 0.6294878375530243}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [55/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0055/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.585352
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.566172
+Epoch 55 train losses: {'total_loss': 0.3907939380407333, 'invariant_loss': 0.12490410213917494, 'sigreg_loss': 10.225625, 'classification_loss': 0.6137420960068702}
+Epoch 55 val losses: {'total_loss': 0.35435538828372953, 'invariant_loss': 0.004329106733202934, 'sigreg_loss': 14.36375, 'classification_loss': 0.6276065862178802}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [56/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0056/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.588254
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.571643
+Epoch 56 train losses: {'total_loss': 0.390535763412714, 'invariant_loss': 0.12475387557595968, 'sigreg_loss': 10.21796875, 'classification_loss': 0.6142055768966674}
+Epoch 56 val losses: {'total_loss': 0.3563205122947693, 'invariant_loss': 0.004142334028147161, 'sigreg_loss': 14.54, 'classification_loss': 0.6141645443439484}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [57/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0057/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.590389
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.563538
+Epoch 57 train losses: {'total_loss': 0.3958550728857517, 'invariant_loss': 0.1255869498103857, 'sigreg_loss': 10.21909375, 'classification_loss': 0.6588921571075916}
+Epoch 57 val losses: {'total_loss': 0.3728141140937805, 'invariant_loss': 0.004131738436408341, 'sigreg_loss': 14.25375, 'classification_loss': 0.8342846620082855}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [58/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0058/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.560900
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.540862
+Epoch 58 train losses: {'total_loss': 0.3957085326611996, 'invariant_loss': 0.12510139813274146, 'sigreg_loss': 10.188, 'classification_loss': 0.6684638986587524}
+Epoch 58 val losses: {'total_loss': 0.3694921267032623, 'invariant_loss': 0.003998764557763934, 'sigreg_loss': 14.32625, 'classification_loss': 0.789113278388977}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [59/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0059/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.575645
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.553928
+Epoch 59 train losses: {'total_loss': 0.3960557841360569, 'invariant_loss': 0.12510667707026005, 'sigreg_loss': 10.20075, 'classification_loss': 0.66935433781147}
+Epoch 59 val losses: {'total_loss': 0.37606031239032744, 'invariant_loss': 0.0035620990907773375, 'sigreg_loss': 14.59875, 'classification_loss': 0.8058414661884308}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [60/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0060/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.581941
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.562439
+Epoch 60 train losses: {'total_loss': 0.39601161354780196, 'invariant_loss': 0.12516021275520325, 'sigreg_loss': 10.2055, 'classification_loss': 0.6675471881628037}
+Epoch 60 val losses: {'total_loss': 0.3966226130723953, 'invariant_loss': 0.004379973830655217, 'sigreg_loss': 15.57, 'classification_loss': 0.8091451358795166}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [61/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0061/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.585095
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.572384
+Epoch 61 train losses: {'total_loss': 0.39569408997893335, 'invariant_loss': 0.1251292791441083, 'sigreg_loss': 10.2009375, 'classification_loss': 0.665306288421154}
+Epoch 61 val losses: {'total_loss': 0.37363228559494016, 'invariant_loss': 0.003541456977836788, 'sigreg_loss': 14.43125, 'classification_loss': 0.8147754514217377}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [62/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0062/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.581742
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.550492
+Epoch 62 train losses: {'total_loss': 0.3963653071820736, 'invariant_loss': 0.125337963424623, 'sigreg_loss': 10.2326875, 'classification_loss': 0.6637499880194664}
+Epoch 62 val losses: {'total_loss': 0.364233957529068, 'invariant_loss': 0.00507550316862762, 'sigreg_loss': 13.54875, 'classification_loss': 0.8818189001083374}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [63/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0063/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.587008
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.564423
+Epoch 63 train losses: {'total_loss': 0.3939271560609341, 'invariant_loss': 0.12530521816015244, 'sigreg_loss': 10.1223125, 'classification_loss': 0.661678353369236}
+Epoch 63 val losses: {'total_loss': 0.37007211029529574, 'invariant_loss': 0.00406320281792432, 'sigreg_loss': 14.265, 'classification_loss': 0.8073547077178955}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [64/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0064/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.591437
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.562980
+Epoch 64 train losses: {'total_loss': 0.39355064696073533, 'invariant_loss': 0.12469930375367402, 'sigreg_loss': 10.142875, 'classification_loss': 0.6599880296587944}
+Epoch 64 val losses: {'total_loss': 0.361237518787384, 'invariant_loss': 0.0038539864867925644, 'sigreg_loss': 13.76625, 'classification_loss': 0.8201243197917938}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [65/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0065/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.579315
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.565885
+Epoch 65 train losses: {'total_loss': 0.38628051364421845, 'invariant_loss': 0.1253703347891569, 'sigreg_loss': 10.11984375, 'classification_loss': 0.5850002208948135}
+Epoch 65 val losses: {'total_loss': 0.33914819300174714, 'invariant_loss': 0.004661633414216339, 'sigreg_loss': 13.7025, 'classification_loss': 0.604435915350914}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [66/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0066/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.576087
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.537281
+Epoch 66 train losses: {'total_loss': 0.37758811441063883, 'invariant_loss': 0.12566340051591396, 'sigreg_loss': 10.1378125, 'classification_loss': 0.49162994846701624}
+Epoch 66 val losses: {'total_loss': 0.32678268671035765, 'invariant_loss': 0.005115755833685398, 'sigreg_loss': 14.01875, 'classification_loss': 0.4139349520206451}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [67/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0067/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.591334
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.540774
+Epoch 67 train losses: {'total_loss': 0.37184734538197517, 'invariant_loss': 0.12557636830955743, 'sigreg_loss': 10.101, 'classification_loss': 0.44250468507409096}
+Epoch 67 val losses: {'total_loss': 0.3210593295097351, 'invariant_loss': 0.004333967487327755, 'sigreg_loss': 13.74625, 'classification_loss': 0.41862080216407777}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [68/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0068/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.568438
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.505558
+Epoch 68 train losses: {'total_loss': 0.36950167736411094, 'invariant_loss': 0.12534267495572568, 'sigreg_loss': 10.05615625, 'classification_loss': 0.4302618944197893}
+Epoch 68 val losses: {'total_loss': 0.3506831967830658, 'invariant_loss': 0.004153949581086636, 'sigreg_loss': 15.285, 'classification_loss': 0.4070893412828445}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [69/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0069/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.579153
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.493412
+Epoch 69 train losses: {'total_loss': 0.36831083738803866, 'invariant_loss': 0.12529112567007542, 'sigreg_loss': 10.0375, 'classification_loss': 0.42273617623746396}
+Epoch 69 val losses: {'total_loss': 0.3510304468870163, 'invariant_loss': 0.004225242366082967, 'sigreg_loss': 15.29625, 'classification_loss': 0.4071145451068878}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [70/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0070/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.572801
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.489599
+Epoch 70 train losses: {'total_loss': 0.36892689910531046, 'invariant_loss': 0.1252847089767456, 'sigreg_loss': 10.080375, 'classification_loss': 0.4204062715023756}
+Epoch 70 val losses: {'total_loss': 0.3478022450208664, 'invariant_loss': 0.003925639893859625, 'sigreg_loss': 15.12375, 'classification_loss': 0.41337541460990906}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [71/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0071/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.579480
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.541674
+Epoch 71 train losses: {'total_loss': 0.36803846395015716, 'invariant_loss': 0.12533706168085337, 'sigreg_loss': 10.053125, 'classification_loss': 0.4163597239404917}
+Epoch 71 val losses: {'total_loss': 0.3238657397031784, 'invariant_loss': 0.00427086838055402, 'sigreg_loss': 14.03625, 'classification_loss': 0.388917475938797}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [72/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0072/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.579085
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.504663
+Epoch 72 train losses: {'total_loss': 0.3669146390557289, 'invariant_loss': 0.12498128571361303, 'sigreg_loss': 10.02596875, 'classification_loss': 0.4141186904609203}
+Epoch 72 val losses: {'total_loss': 0.32173501670360566, 'invariant_loss': 0.005599616216495633, 'sigreg_loss': 13.86, 'classification_loss': 0.3890883880853653}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [73/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0073/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.584459
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.503256
+Epoch 73 train losses: {'total_loss': 0.3668261189162731, 'invariant_loss': 0.1252375878021121, 'sigreg_loss': 10.0119375, 'classification_loss': 0.41354155595600606}
+Epoch 73 val losses: {'total_loss': 0.33553069949150083, 'invariant_loss': 0.0039019351406022907, 'sigreg_loss': 14.625, 'classification_loss': 0.39128764390945436}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [74/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0074/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.584050
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.514074
+Epoch 74 train losses: {'total_loss': 0.366866528481245, 'invariant_loss': 0.12507393515855075, 'sigreg_loss': 10.03303125, 'classification_loss': 0.41123647294938565}
+Epoch 74 val losses: {'total_loss': 0.346341792345047, 'invariant_loss': 0.004667434925213456, 'sigreg_loss': 15.15625, 'classification_loss': 0.3854935920238495}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [75/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0075/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.586218
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.472571
+Epoch 75 train losses: {'total_loss': 0.36661705827713015, 'invariant_loss': 0.12500261359661818, 'sigreg_loss': 10.02925, 'classification_loss': 0.4103436703234911}
+Epoch 75 val losses: {'total_loss': 0.3376079899072647, 'invariant_loss': 0.004034547307528555, 'sigreg_loss': 14.61625, 'classification_loss': 0.4111250537633896}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [76/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0076/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.599228
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.506307
+Epoch 76 train losses: {'total_loss': 0.3708868828117847, 'invariant_loss': 0.1255364419296384, 'sigreg_loss': 10.0448125, 'classification_loss': 0.44454933813214303}
+Epoch 76 val losses: {'total_loss': 0.33020180761814116, 'invariant_loss': 0.0038501958502456545, 'sigreg_loss': 14.265, 'classification_loss': 0.4086333018541336}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [77/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0077/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.591728
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.515173
+Epoch 77 train losses: {'total_loss': 0.3690327978730202, 'invariant_loss': 0.12517171864956617, 'sigreg_loss': 9.9824375, 'classification_loss': 0.44206782203912737}
+Epoch 77 val losses: {'total_loss': 0.34658183038234713, 'invariant_loss': 0.005122208073735237, 'sigreg_loss': 15.05625, 'classification_loss': 0.40443996608257293}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [78/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0078/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.580409
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.484809
+Epoch 78 train losses: {'total_loss': 0.3689913291931152, 'invariant_loss': 0.12543357674777508, 'sigreg_loss': 9.981375, 'classification_loss': 0.43926892536878587}
+Epoch 78 val losses: {'total_loss': 0.3203511530160904, 'invariant_loss': 0.0038258448150008915, 'sigreg_loss': 13.84875, 'classification_loss': 0.3970890206098556}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [79/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0079/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.578153
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.492979
+Epoch 79 train losses: {'total_loss': 0.3669261933863163, 'invariant_loss': 0.1247922292277217, 'sigreg_loss': 9.9355, 'classification_loss': 0.43432791620492933}
+Epoch 79 val losses: {'total_loss': 0.339558846950531, 'invariant_loss': 0.005246275644749403, 'sigreg_loss': 14.5975, 'classification_loss': 0.4224225872755051}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [80/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0080/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.578440
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.485339
+Epoch 80 train losses: {'total_loss': 0.3679263646900654, 'invariant_loss': 0.1249501892030239, 'sigreg_loss': 9.98146875, 'classification_loss': 0.4333848050236702}
+Epoch 80 val losses: {'total_loss': 0.3269045799970627, 'invariant_loss': 0.003949367911554873, 'sigreg_loss': 14.125, 'classification_loss': 0.4055286955833435}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [81/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0081/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.584736
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.471401
+Epoch 81 train losses: {'total_loss': 0.36701090493798255, 'invariant_loss': 0.1250152707323432, 'sigreg_loss': 9.9248125, 'classification_loss': 0.43501493421196935}
+Epoch 81 val losses: {'total_loss': 0.337291020154953, 'invariant_loss': 0.005524571621790529, 'sigreg_loss': 14.49375, 'classification_loss': 0.418836367726326}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [82/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0082/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.586780
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.480452
+Epoch 82 train losses: {'total_loss': 0.36676559334993364, 'invariant_loss': 0.12531115496158599, 'sigreg_loss': 9.91228125, 'classification_loss': 0.4319272000491619}
+Epoch 82 val losses: {'total_loss': 0.3360177606344223, 'invariant_loss': 0.0044128957390785215, 'sigreg_loss': 14.53125, 'classification_loss': 0.4101892673969269}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [83/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0083/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.567932
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.458993
+Epoch 83 train losses: {'total_loss': 0.3676063577532768, 'invariant_loss': 0.12544165144860744, 'sigreg_loss': 9.95709375, 'classification_loss': 0.4300943194627762}
+Epoch 83 val losses: {'total_loss': 0.34456265091896054, 'invariant_loss': 0.0053532051201909785, 'sigreg_loss': 14.91125, 'classification_loss': 0.41006323158741}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [84/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0084/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.590863
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.466949
+Epoch 84 train losses: {'total_loss': 0.36553234669566154, 'invariant_loss': 0.12509926951676606, 'sigreg_loss': 9.89096875, 'classification_loss': 0.4262545979321003}
+Epoch 84 val losses: {'total_loss': 0.31659129321575163, 'invariant_loss': 0.00495634320192039, 'sigreg_loss': 13.42625, 'classification_loss': 0.4317791658639908}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [85/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0085/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.577762
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.473682
+Epoch 85 train losses: {'total_loss': 0.3654597679376602, 'invariant_loss': 0.12502770537883043, 'sigreg_loss': 9.9288125, 'classification_loss': 0.41861750081181526}
+Epoch 85 val losses: {'total_loss': 0.33162869393825534, 'invariant_loss': 0.0035503646265715363, 'sigreg_loss': 14.54375, 'classification_loss': 0.37238486647605895}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [86/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0086/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.596361
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.496766
+Epoch 86 train losses: {'total_loss': 0.3643706632554531, 'invariant_loss': 0.12514708352833986, 'sigreg_loss': 9.89403125, 'classification_loss': 0.4134174388349056}
+Epoch 86 val losses: {'total_loss': 0.324306218624115, 'invariant_loss': 0.003995709018781781, 'sigreg_loss': 14.19, 'classification_loss': 0.3659957730770111}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [87/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0087/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.579076
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.458151
+Epoch 87 train losses: {'total_loss': 0.36334228262305257, 'invariant_loss': 0.12464403609186411, 'sigreg_loss': 9.87865625, 'classification_loss': 0.4112988762557507}
+Epoch 87 val losses: {'total_loss': 0.33986742317676544, 'invariant_loss': 0.0036984515842050313, 'sigreg_loss': 14.88125, 'classification_loss': 0.38551786839962005}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [88/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0088/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.573161
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.456766
+Epoch 88 train losses: {'total_loss': 0.36329267728328707, 'invariant_loss': 0.1250156223103404, 'sigreg_loss': 9.853625, 'classification_loss': 0.4120283679664135}
+Epoch 88 val losses: {'total_loss': 0.3316165316104889, 'invariant_loss': 0.004367482527159155, 'sigreg_loss': 14.505, 'classification_loss': 0.37209988594055177}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [89/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0089/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.575234
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.480315
+Epoch 89 train losses: {'total_loss': 0.3629640305042267, 'invariant_loss': 0.12517110245674848, 'sigreg_loss': 9.857375, 'classification_loss': 0.40655232027173044}
+Epoch 89 val losses: {'total_loss': 0.33465291917324064, 'invariant_loss': 0.003202490392141044, 'sigreg_loss': 14.81375, 'classification_loss': 0.35161364674568174}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [90/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0090/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.587309
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.469294
+Epoch 90 train losses: {'total_loss': 0.3636050827205181, 'invariant_loss': 0.12517240861803294, 'sigreg_loss': 9.9111875, 'classification_loss': 0.4021099431812763}
+Epoch 90 val losses: {'total_loss': 0.34115974068641663, 'invariant_loss': 0.004043229706585407, 'sigreg_loss': 15.04875, 'classification_loss': 0.36120414912700655}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [91/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0091/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.577296
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.454121
+Epoch 91 train losses: {'total_loss': 0.36093232688307764, 'invariant_loss': 0.12465303914248943, 'sigreg_loss': 9.80996875, 'classification_loss': 0.40083975458145144}
+Epoch 91 val losses: {'total_loss': 0.33901776909828185, 'invariant_loss': 0.0038373417733237147, 'sigreg_loss': 14.95875, 'classification_loss': 0.36000735878944395}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [92/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0092/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.582438
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.451801
+Epoch 92 train losses: {'total_loss': 0.3608884535133839, 'invariant_loss': 0.12482391630113125, 'sigreg_loss': 9.80840625, 'classification_loss': 0.39905356462299824}
+Epoch 92 val losses: {'total_loss': 0.32434059500694273, 'invariant_loss': 0.004390784478746354, 'sigreg_loss': 14.19375, 'classification_loss': 0.36004499316215516}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [93/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0093/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.580575
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.457605
+Epoch 93 train losses: {'total_loss': 0.36010970774292944, 'invariant_loss': 0.12466524278372526, 'sigreg_loss': 9.8009375, 'classification_loss': 0.3942298122346401}
+Epoch 93 val losses: {'total_loss': 0.32238293647766114, 'invariant_loss': 0.003697337917983532, 'sigreg_loss': 14.18375, 'classification_loss': 0.3501372426748276}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [94/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0094/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.590629
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.436002
+Epoch 94 train losses: {'total_loss': 0.36037273740768433, 'invariant_loss': 0.12473916094750166, 'sigreg_loss': 9.81103125, 'classification_loss': 0.3940896722972393}
+Epoch 94 val losses: {'total_loss': 0.31629812955856323, 'invariant_loss': 0.003838636032305658, 'sigreg_loss': 13.60125, 'classification_loss': 0.4044777148962021}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [95/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0095/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.599559
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.463754
+Epoch 95 train losses: {'total_loss': 0.3606346179544926, 'invariant_loss': 0.1250289856418967, 'sigreg_loss': 9.7828125, 'classification_loss': 0.39957194435596466}
+Epoch 95 val losses: {'total_loss': 0.3154148244857788, 'invariant_loss': 0.0034534347150474787, 'sigreg_loss': 13.51875, 'classification_loss': 0.41629358887672424}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [96/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0096/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.597255
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.453789
+Epoch 96 train losses: {'total_loss': 0.3601605016589165, 'invariant_loss': 0.12495233295112848, 'sigreg_loss': 9.7920625, 'classification_loss': 0.3938297345340252}
+Epoch 96 val losses: {'total_loss': 0.3194257861375809, 'invariant_loss': 0.003381516980007291, 'sigreg_loss': 13.925, 'classification_loss': 0.37450517535209654}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [97/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0097/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.598407
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.464709
+Epoch 97 train losses: {'total_loss': 0.35995165720582006, 'invariant_loss': 0.12471341605484486, 'sigreg_loss': 9.81415625, 'classification_loss': 0.3895894434452057}
+Epoch 97 val losses: {'total_loss': 0.31655903220176695, 'invariant_loss': 0.0036532819457352162, 'sigreg_loss': 13.77625, 'classification_loss': 0.3737840634584427}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [98/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0098/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.580638
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.447600
+Epoch 98 train losses: {'total_loss': 0.3592371316254139, 'invariant_loss': 0.12493891670554877, 'sigreg_loss': 9.79834375, 'classification_loss': 0.3833434848487377}
+Epoch 98 val losses: {'total_loss': 0.3276457279920578, 'invariant_loss': 0.004005841324105859, 'sigreg_loss': 14.25125, 'classification_loss': 0.38718011379241946}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [99/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0099/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.587832
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.443158
+Epoch 99 train losses: {'total_loss': 0.35807248118519786, 'invariant_loss': 0.1248124401718378, 'sigreg_loss': 9.7499375, 'classification_loss': 0.3826882991194725}
+Epoch 99 val losses: {'total_loss': 0.316557445526123, 'invariant_loss': 0.004876671833917498, 'sigreg_loss': 13.59, 'classification_loss': 0.39844833195209506}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [100/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0100/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.589208
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.442055
+Epoch 100 train losses: {'total_loss': 0.3572275546789169, 'invariant_loss': 0.12452059771120548, 'sigreg_loss': 9.7420625, 'classification_loss': 0.3787199632227421}
+Epoch 100 val losses: {'total_loss': 0.3216165083646774, 'invariant_loss': 0.004674835987389088, 'sigreg_loss': 13.9325, 'classification_loss': 0.3823073399066925}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [101/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0101/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.590322
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.446541
+Epoch 101 train losses: {'total_loss': 0.357209067851305, 'invariant_loss': 0.1250215806812048, 'sigreg_loss': 9.73115625, 'classification_loss': 0.37560532985627654}
+Epoch 101 val losses: {'total_loss': 0.33582429885864257, 'invariant_loss': 0.004228005432523787, 'sigreg_loss': 14.61625, 'classification_loss': 0.3929161018133163}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [102/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0102/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.591894
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.441371
+Epoch 102 train losses: {'total_loss': 0.35621632686257365, 'invariant_loss': 0.12494865529239178, 'sigreg_loss': 9.71046875, 'classification_loss': 0.37052827528119087}
+Epoch 102 val losses: {'total_loss': 0.32670184373855593, 'invariant_loss': 0.0037352721393108367, 'sigreg_loss': 14.29875, 'classification_loss': 0.37029073417186736}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [103/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0103/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.574450
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.427245
+Epoch 103 train losses: {'total_loss': 0.35572373777627947, 'invariant_loss': 0.1243264128267765, 'sigreg_loss': 9.72575, 'classification_loss': 0.3687974663674831}
+Epoch 103 val losses: {'total_loss': 0.3294247555732727, 'invariant_loss': 0.004375535198487341, 'sigreg_loss': 14.39625, 'classification_loss': 0.3708046734333038}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [104/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0104/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.603806
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.452117
+Epoch 104 train losses: {'total_loss': 0.3523555240035057, 'invariant_loss': 0.1243201642036438, 'sigreg_loss': 9.7510625, 'classification_loss': 0.33008015784621236}
+Epoch 104 val losses: {'total_loss': 0.31151460826396943, 'invariant_loss': 0.0038853781623765828, 'sigreg_loss': 13.57875, 'classification_loss': 0.36105791211128235}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [105/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0105/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.606463
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.484206
+Epoch 105 train losses: {'total_loss': 0.3503795448541641, 'invariant_loss': 0.1244636033475399, 'sigreg_loss': 9.7060625, 'classification_loss': 0.3178898807317018}
+Epoch 105 val losses: {'total_loss': 0.34432668328285215, 'invariant_loss': 0.0039158680988475685, 'sigreg_loss': 15.4675, 'classification_loss': 0.31035812199115753}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [106/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0106/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.599805
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.434045
+Epoch 106 train losses: {'total_loss': 0.35136357417702674, 'invariant_loss': 0.12443799846619367, 'sigreg_loss': 9.75115625, 'classification_loss': 0.319128801509738}
+Epoch 106 val losses: {'total_loss': 0.34137450098991395, 'invariant_loss': 0.004209133335389197, 'sigreg_loss': 15.19625, 'classification_loss': 0.3329817947745323}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [107/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0107/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.588516
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.429666
+Epoch 107 train losses: {'total_loss': 0.3507421523630619, 'invariant_loss': 0.12431035969406366, 'sigreg_loss': 9.72853125, 'classification_loss': 0.3185952683985233}
+Epoch 107 val losses: {'total_loss': 0.3394223374128342, 'invariant_loss': 0.003925826665945351, 'sigreg_loss': 15.1575, 'classification_loss': 0.3241057148575783}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [108/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0108/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.587801
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.449686
+Epoch 108 train losses: {'total_loss': 0.35009703597426417, 'invariant_loss': 0.12396803177148104, 'sigreg_loss': 9.73490625, 'classification_loss': 0.31428809024393556}
+Epoch 108 val losses: {'total_loss': 0.3270555418729782, 'invariant_loss': 0.0040462907496839765, 'sigreg_loss': 14.56, 'classification_loss': 0.3183737435936928}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [109/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0109/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.612288
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.456569
+Epoch 109 train losses: {'total_loss': 0.3485638744235039, 'invariant_loss': 0.12391023656725883, 'sigreg_loss': 9.65915625, 'classification_loss': 0.3147688080370426}
+Epoch 109 val losses: {'total_loss': 0.3183518719673157, 'invariant_loss': 0.004367518732324243, 'sigreg_loss': 14.0325, 'classification_loss': 0.33242165207862856}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [110/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0110/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.603250
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.443659
+Epoch 110 train losses: {'total_loss': 0.3496984016597271, 'invariant_loss': 0.12393853738158941, 'sigreg_loss': 9.72459375, 'classification_loss': 0.3126377049982548}
+Epoch 110 val losses: {'total_loss': 0.32405902206897735, 'invariant_loss': 0.0035449986811727286, 'sigreg_loss': 14.46625, 'classification_loss': 0.31236680001020434}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [111/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0111/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.606651
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.452600
+Epoch 111 train losses: {'total_loss': 0.3484096759557724, 'invariant_loss': 0.12389195331931115, 'sigreg_loss': 9.67540625, 'classification_loss': 0.3101869949400425}
+Epoch 111 val losses: {'total_loss': 0.3105014818906784, 'invariant_loss': 0.0037648334028199315, 'sigreg_loss': 13.79, 'classification_loss': 0.31092117965221405}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [112/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0112/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.607492
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.443927
+Epoch 112 train losses: {'total_loss': 0.3483594098985195, 'invariant_loss': 0.12375435373932123, 'sigreg_loss': 9.67546875, 'classification_loss': 0.310865019261837}
+Epoch 112 val losses: {'total_loss': 0.30992725014686584, 'invariant_loss': 0.0033831374952569605, 'sigreg_loss': 13.73125, 'classification_loss': 0.3191520991921425}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [113/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0113/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.595964
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.439391
+Epoch 113 train losses: {'total_loss': 0.3496624082326889, 'invariant_loss': 0.12391718787699937, 'sigreg_loss': 9.674625, 'classification_loss': 0.32267680929601195}
+Epoch 113 val losses: {'total_loss': 0.31384647846221925, 'invariant_loss': 0.003366010799072683, 'sigreg_loss': 13.715, 'classification_loss': 0.3626171827316284}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [114/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0114/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.595051
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.413759
+Epoch 114 train losses: {'total_loss': 0.35118238121271134, 'invariant_loss': 0.12443619583547115, 'sigreg_loss': 9.6521875, 'classification_loss': 0.33702240033447745}
+Epoch 114 val losses: {'total_loss': 0.30516714215278623, 'invariant_loss': 0.004708832795731723, 'sigreg_loss': 13.18375, 'classification_loss': 0.3668877673149109}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [115/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0115/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.604504
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.436750
+Epoch 115 train losses: {'total_loss': 0.3497356537878513, 'invariant_loss': 0.12412431087344884, 'sigreg_loss': 9.613875, 'classification_loss': 0.3333888225108385}
+Epoch 115 val losses: {'total_loss': 0.32828396499156953, 'invariant_loss': 0.002839150996878743, 'sigreg_loss': 14.54125, 'classification_loss': 0.34741689056158065}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [116/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0116/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.594690
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.435952
+Epoch 116 train losses: {'total_loss': 0.3490796012878418, 'invariant_loss': 0.12384507604688406, 'sigreg_loss': 9.62603125, 'classification_loss': 0.3272573670446873}
+Epoch 116 val losses: {'total_loss': 0.31270832717418673, 'invariant_loss': 0.0037168304761871695, 'sigreg_loss': 13.4875, 'classification_loss': 0.39382124423980713}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [117/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0117/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.591397
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.419438
+Epoch 117 train losses: {'total_loss': 0.34809091982245444, 'invariant_loss': 0.12401933574676513, 'sigreg_loss': 9.59121875, 'classification_loss': 0.3226299025416374}
+Epoch 117 val losses: {'total_loss': 0.3227251100540161, 'invariant_loss': 0.004163756687194109, 'sigreg_loss': 13.81375, 'classification_loss': 0.423308824300766}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [118/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0118/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.599755
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.433013
+Epoch 118 train losses: {'total_loss': 0.3478006322383881, 'invariant_loss': 0.12376247568428517, 'sigreg_loss': 9.58596875, 'classification_loss': 0.3230964028537273}
+Epoch 118 val losses: {'total_loss': 0.32954323828220367, 'invariant_loss': 0.0033144711330533026, 'sigreg_loss': 14.30875, 'classification_loss': 0.399787660241127}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [119/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0119/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.596839
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.420078
+Epoch 119 train losses: {'total_loss': 0.34845894211530687, 'invariant_loss': 0.12360076403617859, 'sigreg_loss': 9.6046875, 'classification_loss': 0.32752709184587003}
+Epoch 119 val losses: {'total_loss': 0.32768424272537233, 'invariant_loss': 0.003659257679246366, 'sigreg_loss': 14.37375, 'classification_loss': 0.36485920906066893}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [120/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0120/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.613816
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.434142
+Epoch 120 train losses: {'total_loss': 0.3485074577629566, 'invariant_loss': 0.12315277665108443, 'sigreg_loss': 9.58203125, 'classification_loss': 0.3371893815845251}
+Epoch 120 val losses: {'total_loss': 0.3113838654756546, 'invariant_loss': 0.003346714247018099, 'sigreg_loss': 13.695, 'classification_loss': 0.342480862736702}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [121/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0121/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.596763
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.436757
+Epoch 121 train losses: {'total_loss': 0.3496776177287102, 'invariant_loss': 0.12382543265074492, 'sigreg_loss': 9.6045625, 'classification_loss': 0.33772106394171714}
+Epoch 121 val losses: {'total_loss': 0.33043933153152466, 'invariant_loss': 0.0032212534779682755, 'sigreg_loss': 14.59125, 'classification_loss': 0.3538214212656021}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [122/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0122/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.596442
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.424934
+Epoch 122 train losses: {'total_loss': 0.3487334899902344, 'invariant_loss': 0.12328877886384726, 'sigreg_loss': 9.58925, 'classification_loss': 0.33671272583305834}
+Epoch 122 val losses: {'total_loss': 0.3222621589899063, 'invariant_loss': 0.0037930347584187985, 'sigreg_loss': 14.23125, 'classification_loss': 0.33820685505867004}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [123/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0123/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.601228
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.428719
+Epoch 123 train losses: {'total_loss': 0.34848090350627897, 'invariant_loss': 0.12324756954610348, 'sigreg_loss': 9.58596875, 'classification_loss': 0.33518490101397036}
+Epoch 123 val losses: {'total_loss': 0.33863457918167117, 'invariant_loss': 0.0035843250947073103, 'sigreg_loss': 14.945, 'classification_loss': 0.36222130089998245}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [124/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0124/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.616528
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.430597
+Epoch 124 train losses: {'total_loss': 0.3486920151114464, 'invariant_loss': 0.12303295509517193, 'sigreg_loss': 9.615375, 'classification_loss': 0.3335730179846287}
+Epoch 124 val losses: {'total_loss': 0.3260841304063797, 'invariant_loss': 0.003213324355892837, 'sigreg_loss': 14.3475, 'classification_loss': 0.35878619432449343}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [125/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0125/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.591240
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.412879
+Epoch 125 train losses: {'total_loss': 0.34714416748285293, 'invariant_loss': 0.12337384334951638, 'sigreg_loss': 9.52953125, 'classification_loss': 0.33183409823477267}
+Epoch 125 val losses: {'total_loss': 0.31709160149097443, 'invariant_loss': 0.0033929886762052775, 'sigreg_loss': 13.9575, 'classification_loss': 0.3453845465183258}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [126/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0126/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.611207
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.445810
+Epoch 126 train losses: {'total_loss': 0.3467506831288338, 'invariant_loss': 0.12292216327041387, 'sigreg_loss': 9.54521875, 'classification_loss': 0.3292519962191582}
+Epoch 126 val losses: {'total_loss': 0.30377096354961397, 'invariant_loss': 0.0036129219643771648, 'sigreg_loss': 13.5225, 'classification_loss': 0.29786945015192035}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [127/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0127/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.585404
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.413710
+Epoch 127 train losses: {'total_loss': 0.3466600514948368, 'invariant_loss': 0.1229308104813099, 'sigreg_loss': 9.53646875, 'classification_loss': 0.3301244412511587}
+Epoch 127 val losses: {'total_loss': 0.3166073912382126, 'invariant_loss': 0.00318204908631742, 'sigreg_loss': 14.2025, 'classification_loss': 0.2936284163594246}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [128/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0128/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.600315
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.448101
+Epoch 128 train losses: {'total_loss': 0.3464909111261368, 'invariant_loss': 0.12310943221300841, 'sigreg_loss': 9.532875, 'classification_loss': 0.3272913484275341}
+Epoch 128 val losses: {'total_loss': 0.2919952553510666, 'invariant_loss': 0.003269417001865804, 'sigreg_loss': 12.93625, 'classification_loss': 0.2987817984819412}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [129/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0129/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.583671
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.413003
+Epoch 129 train losses: {'total_loss': 0.34538794395327566, 'invariant_loss': 0.12322471449524164, 'sigreg_loss': 9.476625, 'classification_loss': 0.32629049801826476}
+Epoch 129 val losses: {'total_loss': 0.3123748868703842, 'invariant_loss': 0.0030700234975665807, 'sigreg_loss': 13.96625, 'classification_loss': 0.2996892338991165}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [130/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0130/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.592139
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.431253
+Epoch 130 train losses: {'total_loss': 0.34651651936769484, 'invariant_loss': 0.12286690099537373, 'sigreg_loss': 9.55503125, 'classification_loss': 0.3255586836338043}
+Epoch 130 val losses: {'total_loss': 0.3073350977897644, 'invariant_loss': 0.003489190856926143, 'sigreg_loss': 13.64375, 'classification_loss': 0.3095527803897858}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [131/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0131/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.588047
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.439575
+Epoch 131 train losses: {'total_loss': 0.34492349007725714, 'invariant_loss': 0.12293201848864556, 'sigreg_loss': 9.4738125, 'classification_loss': 0.32523697906732557}
+Epoch 131 val losses: {'total_loss': 0.30010063290596006, 'invariant_loss': 0.00298956582788378, 'sigreg_loss': 13.3725, 'classification_loss': 0.2966965794563293}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [132/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0132/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.585614
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.417523
+Epoch 132 train losses: {'total_loss': 0.34521607792377473, 'invariant_loss': 0.12278208485245705, 'sigreg_loss': 9.50153125, 'classification_loss': 0.32416414768993856}
+Epoch 132 val losses: {'total_loss': 0.30495971739292144, 'invariant_loss': 0.0034611813630908727, 'sigreg_loss': 13.61125, 'classification_loss': 0.29311035841703414}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [133/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0133/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.583160
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.405701
+Epoch 133 train losses: {'total_loss': 0.34486177274584773, 'invariant_loss': 0.12284812576323748, 'sigreg_loss': 9.47778125, 'classification_loss': 0.32446263836324213}
+Epoch 133 val losses: {'total_loss': 0.3051915591955185, 'invariant_loss': 0.002678446136415005, 'sigreg_loss': 13.6025, 'classification_loss': 0.3048186510801315}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [134/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0134/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.602945
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.438736
+Epoch 134 train losses: {'total_loss': 0.3441738031208515, 'invariant_loss': 0.12250584984570742, 'sigreg_loss': 9.4624375, 'classification_loss': 0.32401352179050447}
+Epoch 134 val losses: {'total_loss': 0.2968417775630951, 'invariant_loss': 0.003043070714920759, 'sigreg_loss': 13.2275, 'classification_loss': 0.29306520134210584}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [135/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0135/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.602206
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.431421
+Epoch 135 train losses: {'total_loss': 0.3436514980196953, 'invariant_loss': 0.12240596175938845, 'sigreg_loss': 9.47215625, 'classification_loss': 0.3180901338905096}
+Epoch 135 val losses: {'total_loss': 0.3195502734184265, 'invariant_loss': 0.0028853898029774427, 'sigreg_loss': 14.37, 'classification_loss': 0.2912581878900528}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [136/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0136/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.591340
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.415513
+Epoch 136 train losses: {'total_loss': 0.34301841193437577, 'invariant_loss': 0.12234519615024328, 'sigreg_loss': 9.4546875, 'classification_loss': 0.3157360639870167}
+Epoch 136 val losses: {'total_loss': 0.30170716643333434, 'invariant_loss': 0.0026795127056539057, 'sigreg_loss': 13.4975, 'classification_loss': 0.2916437289118767}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [137/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0137/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.585239
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.411564
+Epoch 137 train losses: {'total_loss': 0.3432971138954163, 'invariant_loss': 0.12227842134982347, 'sigreg_loss': 9.4895625, 'classification_loss': 0.31218888130784034}
+Epoch 137 val losses: {'total_loss': 0.32027933418750765, 'invariant_loss': 0.00280514401383698, 'sigreg_loss': 14.4775, 'classification_loss': 0.2786481291055679}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [138/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0138/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.583997
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.423487
+Epoch 138 train losses: {'total_loss': 0.3415782247185707, 'invariant_loss': 0.12236332877725363, 'sigreg_loss': 9.4858125, 'classification_loss': 0.29502981078624724}
+Epoch 138 val losses: {'total_loss': 0.30704504907131197, 'invariant_loss': 0.0028332812013104557, 'sigreg_loss': 13.91625, 'classification_loss': 0.258523962199688}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [139/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0139/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.582768
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.425647
+Epoch 139 train losses: {'total_loss': 0.33821926173567773, 'invariant_loss': 0.12232197543233633, 'sigreg_loss': 9.4253125, 'classification_loss': 0.27393380192667244}
+Epoch 139 val losses: {'total_loss': 0.2995056664943695, 'invariant_loss': 0.002632895694114268, 'sigreg_loss': 13.57125, 'classification_loss': 0.25446988493204115}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [140/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0140/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.591151
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.417237
+Epoch 140 train losses: {'total_loss': 0.33838861194252967, 'invariant_loss': 0.12184599676728249, 'sigreg_loss': 9.45103125, 'classification_loss': 0.2750648220926523}
+Epoch 140 val losses: {'total_loss': 0.3144026285409927, 'invariant_loss': 0.002607413991354406, 'sigreg_loss': 14.23, 'classification_loss': 0.2704911735653877}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [141/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0141/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.591529
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.435668
+Epoch 141 train losses: {'total_loss': 0.33820084935426714, 'invariant_loss': 0.1219402533993125, 'sigreg_loss': 9.4424375, 'classification_loss': 0.2742758783623576}
+Epoch 141 val losses: {'total_loss': 0.29795469403266905, 'invariant_loss': 0.0029971254989504814, 'sigreg_loss': 13.43, 'classification_loss': 0.2618803796172142}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [142/200]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0142/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.582487
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.428329
+Epoch 142 train losses: {'total_loss': 0.3379134400486946, 'invariant_loss': 0.12206416798382998, 'sigreg_loss': 9.43140625, 'classification_loss': 0.27212552934139966}
+Epoch 142 val losses: {'total_loss': 0.29129358172416686, 'invariant_loss': 0.0027585046319290995, 'sigreg_loss': 13.125, 'classification_loss': 0.26152262568473816}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [143/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0143/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.592814
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.416140
+Epoch 143 train losses: {'total_loss': 0.3370533074736595, 'invariant_loss': 0.12180566807091237, 'sigreg_loss': 9.4090625, 'classification_loss': 0.27060138049721716}
+Epoch 143 val losses: {'total_loss': 0.3111936342716217, 'invariant_loss': 0.002902534701861441, 'sigreg_loss': 14.11375, 'classification_loss': 0.25986411303281787}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [144/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0144/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.603393
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.426403
+Epoch 144 train losses: {'total_loss': 0.3376150947511196, 'invariant_loss': 0.12170869101583957, 'sigreg_loss': 9.3996875, 'classification_loss': 0.279239823281765}
+Epoch 144 val losses: {'total_loss': 0.30194293439388276, 'invariant_loss': 0.002833432825282216, 'sigreg_loss': 13.5475, 'classification_loss': 0.2819153171777725}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [145/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0145/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.602974
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.415462
+Epoch 145 train losses: {'total_loss': 0.3407115698456764, 'invariant_loss': 0.12145793726295233, 'sigreg_loss': 9.40853125, 'classification_loss': 0.31084686118364335}
+Epoch 145 val losses: {'total_loss': 0.2937920081615448, 'invariant_loss': 0.002865758705884218, 'sigreg_loss': 13.1425, 'classification_loss': 0.281332828104496}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [146/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0146/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.592385
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.419231
+Epoch 146 train losses: {'total_loss': 0.33966185370087626, 'invariant_loss': 0.12181058460474015, 'sigreg_loss': 9.35525, 'classification_loss': 0.3073896450251341}
+Epoch 146 val losses: {'total_loss': 0.30396862506866457, 'invariant_loss': 0.0026513648685067893, 'sigreg_loss': 13.6725, 'classification_loss': 0.2789929112792015}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [147/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0147/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.583744
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.429726
+Epoch 147 train losses: {'total_loss': 0.33949213021993635, 'invariant_loss': 0.12148371577262879, 'sigreg_loss': 9.3725625, 'classification_loss': 0.3056700823456049}
+Epoch 147 val losses: {'total_loss': 0.2978452813625336, 'invariant_loss': 0.0025096454797312617, 'sigreg_loss': 13.4775, 'classification_loss': 0.2566766777634621}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [148/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0148/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.596235
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.409093
+Epoch 148 train losses: {'total_loss': 0.340104477763176, 'invariant_loss': 0.12183159499615431, 'sigreg_loss': 9.4361875, 'classification_loss': 0.29543390387296675}
+Epoch 148 val losses: {'total_loss': 0.3135932779312134, 'invariant_loss': 0.002373096109367907, 'sigreg_loss': 14.2025, 'classification_loss': 0.272748703956604}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [149/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0149/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.588436
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.408856
+Epoch 149 train losses: {'total_loss': 0.33896665465831755, 'invariant_loss': 0.12153740624338388, 'sigreg_loss': 9.390625, 'classification_loss': 0.2961870107501745}
+Epoch 149 val losses: {'total_loss': 0.3062827444076538, 'invariant_loss': 0.002512838381808251, 'sigreg_loss': 13.84, 'classification_loss': 0.2695349544286728}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [150/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0150/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.580979
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.415366
+Epoch 150 train losses: {'total_loss': 0.33822794777154924, 'invariant_loss': 0.12152610635012388, 'sigreg_loss': 9.37553125, 'classification_loss': 0.2919598230719566}
+Epoch 150 val losses: {'total_loss': 0.29587932586669924, 'invariant_loss': 0.002645301064476371, 'sigreg_loss': 13.31625, 'classification_loss': 0.2692542988061905}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [151/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0151/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.590260
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.425490
+Epoch 151 train losses: {'total_loss': 0.33843040925264356, 'invariant_loss': 0.12136940856277943, 'sigreg_loss': 9.382625, 'classification_loss': 0.29405727246403696}
+Epoch 151 val losses: {'total_loss': 0.2928919264674187, 'invariant_loss': 0.002552603860385716, 'sigreg_loss': 13.19375, 'classification_loss': 0.26628385215997696}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [152/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0152/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.590816
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.410412
+Epoch 152 train losses: {'total_loss': 0.3371412971019745, 'invariant_loss': 0.12115450707823038, 'sigreg_loss': 9.32609375, 'classification_loss': 0.2946237550675869}
+Epoch 152 val losses: {'total_loss': 0.2985435289144516, 'invariant_loss': 0.002534100958146155, 'sigreg_loss': 13.45, 'classification_loss': 0.26985992193222047}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [153/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0153/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.597366
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.429692
+Epoch 153 train losses: {'total_loss': 0.33739987027645113, 'invariant_loss': 0.12123569275438785, 'sigreg_loss': 9.3571875, 'classification_loss': 0.2902550456672907}
+Epoch 153 val losses: {'total_loss': 0.31006299138069154, 'invariant_loss': 0.0025223590969108045, 'sigreg_loss': 14.0425, 'classification_loss': 0.2658359929919243}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [154/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0154/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.581421
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.411267
+Epoch 154 train losses: {'total_loss': 0.3343847596347332, 'invariant_loss': 0.12132917975634336, 'sigreg_loss': 9.304625, 'classification_loss': 0.269774557441473}
+Epoch 154 val losses: {'total_loss': 0.30655123949050905, 'invariant_loss': 0.0026157182804308833, 'sigreg_loss': 13.90625, 'classification_loss': 0.2567380440235138}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [155/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0155/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.584016
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.423578
+Epoch 155 train losses: {'total_loss': 0.33422924622893335, 'invariant_loss': 0.1210640343874693, 'sigreg_loss': 9.34084375, 'classification_loss': 0.2635271238237619}
+Epoch 155 val losses: {'total_loss': 0.30166875779628755, 'invariant_loss': 0.002377671366557479, 'sigreg_loss': 13.715, 'classification_loss': 0.2489655575156212}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [156/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0156/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.594616
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.426600
+Epoch 156 train losses: {'total_loss': 0.33376949006319045, 'invariant_loss': 0.12101346032321453, 'sigreg_loss': 9.32359375, 'classification_loss': 0.2627751430645585}
+Epoch 156 val losses: {'total_loss': 0.30163468182086944, 'invariant_loss': 0.0022271529864519835, 'sigreg_loss': 13.71625, 'classification_loss': 0.2522783553600311}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [157/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0157/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.596688
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.415460
+Epoch 157 train losses: {'total_loss': 0.3361989370882511, 'invariant_loss': 0.12101465757191181, 'sigreg_loss': 9.3481875, 'classification_loss': 0.2821552880257368}
+Epoch 157 val losses: {'total_loss': 0.3002393835783005, 'invariant_loss': 0.0023357539251446725, 'sigreg_loss': 13.4875, 'classification_loss': 0.2805987870693207}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [158/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0158/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.600591
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.407882
+Epoch 158 train losses: {'total_loss': 0.336391661465168, 'invariant_loss': 0.12102028524875641, 'sigreg_loss': 9.31525, 'classification_loss': 0.2907743094563484}
+Epoch 158 val losses: {'total_loss': 0.29534332871437075, 'invariant_loss': 0.002630958049558103, 'sigreg_loss': 13.15375, 'classification_loss': 0.2964596575498581}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [159/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0159/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.601770
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.414669
+Epoch 159 train losses: {'total_loss': 0.3363369574844837, 'invariant_loss': 0.1207004502043128, 'sigreg_loss': 9.34821875, 'classification_loss': 0.2866580453068018}
+Epoch 159 val losses: {'total_loss': 0.3122628974914551, 'invariant_loss': 0.0021333077480085194, 'sigreg_loss': 14.035, 'classification_loss': 0.2936787134408951}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [160/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0160/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.588223
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.387282
+Epoch 160 train losses: {'total_loss': 0.33583781465888024, 'invariant_loss': 0.12046188126504422, 'sigreg_loss': 9.33265625, 'classification_loss': 0.2873530855178833}
+Epoch 160 val losses: {'total_loss': 0.3109774035215378, 'invariant_loss': 0.002212019320577383, 'sigreg_loss': 13.96875, 'classification_loss': 0.2933178758621216}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [161/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0161/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.594473
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.403529
+Epoch 161 train losses: {'total_loss': 0.3362085069417953, 'invariant_loss': 0.12060884581506252, 'sigreg_loss': 9.33221875, 'classification_loss': 0.28935598860681055}
+Epoch 161 val losses: {'total_loss': 0.3092493426799774, 'invariant_loss': 0.002074215046595782, 'sigreg_loss': 13.94875, 'classification_loss': 0.28249346524477004}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [162/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0162/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.590720
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.408584
+Epoch 162 train losses: {'total_loss': 0.33600336199998854, 'invariant_loss': 0.12049837490171195, 'sigreg_loss': 9.33653125, 'classification_loss': 0.2877061161547899}
+Epoch 162 val losses: {'total_loss': 0.30750365793704987, 'invariant_loss': 0.002245870977640152, 'sigreg_loss': 13.82625, 'classification_loss': 0.28617162346839903}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [163/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0163/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.590925
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.402466
+Epoch 163 train losses: {'total_loss': 0.3347339670956135, 'invariant_loss': 0.12026404563337564, 'sigreg_loss': 9.3525, 'classification_loss': 0.2743281213194132}
+Epoch 163 val losses: {'total_loss': 0.31578004598617554, 'invariant_loss': 0.002047303905710578, 'sigreg_loss': 14.1525, 'classification_loss': 0.30744461715221405}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [164/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0164/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.596054
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.417938
+Epoch 164 train losses: {'total_loss': 0.33193783819675443, 'invariant_loss': 0.12037845709174871, 'sigreg_loss': 9.29428125, 'classification_loss': 0.2567559190988541}
+Epoch 164 val losses: {'total_loss': 0.30918126821517944, 'invariant_loss': 0.0020841066469438375, 'sigreg_loss': 13.84875, 'classification_loss': 0.3008543971180916}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [165/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0165/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.598141
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.407479
+Epoch 165 train losses: {'total_loss': 0.3316408919394016, 'invariant_loss': 0.12017620486021043, 'sigreg_loss': 9.2800625, 'classification_loss': 0.25865077652037144}
+Epoch 165 val losses: {'total_loss': 0.3011515474319458, 'invariant_loss': 0.0019765903311781585, 'sigreg_loss': 13.3625, 'classification_loss': 0.32065579771995545}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [166/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0166/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.608153
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.414048
+Epoch 166 train losses: {'total_loss': 0.3338512140512466, 'invariant_loss': 0.12048788233101368, 'sigreg_loss': 9.30159375, 'classification_loss': 0.2733305737376213}
+Epoch 166 val losses: {'total_loss': 0.3048113465309143, 'invariant_loss': 0.0021894649462774396, 'sigreg_loss': 13.75375, 'classification_loss': 0.2758281859755516}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [167/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0167/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.599469
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.419156
+Epoch 167 train losses: {'total_loss': 0.3350868102312088, 'invariant_loss': 0.12064527435600758, 'sigreg_loss': 9.2463125, 'classification_loss': 0.29502081920206547}
+Epoch 167 val losses: {'total_loss': 0.30037400364875794, 'invariant_loss': 0.0020611997554078696, 'sigreg_loss': 13.55, 'classification_loss': 0.27258116245269776}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [168/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0168/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.592558
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.415357
+Epoch 168 train losses: {'total_loss': 0.33552661353349683, 'invariant_loss': 0.12050011713802815, 'sigreg_loss': 9.285, 'classification_loss': 0.2933313672840595}
+Epoch 168 val losses: {'total_loss': 0.30546090483665467, 'invariant_loss': 0.002001660370733589, 'sigreg_loss': 13.73375, 'classification_loss': 0.2867408663034439}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [169/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0169/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.592291
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.403088
+Epoch 169 train losses: {'total_loss': 0.3352154342830181, 'invariant_loss': 0.12048360858857632, 'sigreg_loss': 9.27353125, 'classification_loss': 0.2926795870512724}
+Epoch 169 val losses: {'total_loss': 0.3137361592054367, 'invariant_loss': 0.0021360630146227775, 'sigreg_loss': 14.1275, 'classification_loss': 0.2904150491952896}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [170/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0170/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.587925
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.409048
+Epoch 170 train losses: {'total_loss': 0.33466576182842256, 'invariant_loss': 0.12050538182258606, 'sigreg_loss': 9.2423125, 'classification_loss': 0.29314676980674265}
+Epoch 170 val losses: {'total_loss': 0.30435115456581113, 'invariant_loss': 0.0019763665879145263, 'sigreg_loss': 13.7525, 'classification_loss': 0.27472439378499985}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [171/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0171/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.580830
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.401211
+Epoch 171 train losses: {'total_loss': 0.33556236401200296, 'invariant_loss': 0.12052930534631014, 'sigreg_loss': 9.29484375, 'classification_loss': 0.29137551122903826}
+Epoch 171 val losses: {'total_loss': 0.3035564172267914, 'invariant_loss': 0.0019473947025835513, 'sigreg_loss': 13.67375, 'classification_loss': 0.28112927317619324}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [172/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0172/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.584353
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.408693
+Epoch 172 train losses: {'total_loss': 0.335265726685524, 'invariant_loss': 0.12042375281453133, 'sigreg_loss': 9.2828125, 'classification_loss': 0.2918865335136652}
+Epoch 172 val losses: {'total_loss': 0.2998798894882202, 'invariant_loss': 0.0018615422071889044, 'sigreg_loss': 13.57, 'classification_loss': 0.26573033988475797}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [173/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0173/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.593170
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.417806
+Epoch 173 train losses: {'total_loss': 0.33307980045676233, 'invariant_loss': 0.12037419866770506, 'sigreg_loss': 9.17446875, 'classification_loss': 0.29230015617609023}
+Epoch 173 val losses: {'total_loss': 0.30088546097278596, 'invariant_loss': 0.0018355692038312555, 'sigreg_loss': 13.62875, 'classification_loss': 0.2649129769206047}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [174/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0174/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.596772
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.412648
+Epoch 174 train losses: {'total_loss': 0.333933810710907, 'invariant_loss': 0.1203568826764822, 'sigreg_loss': 9.22621875, 'classification_loss': 0.29037866438925264}
+Epoch 174 val losses: {'total_loss': 0.29897788405418396, 'invariant_loss': 0.0019750402541831137, 'sigreg_loss': 13.48375, 'classification_loss': 0.2737393778562546}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [175/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0175/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.586366
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.426740
+Epoch 175 train losses: {'total_loss': 0.33443612104654313, 'invariant_loss': 0.12071697477251292, 'sigreg_loss': 9.23515625, 'classification_loss': 0.290150450989604}
+Epoch 175 val losses: {'total_loss': 0.2993036341667175, 'invariant_loss': 0.0017878289078362287, 'sigreg_loss': 13.6725, 'classification_loss': 0.24058774411678313}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [176/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0176/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.587697
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.417711
+Epoch 176 train losses: {'total_loss': 0.3312880336344242, 'invariant_loss': 0.11995977977663279, 'sigreg_loss': 9.20840625, 'classification_loss': 0.27153448420763016}
+Epoch 176 val losses: {'total_loss': 0.29631589651107787, 'invariant_loss': 0.0017843527463264764, 'sigreg_loss': 13.4375, 'classification_loss': 0.2580107688903809}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [177/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0177/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.593456
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.418481
+Epoch 177 train losses: {'total_loss': 0.3312172595858574, 'invariant_loss': 0.12016968481242657, 'sigreg_loss': 9.19753125, 'classification_loss': 0.27101286563277244}
+Epoch 177 val losses: {'total_loss': 0.2959958869218826, 'invariant_loss': 0.001917277059983462, 'sigreg_loss': 13.415, 'classification_loss': 0.25758301436901093}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [178/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0178/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.593315
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.411572
+Epoch 178 train losses: {'total_loss': 0.33178339079022406, 'invariant_loss': 0.12015007179230451, 'sigreg_loss': 9.21940625, 'classification_loss': 0.2725148387104273}
+Epoch 178 val losses: {'total_loss': 0.30290125906467436, 'invariant_loss': 0.001812340165488422, 'sigreg_loss': 13.7625, 'classification_loss': 0.2579594898223877}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [179/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0179/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.596478
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.415445
+Epoch 179 train losses: {'total_loss': 0.3310671476721764, 'invariant_loss': 0.12013509810715914, 'sigreg_loss': 9.18684375, 'classification_loss': 0.27212323106825353}
+Epoch 179 val losses: {'total_loss': 0.2997542095184326, 'invariant_loss': 0.0017737928358837962, 'sigreg_loss': 13.61875, 'classification_loss': 0.2563666471838951}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [180/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0180/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.592270
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.409183
+Epoch 180 train losses: {'total_loss': 0.3316047632098198, 'invariant_loss': 0.11995066204667092, 'sigreg_loss': 9.2420625, 'classification_loss': 0.2681230426877737}
+Epoch 180 val losses: {'total_loss': 0.29915540874004365, 'invariant_loss': 0.001756576206535101, 'sigreg_loss': 13.5925, 'classification_loss': 0.2560195904970169}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [181/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0181/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.587399
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.409731
+Epoch 181 train losses: {'total_loss': 0.33073634299635885, 'invariant_loss': 0.12000601978600026, 'sigreg_loss': 9.1915625, 'classification_loss': 0.26900245097279546}
+Epoch 181 val losses: {'total_loss': 0.2943773764371872, 'invariant_loss': 0.0016744459862820804, 'sigreg_loss': 13.35375, 'classification_loss': 0.25554493695497515}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [182/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0182/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.591296
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.404565
+Epoch 182 train losses: {'total_loss': 0.33235790595412257, 'invariant_loss': 0.12008336516469717, 'sigreg_loss': 9.20053125, 'classification_loss': 0.28264775103330614}
+Epoch 182 val losses: {'total_loss': 0.29675077974796293, 'invariant_loss': 0.0017508929548785091, 'sigreg_loss': 13.4175, 'classification_loss': 0.26620981842279434}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [183/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0183/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.586370
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.400438
+Epoch 183 train losses: {'total_loss': 0.3328387994170189, 'invariant_loss': 0.12002685128897428, 'sigreg_loss': 9.2031875, 'classification_loss': 0.2873577628582716}
+Epoch 183 val losses: {'total_loss': 0.29982610166072843, 'invariant_loss': 0.0016924428078345954, 'sigreg_loss': 13.5475, 'classification_loss': 0.2715709719061852}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [184/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0184/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.591133
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.408027
+Epoch 184 train losses: {'total_loss': 0.33271445852518083, 'invariant_loss': 0.12016963312774896, 'sigreg_loss': 9.18371875, 'classification_loss': 0.28876856377720833}
+Epoch 184 val losses: {'total_loss': 0.30062530517578123, 'invariant_loss': 0.001774035564158112, 'sigreg_loss': 13.66625, 'classification_loss': 0.2543330070376396}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [185/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0185/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.591944
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.412715
+Epoch 185 train losses: {'total_loss': 0.3319937112927437, 'invariant_loss': 0.12017329563945532, 'sigreg_loss': 9.166, 'classification_loss': 0.2849912596195936}
+Epoch 185 val losses: {'total_loss': 0.2949586123228073, 'invariant_loss': 0.0017634456744417548, 'sigreg_loss': 13.37375, 'classification_loss': 0.25714699119329454}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [186/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0186/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.587794
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.405489
+Epoch 186 train losses: {'total_loss': 0.33236123180389404, 'invariant_loss': 0.1200696039199829, 'sigreg_loss': 9.20075, 'classification_loss': 0.28289674927294256}
+Epoch 186 val losses: {'total_loss': 0.29873391568660734, 'invariant_loss': 0.0017093153297901155, 'sigreg_loss': 13.60625, 'classification_loss': 0.2493475767970085}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [187/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0187/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.588602
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.406733
+Epoch 187 train losses: {'total_loss': 0.3318283737003803, 'invariant_loss': 0.11996230103820563, 'sigreg_loss': 9.19828125, 'classification_loss': 0.2790708800405264}
+Epoch 187 val losses: {'total_loss': 0.29721704244613645, 'invariant_loss': 0.0016858794237487019, 'sigreg_loss': 13.5, 'classification_loss': 0.2543351101875305}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [188/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0188/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.585153
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.406834
+Epoch 188 train losses: {'total_loss': 0.33213234269618985, 'invariant_loss': 0.11996813105791806, 'sigreg_loss': 9.21125, 'classification_loss': 0.27944485019147397}
+Epoch 188 val losses: {'total_loss': 0.2949506741762161, 'invariant_loss': 0.0016497984435409308, 'sigreg_loss': 13.37875, 'classification_loss': 0.2570322209596634}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [189/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0189/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.585416
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.407180
+Epoch 189 train losses: {'total_loss': 0.3319233185350895, 'invariant_loss': 0.12023516646772624, 'sigreg_loss': 9.1793125, 'classification_loss': 0.28107097536325454}
+Epoch 189 val losses: {'total_loss': 0.29573569655418397, 'invariant_loss': 0.001646131824236363, 'sigreg_loss': 13.45, 'classification_loss': 0.2508565843105316}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [190/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0190/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.586729
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.408592
+Epoch 190 train losses: {'total_loss': 0.3319701731801033, 'invariant_loss': 0.11996113266050816, 'sigreg_loss': 9.19565625, 'classification_loss': 0.2809986130297184}
+Epoch 190 val losses: {'total_loss': 0.29774083256721495, 'invariant_loss': 0.0015934214717708529, 'sigreg_loss': 13.5375, 'classification_loss': 0.25405222743749617}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [191/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0191/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.588479
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.399977
+Epoch 191 train losses: {'total_loss': 0.33195255789160727, 'invariant_loss': 0.12013865772634745, 'sigreg_loss': 9.17425, 'classification_loss': 0.2832464238703251}
+Epoch 191 val losses: {'total_loss': 0.30051460683345793, 'invariant_loss': 0.0016782692703418433, 'sigreg_loss': 13.59, 'classification_loss': 0.27019928991794584}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [192/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0192/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.589502
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.402167
+Epoch 192 train losses: {'total_loss': 0.3333568631708622, 'invariant_loss': 0.11999423290789127, 'sigreg_loss': 9.2254375, 'classification_loss': 0.288411457195878}
+Epoch 192 val losses: {'total_loss': 0.2949494081735611, 'invariant_loss': 0.0015990635240450502, 'sigreg_loss': 13.285, 'classification_loss': 0.27666753441095354}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [193/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0193/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.589231
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.402322
+Epoch 193 train losses: {'total_loss': 0.3320703680217266, 'invariant_loss': 0.12015779041498899, 'sigreg_loss': 9.175, 'classification_loss': 0.2840964732319117}
+Epoch 193 val losses: {'total_loss': 0.3000015503168106, 'invariant_loss': 0.0016012130980379879, 'sigreg_loss': 13.5125, 'classification_loss': 0.2810736617445946}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [194/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0194/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.586326
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.405347
+Epoch 194 train losses: {'total_loss': 0.33177135226130483, 'invariant_loss': 0.11995912196487188, 'sigreg_loss': 9.16346875, 'classification_loss': 0.2855441761016846}
+Epoch 194 val losses: {'total_loss': 0.295647120475769, 'invariant_loss': 0.0016778995329514146, 'sigreg_loss': 13.4025, 'classification_loss': 0.259614072740078}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [195/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0195/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.585738
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.402842
+Epoch 195 train losses: {'total_loss': 0.3315217266976833, 'invariant_loss': 0.11997129578888416, 'sigreg_loss': 9.195125, 'classification_loss': 0.2765297005921602}
+Epoch 195 val losses: {'total_loss': 0.29819504022598264, 'invariant_loss': 0.0016586635913699865, 'sigreg_loss': 13.51375, 'classification_loss': 0.262824724316597}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [196/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0196/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.585190
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.402218
+Epoch 196 train losses: {'total_loss': 0.3313048870563507, 'invariant_loss': 0.11969961848855018, 'sigreg_loss': 9.2000625, 'classification_loss': 0.27606244532763957}
+Epoch 196 val losses: {'total_loss': 0.29825386345386506, 'invariant_loss': 0.0016021559410728514, 'sigreg_loss': 13.54125, 'classification_loss': 0.25792337238788604}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [197/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0197/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.585158
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.403991
+Epoch 197 train losses: {'total_loss': 0.3321100833415985, 'invariant_loss': 0.11986790184676648, 'sigreg_loss': 9.22940625, 'classification_loss': 0.27661127215623854}
+Epoch 197 val losses: {'total_loss': 0.2990845054388046, 'invariant_loss': 0.001671778226736933, 'sigreg_loss': 13.5875, 'classification_loss': 0.25615853905677793}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [198/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0198/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.585096
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.404011
+Epoch 198 train losses: {'total_loss': 0.3314585579931736, 'invariant_loss': 0.12003907427936793, 'sigreg_loss': 9.187125, 'classification_loss': 0.2766948394626379}
+Epoch 198 val losses: {'total_loss': 0.2992467248439789, 'invariant_loss': 0.0015938324597664178, 'sigreg_loss': 13.61125, 'classification_loss': 0.2540679690241814}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [199/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0199/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.586353
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.403701
+Epoch 199 train losses: {'total_loss': 0.3313683780729771, 'invariant_loss': 0.11977603776752949, 'sigreg_loss': 9.2053125, 'classification_loss': 0.27484918969869615}
+Epoch 199 val losses: {'total_loss': 0.29621450543403627, 'invariant_loss': 0.0016697502718307077, 'sigreg_loss': 13.4375, 'classification_loss': 0.2587287750840187}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+
+Epoch [200/200]
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Saved run summary to plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-jetclass-ddp/mahalanobis_eval/epoch_0200/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.585543
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.406410
+Epoch 200 train losses: {'total_loss': 0.3311388973593712, 'invariant_loss': 0.12007461225241423, 'sigreg_loss': 9.181375, 'classification_loss': 0.2744221430569887}
+Epoch 200 val losses: {'total_loss': 0.29767162799835206, 'invariant_loss': 0.001661311706993729, 'sigreg_loss': 13.53875, 'classification_loss': 0.25248595982789995}
+Updated run summary at plots/run-lejepa-semi-sup-jetclass-ddp/summary.json
+Saved run summary to plots/run-lejepa-semi-sup-jetclass-ddp/summary.json

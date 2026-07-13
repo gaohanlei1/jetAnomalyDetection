@@ -1,0 +1,2194 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 3742470
+##  Job Name : JETANOMALY
+##  Nodelist : gpu3102
+##      CPUs : 1
+##  Mem/Node : 32000 MB
+## Directory : /oscar/home/lwang223/jetAnomalyDetection
+##   Job Started : Wed Jul  8 04:26:32 PM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Wed Jul  8 04:26:32 PM EDT 2026
+Job ID: 3742470
+Node: gpu3102
+==========================================
+
+GPU Information (from host):
+Wed Jul  8 16:26:32 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:01:00.0 Off |                    0 |
+| N/A   27C    P8             31W /  350W |      74MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          158297      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch version: 2.6.0+cu124
+Loading background from data/processed/qcd-vs-wjet-pt-200to400/QCD_scaled_scaled.pkl
+Loading signal from data/processed/qcd-vs-wjet-pt-200to400/WJet_scaled_scaled.pkl
+Background rows: 125183
+Signal rows: 4067
+Background columns: ['pt', 'eta', 'phi', 'fj_phi', 'fj_eta', 'fj_pt', 'fj_mass', 'fj_msoftdrop', 'fj_particleNetWithMass_QCD', 'fj_particleNet_XbbVsQCD', 'fj_particleNet_XccVsQCD', 'fj_particleNet_XqqVsQCD', 'fj_particleNet_QCD', 'fj_particleNet_massCorr', 'trkHighPurity', 'charge', 'lostInnerHits', 'lostOuterHits', 'numberOfHits', 'numberOfPixelHits', 'pdgId', 'pvAssocQuality', 'trkAlgo', 'trkQuality', 'd0', 'd0Err', 'dz', 'dzErr', 'mass', 'puppiWeight', 'puppiWeightNoLep', 'trkChi2', 'trkEta', 'trkP', 'trkPhi', 'trkPt', 'vtxChi2', 'dz/dzErr', 'd0/d0Err', 'dR', 'within_bounds', 'log_pt', 'pdgId_-211', 'pdgId_-13', 'pdgId_-11', 'pdgId_11', 'pdgId_13', 'pdgId_22', 'pdgId_130', 'pdgId_211']
+Signal columns: ['pt', 'eta', 'phi', 'fj_phi', 'fj_eta', 'fj_pt', 'fj_mass', 'fj_msoftdrop', 'fj_particleNetWithMass_QCD', 'fj_particleNet_XbbVsQCD', 'fj_particleNet_XccVsQCD', 'fj_particleNet_XqqVsQCD', 'fj_particleNet_QCD', 'fj_particleNet_massCorr', 'trkHighPurity', 'charge', 'lostInnerHits', 'lostOuterHits', 'numberOfHits', 'numberOfPixelHits', 'pdgId', 'pvAssocQuality', 'trkAlgo', 'trkQuality', 'd0', 'd0Err', 'dz', 'dzErr', 'mass', 'puppiWeight', 'puppiWeightNoLep', 'trkChi2', 'trkEta', 'trkP', 'trkPhi', 'trkPt', 'vtxChi2', 'dz/dzErr', 'd0/d0Err', 'dR', 'within_bounds', 'log_pt', 'pdgId_-211', 'pdgId_-13', 'pdgId_-11', 'pdgId_11', 'pdgId_13', 'pdgId_22', 'pdgId_130', 'pdgId_211']
+Background rows: 125183
+Signal rows: 4067
+Node feature names: ['eta', 'phi', 'pt', 'd0/d0Err', 'dz/dzErr', 'charge', 'mass', 'log_pt', 'pdgId_-211', 'pdgId_-13', 'pdgId_-11', 'pdgId_11', 'pdgId_13', 'pdgId_22', 'pdgId_130', 'pdgId_211']
+Loading background node tensors...
+Skipping event 690 due to error: Too few nodes: 3.
+Skipping event 903 due to error: Too few nodes: 2.
+Skipping event 1095 due to error: Too few nodes: 3.
+Skipping event 2302 due to error: Feature eta is not one-dimensional.
+Skipping event 2708 due to error: Too few nodes: 3.
+Skipping event 2795 due to error: Too few nodes: 3.
+Skipping event 2994 due to error: Too few nodes: 2.
+Skipping event 5169 due to error: Too few nodes: 3.
+Skipping event 5404 due to error: Too few nodes: 3.
+Skipping event 6126 due to error: Too few nodes: 3.
+Skipping event 7154 due to error: Too few nodes: 2.
+Skipping event 7657 due to error: Feature eta is not one-dimensional.
+Skipping event 7661 due to error: Too few nodes: 3.
+Skipping event 8113 due to error: Too few nodes: 3.
+Skipping event 8834 due to error: Too few nodes: 3.
+Skipping event 9508 due to error: Too few nodes: 3.
+Skipping event 11309 due to error: Too few nodes: 3.
+Skipping event 11442 due to error: Feature eta is not one-dimensional.
+Skipping event 11894 due to error: Too few nodes: 2.
+Skipping event 14069 due to error: Too few nodes: 3.
+Skipping event 14304 due to error: Too few nodes: 3.
+Skipping event 14898 due to error: Too few nodes: 3.
+Skipping event 15402 due to error: Too few nodes: 3.
+Skipping event 15714 due to error: Too few nodes: 3.
+Skipping event 17191 due to error: Too few nodes: 3.
+Skipping event 18023 due to error: Too few nodes: 3.
+Skipping event 18236 due to error: Too few nodes: 2.
+Skipping event 18428 due to error: Too few nodes: 3.
+Skipping event 19635 due to error: Feature eta is not one-dimensional.
+Skipping event 20041 due to error: Too few nodes: 3.
+Skipping event 20128 due to error: Too few nodes: 3.
+Skipping event 20547 due to error: Too few nodes: 3.
+Skipping event 21051 due to error: Too few nodes: 3.
+Skipping event 21363 due to error: Too few nodes: 3.
+Skipping event 22840 due to error: Too few nodes: 3.
+Skipping event 23501 due to error: Too few nodes: 3.
+Skipping event 24529 due to error: Too few nodes: 2.
+Skipping event 25032 due to error: Feature eta is not one-dimensional.
+Skipping event 25036 due to error: Too few nodes: 3.
+Skipping event 25488 due to error: Too few nodes: 3.
+Skipping event 26501 due to error: Too few nodes: 2.
+Skipping event 26745 due to error: Too few nodes: 3.
+Skipping event 26797 due to error: Feature eta is not one-dimensional.
+Skipping event 28975 due to error: Too few nodes: 3.
+Skipping event 30073 due to error: Too few nodes: 2.
+Skipping event 30296 due to error: Too few nodes: 3.
+Skipping event 30607 due to error: Feature eta is not one-dimensional.
+Skipping event 31301 due to error: Too few nodes: 3.
+Skipping event 32017 due to error: Too few nodes: 3.
+Skipping event 32548 due to error: Too few nodes: 3.
+Skipping event 32565 due to error: Feature eta is not one-dimensional.
+Skipping event 34074 due to error: Too few nodes: 3.
+Skipping event 38606 due to error: Too few nodes: 3.
+Skipping event 38898 due to error: Too few nodes: 3.
+Skipping event 39034 due to error: Too few nodes: 3.
+Skipping event 39128 due to error: Too few nodes: 2.
+Skipping event 39261 due to error: Too few nodes: 2.
+Skipping event 39683 due to error: Too few nodes: 3.
+Skipping event 39904 due to error: Too few nodes: 2.
+Skipping event 39920 due to error: Too few nodes: 3.
+Skipping event 40251 due to error: Too few nodes: 3.
+Skipping event 40531 due to error: Too few nodes: 3.
+Skipping event 40688 due to error: Too few nodes: 3.
+Skipping event 41335 due to error: Too few nodes: 3.
+Skipping event 42412 due to error: Too few nodes: 3.
+Skipping event 43032 due to error: Too few nodes: 3.
+Skipping event 43513 due to error: Too few nodes: 2.
+Skipping event 44435 due to error: Too few nodes: 3.
+Skipping event 44692 due to error: Too few nodes: 3.
+Skipping event 45037 due to error: Too few nodes: 3.
+Skipping event 45650 due to error: Too few nodes: 3.
+Skipping event 45655 due to error: Too few nodes: 2.
+Skipping event 45982 due to error: Too few nodes: 3.
+Skipping event 47039 due to error: Too few nodes: 3.
+Skipping event 47921 due to error: Too few nodes: 3.
+Skipping event 48534 due to error: Too few nodes: 3.
+Skipping event 48539 due to error: Too few nodes: 2.
+Skipping event 48866 due to error: Too few nodes: 3.
+Skipping event 49923 due to error: Too few nodes: 3.
+Skipping event 50914 due to error: Too few nodes: 2.
+Skipping event 51072 due to error: Too few nodes: 3.
+Skipping event 51443 due to error: Too few nodes: 2.
+Skipping event 51686 due to error: Too few nodes: 3.
+Skipping event 53388 due to error: Too few nodes: 3.
+Skipping event 53761 due to error: Too few nodes: 2.
+Skipping event 53919 due to error: Too few nodes: 3.
+Skipping event 54290 due to error: Too few nodes: 2.
+Skipping event 54533 due to error: Too few nodes: 3.
+Skipping event 56235 due to error: Too few nodes: 3.
+Skipping event 56461 due to error: Too few nodes: 3.
+Skipping event 56740 due to error: Too few nodes: 3.
+Skipping event 56926 due to error: Too few nodes: 3.
+Skipping event 56958 due to error: Too few nodes: 2.
+Skipping event 57153 due to error: Too few nodes: 3.
+Skipping event 57865 due to error: Too few nodes: 3.
+Skipping event 58521 due to error: Too few nodes: 2.
+Skipping event 58689 due to error: Too few nodes: 3.
+Skipping event 59271 due to error: Too few nodes: 3.
+Skipping event 59550 due to error: Too few nodes: 3.
+Skipping event 59736 due to error: Too few nodes: 3.
+Skipping event 59768 due to error: Too few nodes: 2.
+Skipping event 59963 due to error: Too few nodes: 3.
+Skipping event 60675 due to error: Too few nodes: 3.
+Skipping event 61331 due to error: Too few nodes: 2.
+Skipping event 61499 due to error: Too few nodes: 3.
+Skipping event 62909 due to error: Too few nodes: 3.
+Skipping event 63270 due to error: Too few nodes: 3.
+Skipping event 65653 due to error: Too few nodes: 3.
+Skipping event 65790 due to error: Too few nodes: 3.
+Skipping event 66176 due to error: Too few nodes: 3.
+Skipping event 67708 due to error: Too few nodes: 3.
+Skipping event 67815 due to error: Feature eta is not one-dimensional.
+Skipping event 68612 due to error: Too few nodes: 3.
+Skipping event 68748 due to error: Too few nodes: 3.
+Skipping event 68842 due to error: Too few nodes: 2.
+Skipping event 68975 due to error: Too few nodes: 2.
+Skipping event 69397 due to error: Too few nodes: 3.
+Skipping event 69618 due to error: Too few nodes: 2.
+Skipping event 69634 due to error: Too few nodes: 3.
+Skipping event 69965 due to error: Too few nodes: 3.
+Skipping event 70245 due to error: Too few nodes: 3.
+Skipping event 70402 due to error: Too few nodes: 3.
+Skipping event 71049 due to error: Too few nodes: 3.
+Skipping event 71536 due to error: Feature eta is not one-dimensional.
+Skipping event 71785 due to error: Too few nodes: 3.
+Skipping event 73274 due to error: Too few nodes: 3.
+Skipping event 74443 due to error: Feature eta is not one-dimensional.
+Skipping event 75302 due to error: Too few nodes: 3.
+Skipping event 75390 due to error: Too few nodes: 3.
+Skipping event 75674 due to error: Too few nodes: 2.
+Skipping event 76596 due to error: Too few nodes: 3.
+Skipping event 77345 due to error: Too few nodes: 2.
+Skipping event 77886 due to error: Too few nodes: 3.
+Skipping event 78065 due to error: Too few nodes: 3.
+Skipping event 78431 due to error: Too few nodes: 3.
+Skipping event 78724 due to error: Too few nodes: 3.
+Skipping event 78928 due to error: Too few nodes: 3.
+Skipping event 79810 due to error: Too few nodes: 3.
+Skipping event 79834 due to error: Too few nodes: 3.
+Skipping event 80508 due to error: Too few nodes: 3.
+Skipping event 80533 due to error: Too few nodes: 3.
+Skipping event 81132 due to error: Too few nodes: 2.
+Skipping event 81302 due to error: Too few nodes: 3.
+Skipping event 82490 due to error: Feature eta is not one-dimensional.
+Skipping event 83555 due to error: Too few nodes: 3.
+Skipping event 83734 due to error: Too few nodes: 3.
+Skipping event 84100 due to error: Too few nodes: 3.
+Skipping event 84393 due to error: Too few nodes: 3.
+Skipping event 84597 due to error: Too few nodes: 3.
+Skipping event 85479 due to error: Too few nodes: 3.
+Skipping event 85503 due to error: Too few nodes: 3.
+Skipping event 86177 due to error: Too few nodes: 3.
+Skipping event 86202 due to error: Too few nodes: 3.
+Skipping event 86801 due to error: Too few nodes: 2.
+Skipping event 86971 due to error: Too few nodes: 3.
+Skipping event 88159 due to error: Feature eta is not one-dimensional.
+Skipping event 89495 due to error: Too few nodes: 3.
+Skipping event 89583 due to error: Too few nodes: 3.
+Skipping event 89867 due to error: Too few nodes: 2.
+Skipping event 90789 due to error: Too few nodes: 3.
+Skipping event 91538 due to error: Too few nodes: 2.
+Skipping event 92007 due to error: Too few nodes: 3.
+Skipping event 92032 due to error: Feature eta is not one-dimensional.
+Skipping event 92060 due to error: Too few nodes: 3.
+Skipping event 93981 due to error: Too few nodes: 3.
+Skipping event 94046 due to error: Too few nodes: 2.
+Skipping event 94859 due to error: Too few nodes: 3.
+Skipping event 95045 due to error: Too few nodes: 2.
+Skipping event 95981 due to error: Too few nodes: 3.
+Skipping event 96012 due to error: Too few nodes: 3.
+Skipping event 96576 due to error: Too few nodes: 2.
+Skipping event 97076 due to error: Too few nodes: 3.
+Skipping event 97737 due to error: Too few nodes: 3.
+Skipping event 99216 due to error: Too few nodes: 3.
+Skipping event 99303 due to error: Too few nodes: 2.
+Skipping event 100467 due to error: Too few nodes: 3.
+Skipping event 102812 due to error: Too few nodes: 2.
+Skipping event 104013 due to error: Too few nodes: 2.
+Skipping event 104949 due to error: Too few nodes: 3.
+Skipping event 104980 due to error: Too few nodes: 3.
+Skipping event 105544 due to error: Too few nodes: 2.
+Skipping event 106044 due to error: Too few nodes: 3.
+Skipping event 106705 due to error: Too few nodes: 3.
+Skipping event 108184 due to error: Too few nodes: 3.
+Skipping event 108271 due to error: Too few nodes: 2.
+Skipping event 109435 due to error: Too few nodes: 3.
+Skipping event 109839 due to error: Too few nodes: 3.
+Skipping event 109938 due to error: Too few nodes: 3.
+Skipping event 110823 due to error: Too few nodes: 3.
+Skipping event 111524 due to error: Too few nodes: 3.
+Skipping event 111617 due to error: Too few nodes: 3.
+Skipping event 112090 due to error: Too few nodes: 3.
+Skipping event 112401 due to error: Too few nodes: 3.
+Skipping event 112481 due to error: Too few nodes: 3.
+Skipping event 115973 due to error: Too few nodes: 3.
+Skipping event 116072 due to error: Too few nodes: 3.
+Skipping event 116957 due to error: Too few nodes: 3.
+Skipping event 117658 due to error: Too few nodes: 3.
+Skipping event 117751 due to error: Too few nodes: 3.
+Skipping event 118224 due to error: Too few nodes: 3.
+Skipping event 118535 due to error: Too few nodes: 3.
+Skipping event 118615 due to error: Too few nodes: 3.
+Skipping event 118925 due to error: Too few nodes: 3.
+Skipping event 120230 due to error: Too few nodes: 3.
+Skipping event 120663 due to error: Too few nodes: 3.
+Skipping event 121186 due to error: Too few nodes: 3.
+Skipping event 123050 due to error: Too few nodes: 2.
+Skipping event 124371 due to error: Too few nodes: 3.
+Skipping event 124715 due to error: Too few nodes: 3.
+Loading signal node tensors...
+Skipping event 424 due to error: Too few nodes: 3.
+Skipping event 2523 due to error: Too few nodes: 2.
+Skipping event 3794 due to error: Too few nodes: 3.
+Loaded background train events: 99979
+Loaded background val events: 24995
+Loaded signal events: 4064
+Feature mean: tensor([-8.9176e-05, -4.3704e-05,  3.6615e-02,  1.8351e-04, -6.9755e-06,
+         3.9663e-03,  1.0762e-01, -1.2395e-02,  3.8354e-01,  9.7974e-04,
+         1.6717e-03,  1.7881e-03,  9.0023e-04,  1.8262e-01,  4.0949e-02,
+         3.8755e-01])
+Feature std: tensor([0.1677, 0.1677, 0.0618, 1.3809, 1.1207, 0.8811, 0.0585, 0.9443, 0.4862,
+        0.0313, 0.0409, 0.0422, 0.0300, 0.3864, 0.1982, 0.4872])
+Example node tensor shape: torch.Size([8, 16])
+Selected SSL model: lejepa
+Model summary:
+LeJEPAParticleTransformerRepresentation(
+  (node_embedding): NodeEmbedding(
+    (net): Sequential(
+      (0): Linear(in_features=16, out_features=128, bias=True)
+      (1): GELU(approximate='none')
+      (2): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+      (3): Linear(in_features=128, out_features=512, bias=True)
+      (4): GELU(approximate='none')
+      (5): LayerNorm((512,), eps=1e-05, elementwise_affine=True)
+      (6): Linear(in_features=512, out_features=128, bias=True)
+      (7): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (pairwise_bias): PairwiseAttentionBias(
+    (mlp): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=4, out_features=16, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.1, inplace=False)
+      (4): Linear(in_features=16, out_features=16, bias=True)
+      (5): SiLU()
+      (6): Dropout(p=0.1, inplace=False)
+      (7): Linear(in_features=16, out_features=8, bias=True)
+    )
+  )
+  (encoder): ParticleTransformerEncoder(
+    (layers): ModuleList(
+      (0-7): 8 x ParticleTransformerBlock(
+        (attn_norm): RMSNorm()
+        (self_attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=128, out_features=128, bias=True)
+        )
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (ffn_norm): RMSNorm()
+        (ffn): SwiGLUFFN(
+          (fc1): Linear(in_features=128, out_features=1024, bias=True)
+          (act): SwiGLU()
+          (fc2): Linear(in_features=512, out_features=128, bias=True)
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+      )
+    )
+  )
+  (cls_pooling): CLSPooling(
+    (layers): ModuleList(
+      (0-1): 2 x ClassAttentionBlock(
+        (query_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (context_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=128, out_features=128, bias=True)
+        )
+        (attn_dropout): Dropout(p=0.0, inplace=False)
+        (ffn_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (ffn): Sequential(
+          (0): Linear(in_features=128, out_features=512, bias=True)
+          (1): GELU(approximate='none')
+          (2): Dropout(p=0.0, inplace=False)
+          (3): Linear(in_features=512, out_features=128, bias=True)
+          (4): Dropout(p=0.0, inplace=False)
+        )
+      )
+    )
+  )
+  (representation_head): RepresentationHead(
+    (net): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=128, out_features=128, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.1, inplace=False)
+      (4): Linear(in_features=128, out_features=128, bias=True)
+    )
+  )
+  (augmentation): MultiViewAugmentation()
+  (loss): LeJEPASIGRegLoss(
+    (sigreg_loss_fn): SlicingUnivariateTest(
+      (univariate_test): EppsPulley()
+    )
+  )
+)
+Number of trainable parameters: 2678508
+Initialized run summary at plots/run-lejepa/summary.json
+
+Epoch [1/200]
+Learning rate: 6.3938619e-08
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0001/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.476759
+Local-global AUC, QCD val vs WJet: 0.481734
+Epoch 1 train losses: {'total_loss': 2.6592398787398475, 'invariant_loss': 0.29995728365938795, 'sigreg_loss': 117.9694293478261}
+Epoch 1 val losses: {'total_loss': 1.5080906164889434, 'invariant_loss': 0.3302466153186195, 'sigreg_loss': 58.890943877551024}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [2/200]
+Learning rate: 5.0063939e-05
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0002/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.490876
+Local-global AUC, QCD val vs WJet: 0.491252
+Epoch 2 train losses: {'total_loss': 0.9454638575730117, 'invariant_loss': 0.2799683498680744, 'sigreg_loss': 33.2724584398977}
+Epoch 2 val losses: {'total_loss': 0.7712163239413378, 'invariant_loss': 0.17155213524796525, 'sigreg_loss': 29.991071428571427}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [3/200]
+Learning rate: 0.00010006394
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0003/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.488525
+Local-global AUC, QCD val vs WJet: 0.486933
+Epoch 3 train losses: {'total_loss': 0.7064711885988865, 'invariant_loss': 0.23738525255256906, 'sigreg_loss': 23.453644501278774}
+Epoch 3 val losses: {'total_loss': 0.6248736320709696, 'invariant_loss': 0.16220223173803214, 'sigreg_loss': 23.134566326530614}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [4/200]
+Learning rate: 0.00015006394
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0004/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.497721
+Local-global AUC, QCD val vs WJet: 0.494283
+Epoch 4 train losses: {'total_loss': 0.6085234413595151, 'invariant_loss': 0.23153971181348768, 'sigreg_loss': 18.850183823529413}
+Epoch 4 val losses: {'total_loss': 0.5491111010921245, 'invariant_loss': 0.1526366872522904, 'sigreg_loss': 19.824139030612244}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [5/200]
+Learning rate: 0.00020006394
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0005/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.493174
+Local-global AUC, QCD val vs WJet: 0.494400
+Epoch 5 train losses: {'total_loss': 0.5529980130131592, 'invariant_loss': 0.22767094269280544, 'sigreg_loss': 16.265784846547316}
+Epoch 5 val losses: {'total_loss': 0.5185171272985789, 'invariant_loss': 0.14821060503623923, 'sigreg_loss': 18.51530612244898}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [6/200]
+Learning rate: 0.00025006394
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0006/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.497715
+Local-global AUC, QCD val vs WJet: 0.497465
+Epoch 6 train losses: {'total_loss': 0.5170762967270659, 'invariant_loss': 0.22555614901168267, 'sigreg_loss': 14.575727301790282}
+Epoch 6 val losses: {'total_loss': 0.4566394911736858, 'invariant_loss': 0.15500623774619735, 'sigreg_loss': 15.081951530612244}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [7/200]
+Learning rate: 0.00030006394
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0007/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.488050
+Local-global AUC, QCD val vs WJet: 0.490170
+Epoch 7 train losses: {'total_loss': 0.49353788968394785, 'invariant_loss': 0.22134294092197856, 'sigreg_loss': 13.608735613810742}
+Epoch 7 val losses: {'total_loss': 0.46904761496247077, 'invariant_loss': 0.1463684421412799, 'sigreg_loss': 16.136479591836736}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [8/200]
+Learning rate: 0.00035006394
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0008/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.486561
+Local-global AUC, QCD val vs WJet: 0.485905
+Epoch 8 train losses: {'total_loss': 0.4726642774194098, 'invariant_loss': 0.21821167127555594, 'sigreg_loss': 12.723825127877237}
+Epoch 8 val losses: {'total_loss': 0.418480887704966, 'invariant_loss': 0.14571601916484686, 'sigreg_loss': 13.635363520408163}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [9/200]
+Learning rate: 0.00040006394
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0009/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.496814
+Local-global AUC, QCD val vs WJet: 0.498448
+Epoch 9 train losses: {'total_loss': 0.4607045454213686, 'invariant_loss': 0.21475689982056922, 'sigreg_loss': 12.295835997442456}
+Epoch 9 val losses: {'total_loss': 0.42781874704725886, 'invariant_loss': 0.13065974459964402, 'sigreg_loss': 14.855867346938776}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [10/200]
+Learning rate: 0.00045006394
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0010/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.507306
+Local-global AUC, QCD val vs WJet: 0.505216
+Epoch 10 train losses: {'total_loss': 0.44843524328583034, 'invariant_loss': 0.21260288736933028, 'sigreg_loss': 11.791759910485933}
+Epoch 10 val losses: {'total_loss': 0.41136476579977543, 'invariant_loss': 0.1326059933219637, 'sigreg_loss': 13.939094387755102}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [11/200]
+Learning rate: 0.0005
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0011/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.490114
+Local-global AUC, QCD val vs WJet: 0.491056
+Epoch 11 train losses: {'total_loss': 0.4386948443510953, 'invariant_loss': 0.21143987959684313, 'sigreg_loss': 11.362691815856778}
+Epoch 11 val losses: {'total_loss': 0.3929070777126721, 'invariant_loss': 0.14372918165611978, 'sigreg_loss': 12.46014030612245}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [12/200]
+Learning rate: 0.00049996586
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0012/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.499471
+Local-global AUC, QCD val vs WJet: 0.499535
+Epoch 12 train losses: {'total_loss': 0.42786817366967117, 'invariant_loss': 0.21029953498517157, 'sigreg_loss': 10.879076086956522}
+Epoch 12 val losses: {'total_loss': 0.3845404617640437, 'invariant_loss': 0.1438975236473643, 'sigreg_loss': 12.029655612244898}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [13/200]
+Learning rate: 0.00049986345
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0013/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.490339
+Local-global AUC, QCD val vs WJet: 0.491529
+Epoch 13 train losses: {'total_loss': 0.4200917684742252, 'invariant_loss': 0.20858543421453832, 'sigreg_loss': 10.575367647058824}
+Epoch 13 val losses: {'total_loss': 0.3774881174369734, 'invariant_loss': 0.13962539201792407, 'sigreg_loss': 11.89014668367347}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [14/200]
+Learning rate: 0.0004996928
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0014/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.501510
+Local-global AUC, QCD val vs WJet: 0.500253
+Epoch 14 train losses: {'total_loss': 0.4130309418872799, 'invariant_loss': 0.20781981472469047, 'sigreg_loss': 10.26090952685422}
+Epoch 14 val losses: {'total_loss': 0.3771722566108314, 'invariant_loss': 0.13130769582123172, 'sigreg_loss': 12.291772959183673}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [15/200]
+Learning rate: 0.00049945395
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0015/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.504013
+Local-global AUC, QCD val vs WJet: 0.502307
+Epoch 15 train losses: {'total_loss': 0.4108224082404695, 'invariant_loss': 0.206958112776127, 'sigreg_loss': 10.19373401534527}
+Epoch 15 val losses: {'total_loss': 0.358326965296755, 'invariant_loss': 0.14272587944050225, 'sigreg_loss': 10.78061224489796}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [16/200]
+Learning rate: 0.00049914698
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0016/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.501829
+Local-global AUC, QCD val vs WJet: 0.502418
+Epoch 16 train losses: {'total_loss': 0.404084189125644, 'invariant_loss': 0.2057352240966714, 'sigreg_loss': 9.917079603580563}
+Epoch 16 val losses: {'total_loss': 0.3693868260906667, 'invariant_loss': 0.12744346405474508, 'sigreg_loss': 12.096619897959183}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [17/200]
+Learning rate: 0.00049877195
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0017/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.494725
+Local-global AUC, QCD val vs WJet: 0.495608
+Epoch 17 train losses: {'total_loss': 0.40091519829486033, 'invariant_loss': 0.20461489203031105, 'sigreg_loss': 9.814538043478262}
+Epoch 17 val losses: {'total_loss': 0.3607819589729212, 'invariant_loss': 0.13624731766782244, 'sigreg_loss': 11.22720025510204}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [18/200]
+Learning rate: 0.00049832899
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0018/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.490849
+Local-global AUC, QCD val vs WJet: 0.490226
+Epoch 18 train losses: {'total_loss': 0.3983564849018746, 'invariant_loss': 0.20493903567495247, 'sigreg_loss': 9.671435421994884}
+Epoch 18 val losses: {'total_loss': 0.3598014684964199, 'invariant_loss': 0.133029703088865, 'sigreg_loss': 11.33657525510204}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [19/200]
+Learning rate: 0.0004978182
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0019/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.492827
+Local-global AUC, QCD val vs WJet: 0.491633
+Epoch 19 train losses: {'total_loss': 0.3966852150609731, 'invariant_loss': 0.205120362246128, 'sigreg_loss': 9.578164961636828}
+Epoch 19 val losses: {'total_loss': 0.3594081240649126, 'invariant_loss': 0.13103200445825958, 'sigreg_loss': 11.417729591836734}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [20/200]
+Learning rate: 0.00049723973
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0020/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.491779
+Local-global AUC, QCD val vs WJet: 0.491926
+Epoch 20 train losses: {'total_loss': 0.3933270876212498, 'invariant_loss': 0.2035192976446103, 'sigreg_loss': 9.490369245524297}
+Epoch 20 val losses: {'total_loss': 0.35801131278276443, 'invariant_loss': 0.1367501494835834, 'sigreg_loss': 11.063775510204081}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [21/200]
+Learning rate: 0.00049659374
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0021/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.495571
+Local-global AUC, QCD val vs WJet: 0.495672
+Epoch 21 train losses: {'total_loss': 0.3907342590868016, 'invariant_loss': 0.20326422555062473, 'sigreg_loss': 9.37412084398977}
+Epoch 21 val losses: {'total_loss': 0.34389123959200724, 'invariant_loss': 0.13374096565708823, 'sigreg_loss': 10.50717474489796}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [22/200]
+Learning rate: 0.00049588039
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0022/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.499264
+Local-global AUC, QCD val vs WJet: 0.497216
+Epoch 22 train losses: {'total_loss': 0.39016953971989626, 'invariant_loss': 0.20319902654880148, 'sigreg_loss': 9.347945971867007}
+Epoch 22 val losses: {'total_loss': 0.3378557094505855, 'invariant_loss': 0.13531365488864938, 'sigreg_loss': 10.127551020408163}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [23/200]
+Learning rate: 0.0004950999
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0023/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.492230
+Local-global AUC, QCD val vs WJet: 0.493146
+Epoch 23 train losses: {'total_loss': 0.38822547615031755, 'invariant_loss': 0.20252249628076774, 'sigreg_loss': 9.285006393861893}
+Epoch 23 val losses: {'total_loss': 0.34362534950582346, 'invariant_loss': 0.1377400623976576, 'sigreg_loss': 10.295918367346939}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [24/200]
+Learning rate: 0.00049425246
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0024/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.493173
+Local-global AUC, QCD val vs WJet: 0.490618
+Epoch 24 train losses: {'total_loss': 0.38548769266404154, 'invariant_loss': 0.2014724674737057, 'sigreg_loss': 9.20048753196931}
+Epoch 24 val losses: {'total_loss': 0.332814984935887, 'invariant_loss': 0.13702914920844594, 'sigreg_loss': 9.790178571428571}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [25/200]
+Learning rate: 0.00049333832
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0025/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.498209
+Local-global AUC, QCD val vs WJet: 0.495030
+Epoch 25 train losses: {'total_loss': 0.3830205065667477, 'invariant_loss': 0.20055629225338206, 'sigreg_loss': 9.122442455242966}
+Epoch 25 val losses: {'total_loss': 0.33610748347579217, 'invariant_loss': 0.13488578226189224, 'sigreg_loss': 10.06202168367347}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [26/200]
+Learning rate: 0.00049235772
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0026/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.504938
+Local-global AUC, QCD val vs WJet: 0.502477
+Epoch 26 train losses: {'total_loss': 0.38379677699502474, 'invariant_loss': 0.2002230025160953, 'sigreg_loss': 9.178708439897699}
+Epoch 26 val losses: {'total_loss': 0.3415013498493603, 'invariant_loss': 0.13408644797698577, 'sigreg_loss': 10.372927295918368}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [27/200]
+Learning rate: 0.00049131093
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0027/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.498420
+Local-global AUC, QCD val vs WJet: 0.497818
+Epoch 27 train losses: {'total_loss': 0.38215364679656066, 'invariant_loss': 0.1998598938974578, 'sigreg_loss': 9.114929667519181}
+Epoch 27 val losses: {'total_loss': 0.3379463097270654, 'invariant_loss': 0.13264895397789625, 'sigreg_loss': 10.26498724489796}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [28/200]
+Learning rate: 0.00049019823
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0028/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.492607
+Local-global AUC, QCD val vs WJet: 0.493842
+Epoch 28 train losses: {'total_loss': 0.3809825128606518, 'invariant_loss': 0.19969903988301602, 'sigreg_loss': 9.064498081841432}
+Epoch 28 val losses: {'total_loss': 0.35005990659095804, 'invariant_loss': 0.12562989713434053, 'sigreg_loss': 11.221938775510203}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [29/200]
+Learning rate: 0.00048901994
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0029/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.491794
+Local-global AUC, QCD val vs WJet: 0.489067
+Epoch 29 train losses: {'total_loss': 0.3799960711956634, 'invariant_loss': 0.19856773739885492, 'sigreg_loss': 9.070052749360613}
+Epoch 29 val losses: {'total_loss': 0.34072158181545686, 'invariant_loss': 0.12918120177880843, 'sigreg_loss': 10.574936224489797}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [30/200]
+Learning rate: 0.00048777636
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0030/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.492248
+Local-global AUC, QCD val vs WJet: 0.491649
+Epoch 30 train losses: {'total_loss': 0.3798817364151216, 'invariant_loss': 0.1995254988255708, 'sigreg_loss': 9.017902813299234}
+Epoch 30 val losses: {'total_loss': 0.3407485646252729, 'invariant_loss': 0.1295320432709188, 'sigreg_loss': 10.559789540816327}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [31/200]
+Learning rate: 0.00048646786
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0031/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.497738
+Local-global AUC, QCD val vs WJet: 0.495824
+Epoch 31 train losses: {'total_loss': 0.37769587357025924, 'invariant_loss': 0.19824251896508818, 'sigreg_loss': 8.973745204603581}
+Epoch 31 val losses: {'total_loss': 0.33541638077217706, 'invariant_loss': 0.13116035960158523, 'sigreg_loss': 10.211894132653061}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [32/200]
+Learning rate: 0.00048509477
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0032/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.496373
+Local-global AUC, QCD val vs WJet: 0.492452
+Epoch 32 train losses: {'total_loss': 0.3779338412272656, 'invariant_loss': 0.19783423215989263, 'sigreg_loss': 9.005075127877237}
+Epoch 32 val losses: {'total_loss': 0.3292497148623272, 'invariant_loss': 0.136612793430686, 'sigreg_loss': 9.630420918367347}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [33/200]
+Learning rate: 0.00048365748
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0033/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.483965
+Local-global AUC, QCD val vs WJet: 0.483065
+Epoch 33 train losses: {'total_loss': 0.3770714595418452, 'invariant_loss': 0.19732650996321607, 'sigreg_loss': 8.98765185421995}
+Epoch 33 val losses: {'total_loss': 0.33272041076300096, 'invariant_loss': 0.13673527607200098, 'sigreg_loss': 9.800223214285714}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [34/200]
+Learning rate: 0.00048215637
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0034/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.498675
+Local-global AUC, QCD val vs WJet: 0.498745
+Epoch 34 train losses: {'total_loss': 0.376577637613277, 'invariant_loss': 0.19778677205676617, 'sigreg_loss': 8.938898657289002}
+Epoch 34 val losses: {'total_loss': 0.33443049888829796, 'invariant_loss': 0.13035135503326142, 'sigreg_loss': 10.205676020408163}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [35/200]
+Learning rate: 0.00048059187
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0035/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.499704
+Local-global AUC, QCD val vs WJet: 0.499490
+Epoch 35 train losses: {'total_loss': 0.37517396252021157, 'invariant_loss': 0.19688636346546282, 'sigreg_loss': 8.914681905370845}
+Epoch 35 val losses: {'total_loss': 0.33125477390629904, 'invariant_loss': 0.13276844418474607, 'sigreg_loss': 9.925860969387756}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [36/200]
+Learning rate: 0.00047896439
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0036/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.493714
+Local-global AUC, QCD val vs WJet: 0.494357
+Epoch 36 train losses: {'total_loss': 0.3757106427036588, 'invariant_loss': 0.19656761495582284, 'sigreg_loss': 8.957121163682864}
+Epoch 36 val losses: {'total_loss': 0.3306015901723687, 'invariant_loss': 0.1362756141366399, 'sigreg_loss': 9.716677295918368}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [37/200]
+Learning rate: 0.00047727438
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0037/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.493997
+Local-global AUC, QCD val vs WJet: 0.492833
+Epoch 37 train losses: {'total_loss': 0.3731271637522656, 'invariant_loss': 0.19687386165799386, 'sigreg_loss': 8.812100383631714}
+Epoch 37 val losses: {'total_loss': 0.3260793809075745, 'invariant_loss': 0.1337812690026298, 'sigreg_loss': 9.6171875}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [38/200]
+Learning rate: 0.00047552231
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0038/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.499157
+Local-global AUC, QCD val vs WJet: 0.499691
+Epoch 38 train losses: {'total_loss': 0.37422036648253953, 'invariant_loss': 0.19594525604906593, 'sigreg_loss': 8.913722826086957}
+Epoch 38 val losses: {'total_loss': 0.32872587685682336, 'invariant_loss': 0.13061821213638297, 'sigreg_loss': 9.904655612244898}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [39/200]
+Learning rate: 0.00047370865
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0039/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.497917
+Local-global AUC, QCD val vs WJet: 0.498947
+Epoch 39 train losses: {'total_loss': 0.37348551091635623, 'invariant_loss': 0.19569680824532837, 'sigreg_loss': 8.889985613810742}
+Epoch 39 val losses: {'total_loss': 0.32955949799138673, 'invariant_loss': 0.1374008924681313, 'sigreg_loss': 9.60873724489796}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [40/200]
+Learning rate: 0.0004718339
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0040/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.490905
+Local-global AUC, QCD val vs WJet: 0.489106
+Epoch 40 train losses: {'total_loss': 0.37271477880380344, 'invariant_loss': 0.1957690166238019, 'sigreg_loss': 8.847226662404092}
+Epoch 40 val losses: {'total_loss': 0.3276834237028141, 'invariant_loss': 0.13948587685519334, 'sigreg_loss': 9.409438775510203}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [41/200]
+Learning rate: 0.00046989857
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0041/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.496653
+Local-global AUC, QCD val vs WJet: 0.499269
+Epoch 41 train losses: {'total_loss': 0.3710320716928643, 'invariant_loss': 0.19483434180240802, 'sigreg_loss': 8.810222186700766}
+Epoch 41 val losses: {'total_loss': 0.32914538787943975, 'invariant_loss': 0.13722594268620014, 'sigreg_loss': 9.596301020408163}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [42/200]
+Learning rate: 0.00046790319
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0042/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.496166
+Local-global AUC, QCD val vs WJet: 0.495822
+Epoch 42 train losses: {'total_loss': 0.37052924854828573, 'invariant_loss': 0.19414856883189868, 'sigreg_loss': 8.818494245524297}
+Epoch 42 val losses: {'total_loss': 0.3352136321517886, 'invariant_loss': 0.1275894662023199, 'sigreg_loss': 10.381218112244898}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [43/200]
+Learning rate: 0.00046584831
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0043/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.495430
+Local-global AUC, QCD val vs WJet: 0.493120
+Epoch 43 train losses: {'total_loss': 0.3691012318558095, 'invariant_loss': 0.19422910444419403, 'sigreg_loss': 8.744125639386189}
+Epoch 43 val losses: {'total_loss': 0.3361945535455431, 'invariant_loss': 0.12709059744921267, 'sigreg_loss': 10.455994897959183}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [44/200]
+Learning rate: 0.00046373448
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0044/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.494937
+Local-global AUC, QCD val vs WJet: 0.496177
+Epoch 44 train losses: {'total_loss': 0.3708523453387153, 'invariant_loss': 0.19419755434136257, 'sigreg_loss': 8.833679667519181}
+Epoch 44 val losses: {'total_loss': 0.32720643464399846, 'invariant_loss': 0.13226263449356265, 'sigreg_loss': 9.747130102040817}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [45/200]
+Learning rate: 0.00046156229
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0045/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.494522
+Local-global AUC, QCD val vs WJet: 0.494060
+Epoch 45 train losses: {'total_loss': 0.3690176335213434, 'invariant_loss': 0.19380583213951885, 'sigreg_loss': 8.759231138107417}
+Epoch 45 val losses: {'total_loss': 0.3247362860307402, 'invariant_loss': 0.13679284431344393, 'sigreg_loss': 9.396843112244898}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [46/200]
+Learning rate: 0.00045933233
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0046/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.493985
+Local-global AUC, QCD val vs WJet: 0.493794
+Epoch 46 train losses: {'total_loss': 0.36838192521306257, 'invariant_loss': 0.19394063429378183, 'sigreg_loss': 8.722426470588236}
+Epoch 46 val losses: {'total_loss': 0.330983218033703, 'invariant_loss': 0.13207337784827972, 'sigreg_loss': 9.946588010204081}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [47/200]
+Learning rate: 0.00045704521
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0047/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.498902
+Local-global AUC, QCD val vs WJet: 0.499757
+Epoch 47 train losses: {'total_loss': 0.36904620567855934, 'invariant_loss': 0.1939861330839679, 'sigreg_loss': 8.752517583120204}
+Epoch 47 val losses: {'total_loss': 0.328586325657611, 'invariant_loss': 0.13289017370921008, 'sigreg_loss': 9.782844387755102}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [48/200]
+Learning rate: 0.00045470155
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0048/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.498250
+Local-global AUC, QCD val vs WJet: 0.496422
+Epoch 48 train losses: {'total_loss': 0.36885242000260315, 'invariant_loss': 0.19421381789171482, 'sigreg_loss': 8.732536764705882}
+Epoch 48 val losses: {'total_loss': 0.33721031142132624, 'invariant_loss': 0.12808144191394047, 'sigreg_loss': 10.455516581632653}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [49/200]
+Learning rate: 0.00045230199
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0049/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.502885
+Local-global AUC, QCD val vs WJet: 0.504206
+Epoch 49 train losses: {'total_loss': 0.3681512846590003, 'invariant_loss': 0.19309183692230897, 'sigreg_loss': 8.752277813299234}
+Epoch 49 val losses: {'total_loss': 0.32658515566465807, 'invariant_loss': 0.13428704227719987, 'sigreg_loss': 9.614317602040817}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [50/200]
+Learning rate: 0.0004498472
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0050/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.499376
+Local-global AUC, QCD val vs WJet: 0.497179
+Epoch 50 train losses: {'total_loss': 0.3678700582450613, 'invariant_loss': 0.19372660619066195, 'sigreg_loss': 8.707161125319693}
+Epoch 50 val losses: {'total_loss': 0.3249312541922744, 'invariant_loss': 0.13456135501666944, 'sigreg_loss': 9.517219387755102}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [51/200]
+Learning rate: 0.00044733784
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0051/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.499706
+Local-global AUC, QCD val vs WJet: 0.499460
+Epoch 51 train losses: {'total_loss': 0.3683127550136708, 'invariant_loss': 0.1935118091342699, 'sigreg_loss': 8.74000959079284}
+Epoch 51 val losses: {'total_loss': 0.3299320668590312, 'invariant_loss': 0.13572567066519844, 'sigreg_loss': 9.71077806122449}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [52/200]
+Learning rate: 0.0004447746
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0052/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.493584
+Local-global AUC, QCD val vs WJet: 0.491048
+Epoch 52 train losses: {'total_loss': 0.36775498297970616, 'invariant_loss': 0.1927673410424186, 'sigreg_loss': 8.749000959079284}
+Epoch 52 val losses: {'total_loss': 0.3264435423271997, 'invariant_loss': 0.13193819823921943, 'sigreg_loss': 9.724968112244898}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [53/200]
+Learning rate: 0.00044215818
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0053/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.491589
+Local-global AUC, QCD val vs WJet: 0.488379
+Epoch 53 train losses: {'total_loss': 0.3662225804517946, 'invariant_loss': 0.1932592459232606, 'sigreg_loss': 8.64769820971867}
+Epoch 53 val losses: {'total_loss': 0.32531005813150987, 'invariant_loss': 0.13332584040353493, 'sigreg_loss': 9.600605867346939}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [54/200]
+Learning rate: 0.00043948929
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0054/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.506459
+Local-global AUC, QCD val vs WJet: 0.502918
+Epoch 54 train losses: {'total_loss': 0.365365635327366, 'invariant_loss': 0.19191152106999132, 'sigreg_loss': 8.672354539641944}
+Epoch 54 val losses: {'total_loss': 0.3287819517510278, 'invariant_loss': 0.12892046137427798, 'sigreg_loss': 9.99250637755102}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [55/200]
+Learning rate: 0.00043676866
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0055/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.498240
+Local-global AUC, QCD val vs WJet: 0.496365
+Epoch 55 train losses: {'total_loss': 0.367043081375644, 'invariant_loss': 0.19287277982972773, 'sigreg_loss': 8.707800511508951}
+Epoch 55 val losses: {'total_loss': 0.32233522482672516, 'invariant_loss': 0.1362602072102683, 'sigreg_loss': 9.301658163265307}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [56/200]
+Learning rate: 0.00043399705
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0056/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.496468
+Local-global AUC, QCD val vs WJet: 0.493085
+Epoch 56 train losses: {'total_loss': 0.36624943101040236, 'invariant_loss': 0.19239507644149043, 'sigreg_loss': 8.692095588235293}
+Epoch 56 val losses: {'total_loss': 0.3329320610785971, 'invariant_loss': 0.1258659307293746, 'sigreg_loss': 10.352519132653061}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [57/200]
+Learning rate: 0.00043117519
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0057/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.492503
+Local-global AUC, QCD val vs WJet: 0.491386
+Epoch 57 train losses: {'total_loss': 0.36480700771522034, 'invariant_loss': 0.19273594115167628, 'sigreg_loss': 8.603660485933505}
+Epoch 57 val losses: {'total_loss': 0.33510443476998075, 'invariant_loss': 0.1294981654429314, 'sigreg_loss': 10.28061224489796}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [58/200]
+Learning rate: 0.00042830388
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0058/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.494951
+Local-global AUC, QCD val vs WJet: 0.492014
+Epoch 58 train losses: {'total_loss': 0.3653867508444335, 'invariant_loss': 0.19266568288168945, 'sigreg_loss': 8.636988491048593}
+Epoch 58 val losses: {'total_loss': 0.329396735496667, 'invariant_loss': 0.1332870390722338, 'sigreg_loss': 9.806122448979592}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [59/200]
+Learning rate: 0.00042538389
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0059/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.499913
+Local-global AUC, QCD val vs WJet: 0.497013
+Epoch 59 train losses: {'total_loss': 0.3650678277701673, 'invariant_loss': 0.1915075652244146, 'sigreg_loss': 8.677429667519181}
+Epoch 59 val losses: {'total_loss': 0.3299075615953426, 'invariant_loss': 0.1294880354662939, 'sigreg_loss': 10.022321428571429}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [60/200]
+Learning rate: 0.00042241601
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0060/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.491084
+Local-global AUC, QCD val vs WJet: 0.487461
+Epoch 60 train losses: {'total_loss': 0.36480829893323163, 'invariant_loss': 0.19206537693129172, 'sigreg_loss': 8.637907608695652}
+Epoch 60 val losses: {'total_loss': 0.32992251825575925, 'invariant_loss': 0.1317849597912662, 'sigreg_loss': 9.908322704081632}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [61/200]
+Learning rate: 0.00041940107
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0061/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.500583
+Local-global AUC, QCD val vs WJet: 0.498673
+Epoch 61 train losses: {'total_loss': 0.3630603130744851, 'invariant_loss': 0.19088184966912966, 'sigreg_loss': 8.609135230179028}
+Epoch 61 val losses: {'total_loss': 0.3220979358468737, 'invariant_loss': 0.13082122749515943, 'sigreg_loss': 9.56297831632653}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [62/200]
+Learning rate: 0.00041633989
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0062/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.498192
+Local-global AUC, QCD val vs WJet: 0.498583
+Epoch 62 train losses: {'total_loss': 0.36213491647444723, 'invariant_loss': 0.19129017267919257, 'sigreg_loss': 8.542679028132993}
+Epoch 62 val losses: {'total_loss': 0.32873199241501944, 'invariant_loss': 0.12871604614263896, 'sigreg_loss': 9.998724489795919}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [63/200]
+Learning rate: 0.00041323329
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0063/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.495912
+Local-global AUC, QCD val vs WJet: 0.493635
+Epoch 63 train losses: {'total_loss': 0.3641137406420525, 'invariant_loss': 0.1917129902888442, 'sigreg_loss': 8.62028452685422}
+Epoch 63 val losses: {'total_loss': 0.3230973363530879, 'invariant_loss': 0.13062982014095298, 'sigreg_loss': 9.622130102040817}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [64/200]
+Learning rate: 0.00041008214
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0064/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.492775
+Local-global AUC, QCD val vs WJet: 0.488633
+Epoch 64 train losses: {'total_loss': 0.36311781074842225, 'invariant_loss': 0.19164741746223796, 'sigreg_loss': 8.572890025575447}
+Epoch 64 val losses: {'total_loss': 0.32780179426986344, 'invariant_loss': 0.12698865316960276, 'sigreg_loss': 10.041454081632653}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [65/200]
+Learning rate: 0.0004068873
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0065/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.493491
+Local-global AUC, QCD val vs WJet: 0.493158
+Epoch 65 train losses: {'total_loss': 0.36299922368715487, 'invariant_loss': 0.1909225374231558, 'sigreg_loss': 8.60402014066496}
+Epoch 65 val losses: {'total_loss': 0.324190973627324, 'invariant_loss': 0.1311380170589807, 'sigreg_loss': 9.651785714285714}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [66/200]
+Learning rate: 0.00040364962
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0066/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.497227
+Local-global AUC, QCD val vs WJet: 0.494307
+Epoch 66 train losses: {'total_loss': 0.36311524325167127, 'invariant_loss': 0.19171728037507332, 'sigreg_loss': 8.569932864450127}
+Epoch 66 val losses: {'total_loss': 0.3278354369864172, 'invariant_loss': 0.13421697211356795, 'sigreg_loss': 9.68000637755102}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [67/200]
+Learning rate: 0.00040037002
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0067/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.493388
+Local-global AUC, QCD val vs WJet: 0.494666
+Epoch 67 train losses: {'total_loss': 0.36123443141465295, 'invariant_loss': 0.1912938195954808, 'sigreg_loss': 8.49676310741688}
+Epoch 67 val losses: {'total_loss': 0.33006657477544277, 'invariant_loss': 0.1277885895830636, 'sigreg_loss': 10.114795918367347}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [68/200]
+Learning rate: 0.00039704937
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0068/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.489904
+Local-global AUC, QCD val vs WJet: 0.487883
+Epoch 68 train losses: {'total_loss': 0.3619293774790166, 'invariant_loss': 0.19097661213649203, 'sigreg_loss': 8.547714194373402}
+Epoch 68 val losses: {'total_loss': 0.3277543136964039, 'invariant_loss': 0.1301598434089398, 'sigreg_loss': 9.880261479591837}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [69/200]
+Learning rate: 0.00039368858
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0069/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.495503
+Local-global AUC, QCD val vs WJet: 0.494138
+Epoch 69 train losses: {'total_loss': 0.36152462211563763, 'invariant_loss': 0.19070797583178792, 'sigreg_loss': 8.541480179028133}
+Epoch 69 val losses: {'total_loss': 0.3308363818392462, 'invariant_loss': 0.1254593070444404, 'sigreg_loss': 10.270567602040817}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [70/200]
+Learning rate: 0.00039028859
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0070/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.495496
+Local-global AUC, QCD val vs WJet: 0.489931
+Epoch 70 train losses: {'total_loss': 0.36090000261507377, 'invariant_loss': 0.18974493182909763, 'sigreg_loss': 8.557624680306905}
+Epoch 70 val losses: {'total_loss': 0.3271492538707597, 'invariant_loss': 0.13045661010760434, 'sigreg_loss': 9.834980867346939}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [71/200]
+Learning rate: 0.0003868503
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0071/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.488457
+Local-global AUC, QCD val vs WJet: 0.488774
+Epoch 71 train losses: {'total_loss': 0.36133297427993294, 'invariant_loss': 0.19060873941463582, 'sigreg_loss': 8.53568574168798}
+Epoch 71 val losses: {'total_loss': 0.32227446488579925, 'invariant_loss': 0.1343360067706327, 'sigreg_loss': 9.39764030612245}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [72/200]
+Learning rate: 0.00038337467
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0072/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.501723
+Local-global AUC, QCD val vs WJet: 0.500603
+Epoch 72 train losses: {'total_loss': 0.3594677615196199, 'invariant_loss': 0.19025270307384184, 'sigreg_loss': 8.460517902813299}
+Epoch 72 val losses: {'total_loss': 0.3283348655214115, 'invariant_loss': 0.1257678989929204, 'sigreg_loss': 10.128507653061224}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [73/200]
+Learning rate: 0.00037986265
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0073/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.496442
+Local-global AUC, QCD val vs WJet: 0.491933
+Epoch 73 train losses: {'total_loss': 0.36033687971132183, 'invariant_loss': 0.1905636070748729, 'sigreg_loss': 8.48849104859335}
+Epoch 73 val losses: {'total_loss': 0.32305153824236926, 'invariant_loss': 0.13192928730681233, 'sigreg_loss': 9.556919642857142}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [74/200]
+Learning rate: 0.00037631519
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0074/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.493015
+Local-global AUC, QCD val vs WJet: 0.492779
+Epoch 74 train losses: {'total_loss': 0.35966689332062024, 'invariant_loss': 0.18943218835403242, 'sigreg_loss': 8.51206841432225}
+Epoch 74 val losses: {'total_loss': 0.3191499512414543, 'invariant_loss': 0.13569570845943324, 'sigreg_loss': 9.171875}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [75/200]
+Learning rate: 0.00037273327
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0075/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.499284
+Local-global AUC, QCD val vs WJet: 0.500444
+Epoch 75 train losses: {'total_loss': 0.3600677551744539, 'invariant_loss': 0.18992983248761242, 'sigreg_loss': 8.506993286445013}
+Epoch 75 val losses: {'total_loss': 0.3214430571818838, 'invariant_loss': 0.13326543972504382, 'sigreg_loss': 9.409757653061224}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [76/200]
+Learning rate: 0.00036911786
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0076/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.490793
+Local-global AUC, QCD val vs WJet: 0.489160
+Epoch 76 train losses: {'total_loss': 0.3610502865613269, 'invariant_loss': 0.1903691355072324, 'sigreg_loss': 8.533168158567776}
+Epoch 76 val losses: {'total_loss': 0.32232718945157773, 'invariant_loss': 0.13047251523453363, 'sigreg_loss': 9.59359056122449}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [77/200]
+Learning rate: 0.00036546996
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0077/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.492593
+Local-global AUC, QCD val vs WJet: 0.491829
+Epoch 77 train losses: {'total_loss': 0.360444821055283, 'invariant_loss': 0.1897680405956095, 'sigreg_loss': 8.533847506393862}
+Epoch 77 val losses: {'total_loss': 0.32267363278233274, 'invariant_loss': 0.12989720318238346, 'sigreg_loss': 9.639349489795919}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [78/200]
+Learning rate: 0.00036179055
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0078/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.488384
+Local-global AUC, QCD val vs WJet: 0.484157
+Epoch 78 train losses: {'total_loss': 0.3596163498394934, 'invariant_loss': 0.19007160790893426, 'sigreg_loss': 8.47758152173913}
+Epoch 78 val losses: {'total_loss': 0.321627071469414, 'invariant_loss': 0.1291346413520526, 'sigreg_loss': 9.623724489795919}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [79/200]
+Learning rate: 0.00035808065
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0079/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.495090
+Local-global AUC, QCD val vs WJet: 0.496592
+Epoch 79 train losses: {'total_loss': 0.35943971547629217, 'invariant_loss': 0.19000736574458954, 'sigreg_loss': 8.47142742966752}
+Epoch 79 val losses: {'total_loss': 0.32498155739538526, 'invariant_loss': 0.12717782265069533, 'sigreg_loss': 9.888711734693878}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [80/200]
+Learning rate: 0.00035434127
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0080/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.497210
+Local-global AUC, QCD val vs WJet: 0.496408
+Epoch 80 train losses: {'total_loss': 0.35981234363125414, 'invariant_loss': 0.18945837849774932, 'sigreg_loss': 8.517543158567776}
+Epoch 80 val losses: {'total_loss': 0.32283267181138603, 'invariant_loss': 0.13091820820557828, 'sigreg_loss': 9.595822704081632}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [81/200]
+Learning rate: 0.00035057343
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0081/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.486245
+Local-global AUC, QCD val vs WJet: 0.486088
+Epoch 81 train losses: {'total_loss': 0.3607290443556998, 'invariant_loss': 0.18955211945430703, 'sigreg_loss': 8.559422953964194}
+Epoch 81 val losses: {'total_loss': 0.32185200814689907, 'invariant_loss': 0.12905066505986817, 'sigreg_loss': 9.64046556122449}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [82/200]
+Learning rate: 0.00034677817
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0082/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.491156
+Local-global AUC, QCD val vs WJet: 0.487283
+Epoch 82 train losses: {'total_loss': 0.3585880485260883, 'invariant_loss': 0.1889396558522873, 'sigreg_loss': 8.48173753196931}
+Epoch 82 val losses: {'total_loss': 0.3215087927421745, 'invariant_loss': 0.13247917417664917, 'sigreg_loss': 9.45232780612245}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [83/200]
+Learning rate: 0.00034295651
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0083/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.494132
+Local-global AUC, QCD val vs WJet: 0.492411
+Epoch 83 train losses: {'total_loss': 0.35717487826829064, 'invariant_loss': 0.18855737083022248, 'sigreg_loss': 8.430107097186701}
+Epoch 83 val losses: {'total_loss': 0.33622601430635063, 'invariant_loss': 0.12168619196329798, 'sigreg_loss': 10.72735969387755}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [84/200]
+Learning rate: 0.00033910951
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0084/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.501854
+Local-global AUC, QCD val vs WJet: 0.500284
+Epoch 84 train losses: {'total_loss': 0.3584029949687021, 'invariant_loss': 0.18864533217514262, 'sigreg_loss': 8.488610933503836}
+Epoch 84 val losses: {'total_loss': 0.31576747188762744, 'invariant_loss': 0.13355884336087168, 'sigreg_loss': 9.111128826530612}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [85/200]
+Learning rate: 0.00033523822
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0085/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.498764
+Local-global AUC, QCD val vs WJet: 0.495942
+Epoch 85 train losses: {'total_loss': 0.35613273107029897, 'invariant_loss': 0.18813400513604475, 'sigreg_loss': 8.400535485933505}
+Epoch 85 val losses: {'total_loss': 0.3156369833313689, 'invariant_loss': 0.13073782615211546, 'sigreg_loss': 9.243622448979592}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [86/200]
+Learning rate: 0.00033134369
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0086/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.498415
+Local-global AUC, QCD val vs WJet: 0.495625
+Epoch 86 train losses: {'total_loss': 0.35811417631785886, 'invariant_loss': 0.18888225886599183, 'sigreg_loss': 8.461996483375959}
+Epoch 86 val losses: {'total_loss': 0.317716904288652, 'invariant_loss': 0.13205543038796405, 'sigreg_loss': 9.284438775510203}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [87/200]
+Learning rate: 0.00032742699
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0087/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.492617
+Local-global AUC, QCD val vs WJet: 0.493140
+Epoch 87 train losses: {'total_loss': 0.35785416984344687, 'invariant_loss': 0.18923791139708152, 'sigreg_loss': 8.430626598465473}
+Epoch 87 val losses: {'total_loss': 0.3144413076189099, 'invariant_loss': 0.13225260966134314, 'sigreg_loss': 9.10969387755102}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [88/200]
+Learning rate: 0.0003234892
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0088/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.492171
+Local-global AUC, QCD val vs WJet: 0.492339
+Epoch 88 train losses: {'total_loss': 0.3562262778544365, 'invariant_loss': 0.18849541925255905, 'sigreg_loss': 8.386948529411764}
+Epoch 88 val losses: {'total_loss': 0.31915104921375004, 'invariant_loss': 0.13170087090408317, 'sigreg_loss': 9.371970663265307}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [89/200]
+Learning rate: 0.00031953138
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0089/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.506503
+Local-global AUC, QCD val vs WJet: 0.504463
+Epoch 89 train losses: {'total_loss': 0.3573296028939659, 'invariant_loss': 0.18869773474762508, 'sigreg_loss': 8.431146099744245}
+Epoch 89 val losses: {'total_loss': 0.3193499027770393, 'invariant_loss': 0.1310427405548339, 'sigreg_loss': 9.41485969387755}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [90/200]
+Learning rate: 0.00031555462
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0090/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.503570
+Local-global AUC, QCD val vs WJet: 0.501768
+Epoch 90 train losses: {'total_loss': 0.35773875798715654, 'invariant_loss': 0.18865544794846678, 'sigreg_loss': 8.454363810741688}
+Epoch 90 val losses: {'total_loss': 0.3183072644228838, 'invariant_loss': 0.12923778582136242, 'sigreg_loss': 9.45232780612245}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [91/200]
+Learning rate: 0.00031156
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0091/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.499211
+Local-global AUC, QCD val vs WJet: 0.499639
+Epoch 91 train losses: {'total_loss': 0.3570508803705425, 'invariant_loss': 0.18857386277612212, 'sigreg_loss': 8.424152813299234}
+Epoch 91 val losses: {'total_loss': 0.3200435937971485, 'invariant_loss': 0.1344319454261235, 'sigreg_loss': 9.28140943877551}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [92/200]
+Learning rate: 0.00030754862
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0092/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.490822
+Local-global AUC, QCD val vs WJet: 0.488600
+Epoch 92 train losses: {'total_loss': 0.3571041406268049, 'invariant_loss': 0.18863711397513708, 'sigreg_loss': 8.423553388746804}
+Epoch 92 val losses: {'total_loss': 0.327059345281854, 'invariant_loss': 0.12295778023497182, 'sigreg_loss': 10.205994897959183}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [93/200]
+Learning rate: 0.00030352158
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0093/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.497764
+Local-global AUC, QCD val vs WJet: 0.495049
+Epoch 93 train losses: {'total_loss': 0.356737517144369, 'invariant_loss': 0.18852899257865402, 'sigreg_loss': 8.41036604859335}
+Epoch 93 val losses: {'total_loss': 0.3209014994149305, 'invariant_loss': 0.1305315981486014, 'sigreg_loss': 9.520408163265307}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [94/200]
+Learning rate: 0.00029947998
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0094/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.497222
+Local-global AUC, QCD val vs WJet: 0.494022
+Epoch 94 train losses: {'total_loss': 0.35537982410024804, 'invariant_loss': 0.18767456624590223, 'sigreg_loss': 8.385190217391305}
+Epoch 94 val losses: {'total_loss': 0.3193253575234997, 'invariant_loss': 0.12993700258737925, 'sigreg_loss': 9.467474489795919}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [95/200]
+Learning rate: 0.00029542491
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0095/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.495888
+Local-global AUC, QCD val vs WJet: 0.495884
+Epoch 95 train losses: {'total_loss': 0.3552939629806277, 'invariant_loss': 0.1878091190629603, 'sigreg_loss': 8.374160805626598}
+Epoch 95 val losses: {'total_loss': 0.32442769134531213, 'invariant_loss': 0.12889097623374998, 'sigreg_loss': 9.777264030612244}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [96/200]
+Learning rate: 0.0002913575
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0096/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.491902
+Local-global AUC, QCD val vs WJet: 0.488976
+Epoch 96 train losses: {'total_loss': 0.3558134957195243, 'invariant_loss': 0.18793527888672432, 'sigreg_loss': 8.393781969309464}
+Epoch 96 val losses: {'total_loss': 0.3135186748541131, 'invariant_loss': 0.1315043635134186, 'sigreg_loss': 9.10140306122449}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [97/200]
+Learning rate: 0.00028727885
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0097/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.490119
+Local-global AUC, QCD val vs WJet: 0.489121
+Epoch 97 train losses: {'total_loss': 0.35614429692478133, 'invariant_loss': 0.18786146811893223, 'sigreg_loss': 8.413403132992327}
+Epoch 97 val losses: {'total_loss': 0.3275853121767239, 'invariant_loss': 0.12820712081631835, 'sigreg_loss': 9.96843112244898}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [98/200]
+Learning rate: 0.00028319007
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0098/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.494477
+Local-global AUC, QCD val vs WJet: 0.493966
+Epoch 98 train losses: {'total_loss': 0.3549473549398925, 'invariant_loss': 0.18775098355453643, 'sigreg_loss': 8.360134271099744}
+Epoch 98 val losses: {'total_loss': 0.31663129326640344, 'invariant_loss': 0.13063101192974313, 'sigreg_loss': 9.299744897959183}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [99/200]
+Learning rate: 0.00027909229
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0099/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.495701
+Local-global AUC, QCD val vs WJet: 0.493444
+Epoch 99 train losses: {'total_loss': 0.3546772220403032, 'invariant_loss': 0.18791168691861965, 'sigreg_loss': 8.337635869565217}
+Epoch 99 val losses: {'total_loss': 0.3139053842394936, 'invariant_loss': 0.13038636770631587, 'sigreg_loss': 9.176339285714286}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [100/200]
+Learning rate: 0.00027498662
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0100/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.492699
+Local-global AUC, QCD val vs WJet: 0.497002
+Epoch 100 train losses: {'total_loss': 0.35586681592342495, 'invariant_loss': 0.18762270035341266, 'sigreg_loss': 8.412723785166241}
+Epoch 100 val losses: {'total_loss': 0.3214501829779878, 'invariant_loss': 0.12728862920585943, 'sigreg_loss': 9.708705357142858}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [101/200]
+Learning rate: 0.00027087419
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0101/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.493862
+Local-global AUC, QCD val vs WJet: 0.493185
+Epoch 101 train losses: {'total_loss': 0.35492054416852836, 'invariant_loss': 0.18776912952932862, 'sigreg_loss': 8.356817455242966}
+Epoch 101 val losses: {'total_loss': 0.31677292925970896, 'invariant_loss': 0.13122605163680048, 'sigreg_loss': 9.278380102040817}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [102/200]
+Learning rate: 0.00026675612
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0102/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.499541
+Local-global AUC, QCD val vs WJet: 0.497893
+Epoch 102 train losses: {'total_loss': 0.3554824153937952, 'invariant_loss': 0.18801817648551045, 'sigreg_loss': 8.372442455242966}
+Epoch 102 val losses: {'total_loss': 0.31862482671834985, 'invariant_loss': 0.1333918433864506, 'sigreg_loss': 9.261639030612244}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [103/200]
+Learning rate: 0.00026263354
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0103/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.498429
+Local-global AUC, QCD val vs WJet: 0.499695
+Epoch 103 train losses: {'total_loss': 0.3542665948190957, 'invariant_loss': 0.18702901291953938, 'sigreg_loss': 8.36173273657289}
+Epoch 103 val losses: {'total_loss': 0.3185330685608241, 'invariant_loss': 0.1273410611842968, 'sigreg_loss': 9.557876275510203}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [104/200]
+Learning rate: 0.00025850758
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0104/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.493898
+Local-global AUC, QCD val vs WJet: 0.492332
+Epoch 104 train losses: {'total_loss': 0.3528801136843079, 'invariant_loss': 0.18687946917227163, 'sigreg_loss': 8.299752237851662}
+Epoch 104 val losses: {'total_loss': 0.3227047047444752, 'invariant_loss': 0.12552377783066157, 'sigreg_loss': 9.856823979591837}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [105/200]
+Learning rate: 0.00025437935
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0105/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.494717
+Local-global AUC, QCD val vs WJet: 0.493135
+Epoch 105 train losses: {'total_loss': 0.3545466738817332, 'invariant_loss': 0.18720419300943994, 'sigreg_loss': 8.367087595907929}
+Epoch 105 val losses: {'total_loss': 0.32128555282038085, 'invariant_loss': 0.12582357516702342, 'sigreg_loss': 9.77407525510204}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [106/200]
+Learning rate: 0.00025025
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0106/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.489291
+Local-global AUC, QCD val vs WJet: 0.487526
+Epoch 106 train losses: {'total_loss': 0.35338390519475693, 'invariant_loss': 0.1878596787410014, 'sigreg_loss': 8.275575447570333}
+Epoch 106 val losses: {'total_loss': 0.3198607735791985, 'invariant_loss': 0.12735339676086999, 'sigreg_loss': 9.627232142857142}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [107/200]
+Learning rate: 0.00024612065
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0107/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.500072
+Local-global AUC, QCD val vs WJet: 0.499698
+Epoch 107 train losses: {'total_loss': 0.35393209378127855, 'invariant_loss': 0.18748125683544847, 'sigreg_loss': 8.32221067774936}
+Epoch 107 val losses: {'total_loss': 0.32307036844443304, 'invariant_loss': 0.12474347692819274, 'sigreg_loss': 9.917410714285714}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [108/200]
+Learning rate: 0.00024199242
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0108/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.498462
+Local-global AUC, QCD val vs WJet: 0.494482
+Epoch 108 train losses: {'total_loss': 0.3530326050794338, 'invariant_loss': 0.18702072177625373, 'sigreg_loss': 8.300271739130435}
+Epoch 108 val losses: {'total_loss': 0.3188436247256337, 'invariant_loss': 0.12577821215500637, 'sigreg_loss': 9.653380102040817}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [109/200]
+Learning rate: 0.00023786646
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0109/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.495462
+Local-global AUC, QCD val vs WJet: 0.489916
+Epoch 109 train losses: {'total_loss': 0.3538241765611922, 'invariant_loss': 0.1868201202481909, 'sigreg_loss': 8.350183823529411}
+Epoch 109 val losses: {'total_loss': 0.32369791062510744, 'invariant_loss': 0.12759817767964335, 'sigreg_loss': 9.805803571428571}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [110/200]
+Learning rate: 0.00023374388
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0110/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.498864
+Local-global AUC, QCD val vs WJet: 0.494924
+Epoch 110 train losses: {'total_loss': 0.3527985478720397, 'invariant_loss': 0.18672672165629198, 'sigreg_loss': 8.303468670076727}
+Epoch 110 val losses: {'total_loss': 0.3147806476573555, 'invariant_loss': 0.1295974894749875, 'sigreg_loss': 9.258769132653061}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [111/200]
+Learning rate: 0.00022962581
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0111/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.504381
+Local-global AUC, QCD val vs WJet: 0.502037
+Epoch 111 train losses: {'total_loss': 0.35446320295028977, 'invariant_loss': 0.18711385361450103, 'sigreg_loss': 8.367247442455243}
+Epoch 111 val losses: {'total_loss': 0.3185609399664159, 'invariant_loss': 0.12738886224676152, 'sigreg_loss': 9.558035714285714}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [112/200]
+Learning rate: 0.00022551338
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0112/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.500162
+Local-global AUC, QCD val vs WJet: 0.496198
+Epoch 112 train losses: {'total_loss': 0.3523341712668119, 'invariant_loss': 0.18666695687167176, 'sigreg_loss': 8.283208120204604}
+Epoch 112 val losses: {'total_loss': 0.322794855857382, 'invariant_loss': 0.12530501722833332, 'sigreg_loss': 9.873883928571429}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [113/200]
+Learning rate: 0.00022140771
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0113/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.501210
+Local-global AUC, QCD val vs WJet: 0.499386
+Epoch 113 train losses: {'total_loss': 0.352409047924954, 'invariant_loss': 0.18620547396904977, 'sigreg_loss': 8.31042199488491}
+Epoch 113 val losses: {'total_loss': 0.3176000518154125, 'invariant_loss': 0.13107661127435918, 'sigreg_loss': 9.325892857142858}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [114/200]
+Learning rate: 0.00021730993
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0114/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.493430
+Local-global AUC, QCD val vs WJet: 0.493175
+Epoch 114 train losses: {'total_loss': 0.35373920476650034, 'invariant_loss': 0.18797083759246885, 'sigreg_loss': 8.287883631713555}
+Epoch 114 val losses: {'total_loss': 0.32185192390972256, 'invariant_loss': 0.12701275526564948, 'sigreg_loss': 9.741230867346939}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [115/200]
+Learning rate: 0.00021322115
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0115/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.497917
+Local-global AUC, QCD val vs WJet: 0.493761
+Epoch 115 train losses: {'total_loss': 0.35162983270709774, 'invariant_loss': 0.1864446559944726, 'sigreg_loss': 8.25939098465473}
+Epoch 115 val losses: {'total_loss': 0.3231992884253969, 'invariant_loss': 0.12287940993448909, 'sigreg_loss': 10.01530612244898}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [116/200]
+Learning rate: 0.0002091425
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0116/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.497971
+Local-global AUC, QCD val vs WJet: 0.495366
+Epoch 116 train losses: {'total_loss': 0.35140891601819824, 'invariant_loss': 0.18620875306294093, 'sigreg_loss': 8.260150255754477}
+Epoch 116 val losses: {'total_loss': 0.31565619503356973, 'invariant_loss': 0.13004454559817605, 'sigreg_loss': 9.279017857142858}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [117/200]
+Learning rate: 0.00020507509
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0117/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.486877
+Local-global AUC, QCD val vs WJet: 0.486534
+Epoch 117 train losses: {'total_loss': 0.35177402632773075, 'invariant_loss': 0.18710647742537892, 'sigreg_loss': 8.233136189258312}
+Epoch 117 val losses: {'total_loss': 0.31388451599953127, 'invariant_loss': 0.13017616679473798, 'sigreg_loss': 9.186065051020408}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [118/200]
+Learning rate: 0.00020102002
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0118/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.499448
+Local-global AUC, QCD val vs WJet: 0.497135
+Epoch 118 train losses: {'total_loss': 0.35145066884320103, 'invariant_loss': 0.18598576013922996, 'sigreg_loss': 8.273017902813299}
+Epoch 118 val losses: {'total_loss': 0.32751366085543926, 'invariant_loss': 0.12563925540568877, 'sigreg_loss': 10.094866071428571}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [119/200]
+Learning rate: 0.00019697842
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0119/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.494110
+Local-global AUC, QCD val vs WJet: 0.491723
+Epoch 119 train losses: {'total_loss': 0.35123035307887873, 'invariant_loss': 0.18634863453143088, 'sigreg_loss': 8.243326406649617}
+Epoch 119 val losses: {'total_loss': 0.3220876227228009, 'invariant_loss': 0.12290374668581146, 'sigreg_loss': 9.959024234693878}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [120/200]
+Learning rate: 0.00019295138
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0120/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.494001
+Local-global AUC, QCD val vs WJet: 0.494150
+Epoch 120 train losses: {'total_loss': 0.3517120321617102, 'invariant_loss': 0.18615221493231976, 'sigreg_loss': 8.27857257033248}
+Epoch 120 val losses: {'total_loss': 0.31411283493650205, 'invariant_loss': 0.1273352895692295, 'sigreg_loss': 9.337850765306122}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [121/200]
+Learning rate: 0.00018894
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0121/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.499179
+Local-global AUC, QCD val vs WJet: 0.496865
+Epoch 121 train losses: {'total_loss': 0.34991347221919644, 'invariant_loss': 0.1861032255355964, 'sigreg_loss': 8.190417199488492}
+Epoch 121 val losses: {'total_loss': 0.31946536320812846, 'invariant_loss': 0.12486535086467558, 'sigreg_loss': 9.729910714285714}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [122/200]
+Learning rate: 0.00018494538
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0122/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.497228
+Local-global AUC, QCD val vs WJet: 0.495782
+Epoch 122 train losses: {'total_loss': 0.35078531511299443, 'invariant_loss': 0.18582804398158628, 'sigreg_loss': 8.24820172634271}
+Epoch 122 val losses: {'total_loss': 0.31218546796209956, 'invariant_loss': 0.1296280676460996, 'sigreg_loss': 9.128188775510203}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [123/200]
+Learning rate: 0.00018096862
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0123/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.489608
+Local-global AUC, QCD val vs WJet: 0.488883
+Epoch 123 train losses: {'total_loss': 0.3513903328982156, 'invariant_loss': 0.18587359919419985, 'sigreg_loss': 8.276254795396419}
+Epoch 123 val losses: {'total_loss': 0.313697237293331, 'invariant_loss': 0.12945576358054364, 'sigreg_loss': 9.211894132653061}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [124/200]
+Learning rate: 0.0001770108
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0124/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.494351
+Local-global AUC, QCD val vs WJet: 0.494765
+Epoch 124 train losses: {'total_loss': 0.35086226082214006, 'invariant_loss': 0.18590623877771065, 'sigreg_loss': 8.247722186700766}
+Epoch 124 val losses: {'total_loss': 0.3145378546751275, 'invariant_loss': 0.13019174995014862, 'sigreg_loss': 9.217315051020408}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [125/200]
+Learning rate: 0.00017307301
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0125/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.486734
+Local-global AUC, QCD val vs WJet: 0.484303
+Epoch 125 train losses: {'total_loss': 0.3491297674834576, 'invariant_loss': 0.18535261408752188, 'sigreg_loss': 8.18897858056266}
+Epoch 125 val losses: {'total_loss': 0.3174754820612012, 'invariant_loss': 0.1283611628626074, 'sigreg_loss': 9.455197704081632}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [126/200]
+Learning rate: 0.00016915631
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0126/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.489197
+Local-global AUC, QCD val vs WJet: 0.487604
+Epoch 126 train losses: {'total_loss': 0.34896147376893427, 'invariant_loss': 0.18522365741869984, 'sigreg_loss': 8.186780690537084}
+Epoch 126 val losses: {'total_loss': 0.313283096770851, 'invariant_loss': 0.1296096244180689, 'sigreg_loss': 9.183035714285714}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [127/200]
+Learning rate: 0.00016526178
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0127/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.495761
+Local-global AUC, QCD val vs WJet: 0.493064
+Epoch 127 train losses: {'total_loss': 0.3491486604027736, 'invariant_loss': 0.18542582991406742, 'sigreg_loss': 8.185621803069054}
+Epoch 127 val losses: {'total_loss': 0.31195711116401514, 'invariant_loss': 0.13081971240438978, 'sigreg_loss': 9.056600765306122}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [128/200]
+Learning rate: 0.00016139049
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0128/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.483593
+Local-global AUC, QCD val vs WJet: 0.484932
+Epoch 128 train losses: {'total_loss': 0.3475124705249391, 'invariant_loss': 0.18472686528092455, 'sigreg_loss': 8.138946611253196}
+Epoch 128 val losses: {'total_loss': 0.3147769065535798, 'invariant_loss': 0.12766553453949034, 'sigreg_loss': 9.354272959183673}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [129/200]
+Learning rate: 0.00015754349
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0129/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.487167
+Local-global AUC, QCD val vs WJet: 0.485578
+Epoch 129 train losses: {'total_loss': 0.3494738549794382, 'invariant_loss': 0.18548065879384576, 'sigreg_loss': 8.200047953964194}
+Epoch 129 val losses: {'total_loss': 0.31421258756700826, 'invariant_loss': 0.1283717437514237, 'sigreg_loss': 9.291135204081632}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [130/200]
+Learning rate: 0.00015372183
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0130/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.494185
+Local-global AUC, QCD val vs WJet: 0.494070
+Epoch 130 train losses: {'total_loss': 0.3487274184098939, 'invariant_loss': 0.1851363359662273, 'sigreg_loss': 8.179227941176471}
+Epoch 130 val losses: {'total_loss': 0.3134920701992755, 'invariant_loss': 0.12618140131235123, 'sigreg_loss': 9.366230867346939}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [131/200]
+Learning rate: 0.00014992657
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0131/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.495985
+Local-global AUC, QCD val vs WJet: 0.495588
+Epoch 131 train losses: {'total_loss': 0.3484247055504938, 'invariant_loss': 0.1856934227944945, 'sigreg_loss': 8.136628836317136}
+Epoch 131 val losses: {'total_loss': 0.3145682163992707, 'invariant_loss': 0.12672442372660248, 'sigreg_loss': 9.39142219387755}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [132/200]
+Learning rate: 0.00014615873
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0132/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.508728
+Local-global AUC, QCD val vs WJet: 0.505771
+Epoch 132 train losses: {'total_loss': 0.3478492522026267, 'invariant_loss': 0.18483823768394378, 'sigreg_loss': 8.149776214833759}
+Epoch 132 val losses: {'total_loss': 0.3148459831670839, 'invariant_loss': 0.1251437311269799, 'sigreg_loss': 9.48453443877551}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [133/200]
+Learning rate: 0.00014241935
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0133/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.492574
+Local-global AUC, QCD val vs WJet: 0.490693
+Epoch 133 train losses: {'total_loss': 0.34821971785991696, 'invariant_loss': 0.18514314187152306, 'sigreg_loss': 8.15389226342711}
+Epoch 133 val losses: {'total_loss': 0.31275076677604596, 'invariant_loss': 0.12773202964085706, 'sigreg_loss': 9.251753826530612}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [134/200]
+Learning rate: 0.00013870945
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0134/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.496816
+Local-global AUC, QCD val vs WJet: 0.495974
+Epoch 134 train losses: {'total_loss': 0.34743011150213765, 'invariant_loss': 0.18536256669122544, 'sigreg_loss': 8.103580562659847}
+Epoch 134 val losses: {'total_loss': 0.3112150833618884, 'invariant_loss': 0.12713305021123011, 'sigreg_loss': 9.205357142857142}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [135/200]
+Learning rate: 0.00013503004
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0135/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.498384
+Local-global AUC, QCD val vs WJet: 0.496356
+Epoch 135 train losses: {'total_loss': 0.3482336570387301, 'invariant_loss': 0.18505093253329588, 'sigreg_loss': 8.159247122762148}
+Epoch 135 val losses: {'total_loss': 0.3107479759016816, 'invariant_loss': 0.12969029550345576, 'sigreg_loss': 9.053093112244898}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [136/200]
+Learning rate: 0.00013138214
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0136/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.494572
+Local-global AUC, QCD val vs WJet: 0.492770
+Epoch 136 train losses: {'total_loss': 0.34813138606298305, 'invariant_loss': 0.18493305135261068, 'sigreg_loss': 8.159406969309464}
+Epoch 136 val losses: {'total_loss': 0.31545959230588405, 'invariant_loss': 0.12841797612455427, 'sigreg_loss': 9.35188137755102}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [137/200]
+Learning rate: 0.00012776673
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0137/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.495597
+Local-global AUC, QCD val vs WJet: 0.493570
+Epoch 137 train losses: {'total_loss': 0.34666064621694864, 'invariant_loss': 0.18407110269645902, 'sigreg_loss': 8.129235933503836}
+Epoch 137 val losses: {'total_loss': 0.30907225471978284, 'invariant_loss': 0.13193079046144776, 'sigreg_loss': 8.85857780612245}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [138/200]
+Learning rate: 0.00012418481
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0138/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.490687
+Local-global AUC, QCD val vs WJet: 0.489193
+Epoch 138 train losses: {'total_loss': 0.34756002079724047, 'invariant_loss': 0.18503291712468847, 'sigreg_loss': 8.125759271099744}
+Epoch 138 val losses: {'total_loss': 0.31363525834618783, 'invariant_loss': 0.1263146243837415, 'sigreg_loss': 9.36686862244898}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [139/200]
+Learning rate: 0.00012063735
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0139/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.486402
+Local-global AUC, QCD val vs WJet: 0.481929
+Epoch 139 train losses: {'total_loss': 0.34747102345956865, 'invariant_loss': 0.1845524207405422, 'sigreg_loss': 8.146179667519181}
+Epoch 139 val losses: {'total_loss': 0.31157554275527294, 'invariant_loss': 0.12825831618844247, 'sigreg_loss': 9.165656887755102}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [140/200]
+Learning rate: 0.00011712533
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0140/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.497453
+Local-global AUC, QCD val vs WJet: 0.493051
+Epoch 140 train losses: {'total_loss': 0.3454801227582995, 'invariant_loss': 0.18386214605682646, 'sigreg_loss': 8.081521739130435}
+Epoch 140 val losses: {'total_loss': 0.3127095816390855, 'invariant_loss': 0.12710789617683207, 'sigreg_loss': 9.279336734693878}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [141/200]
+Learning rate: 0.0001136497
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0141/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.502716
+Local-global AUC, QCD val vs WJet: 0.502483
+Epoch 141 train losses: {'total_loss': 0.3465139975252054, 'invariant_loss': 0.1846250309930433, 'sigreg_loss': 8.09406969309463}
+Epoch 141 val losses: {'total_loss': 0.31167365245673123, 'invariant_loss': 0.1288173042085706, 'sigreg_loss': 9.143494897959183}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [142/200]
+Learning rate: 0.00011021141
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0142/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.493937
+Local-global AUC, QCD val vs WJet: 0.491304
+Epoch 142 train losses: {'total_loss': 0.3479236149422043, 'invariant_loss': 0.1852279230190055, 'sigreg_loss': 8.134510869565217}
+Epoch 142 val losses: {'total_loss': 0.31715542975128913, 'invariant_loss': 0.1268328620615054, 'sigreg_loss': 9.516581632653061}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [143/200]
+Learning rate: 0.00010681142
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0143/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.490343
+Local-global AUC, QCD val vs WJet: 0.490823
+Epoch 143 train losses: {'total_loss': 0.3462953719565326, 'invariant_loss': 0.18437893208487868, 'sigreg_loss': 8.09550831202046}
+Epoch 143 val losses: {'total_loss': 0.31221504767938535, 'invariant_loss': 0.12596564162142423, 'sigreg_loss': 9.31186224489796}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [144/200]
+Learning rate: 0.00010345063
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0144/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.496097
+Local-global AUC, QCD val vs WJet: 0.494662
+Epoch 144 train losses: {'total_loss': 0.3459112468506674, 'invariant_loss': 0.18413966768385504, 'sigreg_loss': 8.088195332480819}
+Epoch 144 val losses: {'total_loss': 0.31525046043858235, 'invariant_loss': 0.12539375162854485, 'sigreg_loss': 9.49298469387755}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [145/200]
+Learning rate: 0.00010012998
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0145/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.503573
+Local-global AUC, QCD val vs WJet: 0.503659
+Epoch 145 train losses: {'total_loss': 0.3463444321051888, 'invariant_loss': 0.18464216151658228, 'sigreg_loss': 8.085118286445013}
+Epoch 145 val losses: {'total_loss': 0.3152955560659876, 'invariant_loss': 0.12569295519924895, 'sigreg_loss': 9.480548469387756}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [146/200]
+Learning rate: 9.6850375e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0146/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.498323
+Local-global AUC, QCD val vs WJet: 0.496321
+Epoch 146 train losses: {'total_loss': 0.3451555156341904, 'invariant_loss': 0.18402582018271738, 'sigreg_loss': 8.055906329923273}
+Epoch 146 val losses: {'total_loss': 0.3113604616753909, 'invariant_loss': 0.12771190125115064, 'sigreg_loss': 9.184948979591837}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [147/200]
+Learning rate: 9.3612704e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0147/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.498080
+Local-global AUC, QCD val vs WJet: 0.495232
+Epoch 147 train losses: {'total_loss': 0.3459094716688556, 'invariant_loss': 0.18495086218466233, 'sigreg_loss': 8.047993925831202}
+Epoch 147 val losses: {'total_loss': 0.31657216013694295, 'invariant_loss': 0.12288892158896339, 'sigreg_loss': 9.683992346938776}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [148/200]
+Learning rate: 9.0417857e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0148/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.498831
+Local-global AUC, QCD val vs WJet: 0.494073
+Epoch 148 train losses: {'total_loss': 0.3455746479503944, 'invariant_loss': 0.18429634525724078, 'sigreg_loss': 8.062659846547314}
+Epoch 148 val losses: {'total_loss': 0.30964113513425906, 'invariant_loss': 0.12888240293428607, 'sigreg_loss': 9.040338010204081}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [149/200]
+Learning rate: 8.7266706e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0149/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.499499
+Local-global AUC, QCD val vs WJet: 0.496289
+Epoch 149 train losses: {'total_loss': 0.34560207321363334, 'invariant_loss': 0.18452108077838292, 'sigreg_loss': 8.054028132992327}
+Epoch 149 val losses: {'total_loss': 0.31860862383428884, 'invariant_loss': 0.12321640053117762, 'sigreg_loss': 9.769770408163266}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [150/200]
+Learning rate: 8.4160113e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0150/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.494098
+Local-global AUC, QCD val vs WJet: 0.492959
+Epoch 150 train losses: {'total_loss': 0.3463862653431075, 'invariant_loss': 0.18472020972110426, 'sigreg_loss': 8.08284047314578}
+Epoch 150 val losses: {'total_loss': 0.3162844041172339, 'invariant_loss': 0.12616860931169013, 'sigreg_loss': 9.503507653061224}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [151/200]
+Learning rate: 8.1098927e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0151/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.500840
+Local-global AUC, QCD val vs WJet: 0.498877
+Epoch 151 train losses: {'total_loss': 0.3447520540041082, 'invariant_loss': 0.18398263753222688, 'sigreg_loss': 8.03818334398977}
+Epoch 151 val losses: {'total_loss': 0.3100203473349007, 'invariant_loss': 0.1272636473711048, 'sigreg_loss': 9.137914540816327}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [152/200]
+Learning rate: 7.8083986e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0152/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.494499
+Local-global AUC, QCD val vs WJet: 0.496717
+Epoch 152 train losses: {'total_loss': 0.3455187112016751, 'invariant_loss': 0.18360039791868776, 'sigreg_loss': 8.095867966751918}
+Epoch 152 val losses: {'total_loss': 0.3115166816480306, 'invariant_loss': 0.1259847506120497, 'sigreg_loss': 9.275829081632653}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [153/200]
+Learning rate: 7.5116113e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0153/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.492125
+Local-global AUC, QCD val vs WJet: 0.488568
+Epoch 153 train losses: {'total_loss': 0.344744623698237, 'invariant_loss': 0.18388342032270968, 'sigreg_loss': 8.042838874680307}
+Epoch 153 val losses: {'total_loss': 0.3103294104945903, 'invariant_loss': 0.1256644288648148, 'sigreg_loss': 9.232780612244898}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [154/200]
+Learning rate: 7.219612e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0154/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.496652
+Local-global AUC, QCD val vs WJet: 0.494594
+Epoch 154 train losses: {'total_loss': 0.3447118366846953, 'invariant_loss': 0.18373012439826567, 'sigreg_loss': 8.049392583120204}
+Epoch 154 val losses: {'total_loss': 0.31092067154086367, 'invariant_loss': 0.1260065659120375, 'sigreg_loss': 9.246173469387756}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [155/200]
+Learning rate: 6.9324805e-05
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0155/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.495860
+Local-global AUC, QCD val vs WJet: 0.493466
+Epoch 155 train losses: {'total_loss': 0.34473577926835747, 'invariant_loss': 0.1841636738356422, 'sigreg_loss': 8.02829283887468}
+Epoch 155 val losses: {'total_loss': 0.30839324544887153, 'invariant_loss': 0.12686223000744168, 'sigreg_loss': 9.075733418367347}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [156/200]
+Learning rate: 6.6502953e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0156/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.485857
+Local-global AUC, QCD val vs WJet: 0.484871
+Epoch 156 train losses: {'total_loss': 0.34491225665487596, 'invariant_loss': 0.18443568401476917, 'sigreg_loss': 8.023817135549873}
+Epoch 156 val losses: {'total_loss': 0.3102828043760086, 'invariant_loss': 0.12591178681017184, 'sigreg_loss': 9.21875}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [157/200]
+Learning rate: 6.3731336e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0157/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.490596
+Local-global AUC, QCD val vs WJet: 0.487909
+Epoch 157 train losses: {'total_loss': 0.34395379353972044, 'invariant_loss': 0.18376382127823426, 'sigreg_loss': 8.009311061381075}
+Epoch 157 val losses: {'total_loss': 0.3119325542024204, 'invariant_loss': 0.12906125788481868, 'sigreg_loss': 9.144451530612244}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [158/200]
+Learning rate: 6.1010711e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0158/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.497640
+Local-global AUC, QCD val vs WJet: 0.492742
+Epoch 158 train losses: {'total_loss': 0.3438332233663715, 'invariant_loss': 0.1841964703005598, 'sigreg_loss': 7.982257033248082}
+Epoch 158 val losses: {'total_loss': 0.31286277910884547, 'invariant_loss': 0.1252182830049067, 'sigreg_loss': 9.38233418367347}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [159/200]
+Learning rate: 5.8341823e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0159/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.493328
+Local-global AUC, QCD val vs WJet: 0.492354
+Epoch 159 train losses: {'total_loss': 0.3442204990197935, 'invariant_loss': 0.1841460410934275, 'sigreg_loss': 8.00415601023018}
+Epoch 159 val losses: {'total_loss': 0.3117356519309842, 'invariant_loss': 0.12637810732180976, 'sigreg_loss': 9.26610331632653}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [160/200]
+Learning rate: 5.57254e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0160/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.502036
+Local-global AUC, QCD val vs WJet: 0.499692
+Epoch 160 train losses: {'total_loss': 0.34410668894305557, 'invariant_loss': 0.18351397794835708, 'sigreg_loss': 8.028732416879796}
+Epoch 160 val losses: {'total_loss': 0.31091889769447095, 'invariant_loss': 0.12608949406718722, 'sigreg_loss': 9.24266581632653}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [161/200]
+Learning rate: 5.3162158e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0161/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.496722
+Local-global AUC, QCD val vs WJet: 0.497028
+Epoch 161 train losses: {'total_loss': 0.3435249772599286, 'invariant_loss': 0.18363908769758155, 'sigreg_loss': 7.993845907928389}
+Epoch 161 val losses: {'total_loss': 0.3124579819185393, 'invariant_loss': 0.12842079012521676, 'sigreg_loss': 9.202008928571429}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [162/200]
+Learning rate: 5.0652798e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0162/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.492121
+Local-global AUC, QCD val vs WJet: 0.490480
+Epoch 162 train losses: {'total_loss': 0.34420205671768966, 'invariant_loss': 0.18437548482890628, 'sigreg_loss': 7.991368286445013}
+Epoch 162 val losses: {'total_loss': 0.31019092518456126, 'invariant_loss': 0.12679148883539804, 'sigreg_loss': 9.168686224489797}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [163/200]
+Learning rate: 4.8198006e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0163/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.496446
+Local-global AUC, QCD val vs WJet: 0.495770
+Epoch 163 train losses: {'total_loss': 0.34435147332870747, 'invariant_loss': 0.1845960836200153, 'sigreg_loss': 7.9883711636828645}
+Epoch 163 val losses: {'total_loss': 0.30863686666196705, 'invariant_loss': 0.12771620456965602, 'sigreg_loss': 9.04703443877551}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [164/200]
+Learning rate: 4.5798453e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0164/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.505841
+Local-global AUC, QCD val vs WJet: 0.503573
+Epoch 164 train losses: {'total_loss': 0.3433672851308837, 'invariant_loss': 0.18348202021682963, 'sigreg_loss': 7.994685102301791}
+Epoch 164 val losses: {'total_loss': 0.31018321869932874, 'invariant_loss': 0.1268535369665039, 'sigreg_loss': 9.166454081632653}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [165/200]
+Learning rate: 4.3454794e-05
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0165/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.492024
+Local-global AUC, QCD val vs WJet: 0.490366
+Epoch 165 train losses: {'total_loss': 0.34369050179753463, 'invariant_loss': 0.1836578783286197, 'sigreg_loss': 8.00147858056266}
+Epoch 165 val losses: {'total_loss': 0.30788009704983965, 'invariant_loss': 0.1257960304845961, 'sigreg_loss': 9.104272959183673}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [166/200]
+Learning rate: 4.1167672e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0166/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.501941
+Local-global AUC, QCD val vs WJet: 0.497301
+Epoch 166 train losses: {'total_loss': 0.342385465646034, 'invariant_loss': 0.1833206628975661, 'sigreg_loss': 7.952925191815857}
+Epoch 166 val losses: {'total_loss': 0.31152827672812405, 'invariant_loss': 0.12530876650493972, 'sigreg_loss': 9.310108418367347}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [167/200]
+Learning rate: 3.8937711e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0167/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.499079
+Local-global AUC, QCD val vs WJet: 0.495249
+Epoch 167 train losses: {'total_loss': 0.3422651596157752, 'invariant_loss': 0.18317101005931644, 'sigreg_loss': 7.954283887468031}
+Epoch 167 val losses: {'total_loss': 0.31143207422324587, 'invariant_loss': 0.12530224743698323, 'sigreg_loss': 9.305644132653061}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [168/200]
+Learning rate: 3.676552e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0168/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.501623
+Local-global AUC, QCD val vs WJet: 0.499968
+Epoch 168 train losses: {'total_loss': 0.3417868180119473, 'invariant_loss': 0.18334766431613955, 'sigreg_loss': 7.921395460358056}
+Epoch 168 val losses: {'total_loss': 0.31052159335540264, 'invariant_loss': 0.12455618738824008, 'sigreg_loss': 9.298150510204081}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [169/200]
+Learning rate: 3.4651694e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0169/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.496826
+Local-global AUC, QCD val vs WJet: 0.495626
+Epoch 169 train losses: {'total_loss': 0.3419947103999765, 'invariant_loss': 0.1830710222387253, 'sigreg_loss': 7.946131713554987}
+Epoch 169 val losses: {'total_loss': 0.31048559291022165, 'invariant_loss': 0.12602489114719995, 'sigreg_loss': 9.223852040816327}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [170/200]
+Learning rate: 3.259681e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0170/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.498086
+Local-global AUC, QCD val vs WJet: 0.496737
+Epoch 170 train losses: {'total_loss': 0.34141301258903023, 'invariant_loss': 0.18320426348682559, 'sigreg_loss': 7.9102062020460355}
+Epoch 170 val losses: {'total_loss': 0.31260734477213453, 'invariant_loss': 0.12557569244990543, 'sigreg_loss': 9.35188137755102}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [171/200]
+Learning rate: 3.0601431e-05
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0171/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.492021
+Local-global AUC, QCD val vs WJet: 0.491538
+Epoch 171 train losses: {'total_loss': 0.3440259717157125, 'invariant_loss': 0.1840520417484481, 'sigreg_loss': 7.998081841432225}
+Epoch 171 val losses: {'total_loss': 0.30785372336300054, 'invariant_loss': 0.12620312994231983, 'sigreg_loss': 9.081951530612244}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [172/200]
+Learning rate: 2.8666101e-05
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0172/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.508700
+Local-global AUC, QCD val vs WJet: 0.509754
+Epoch 172 train losses: {'total_loss': 0.34222024178032373, 'invariant_loss': 0.18384352840883347, 'sigreg_loss': 7.919037723785166}
+Epoch 172 val losses: {'total_loss': 0.30709838715134835, 'invariant_loss': 0.12576667166181973, 'sigreg_loss': 9.065210459183673}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [173/200]
+Learning rate: 2.679135e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0173/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.500222
+Local-global AUC, QCD val vs WJet: 0.498701
+Epoch 173 train losses: {'total_loss': 0.34134847962337994, 'invariant_loss': 0.18308478312762191, 'sigreg_loss': 7.912883631713555}
+Epoch 173 val losses: {'total_loss': 0.30972173490694593, 'invariant_loss': 0.12758784364832906, 'sigreg_loss': 9.106505102040817}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [174/200]
+Learning rate: 2.497769e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0174/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.487081
+Local-global AUC, QCD val vs WJet: 0.484437
+Epoch 174 train losses: {'total_loss': 0.342030918887814, 'invariant_loss': 0.1833014190006439, 'sigreg_loss': 7.9375}
+Epoch 174 val losses: {'total_loss': 0.3071748389273274, 'invariant_loss': 0.12561392970383167, 'sigreg_loss': 9.079719387755102}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [175/200]
+Learning rate: 2.3225618e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0175/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.502404
+Local-global AUC, QCD val vs WJet: 0.500008
+Epoch 175 train losses: {'total_loss': 0.3408585058911072, 'invariant_loss': 0.18305436824746144, 'sigreg_loss': 7.889426150895141}
+Epoch 175 val losses: {'total_loss': 0.3086363163833715, 'invariant_loss': 0.1267814435140819, 'sigreg_loss': 9.09359056122449}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [176/200]
+Learning rate: 2.1535612e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0176/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.496895
+Local-global AUC, QCD val vs WJet: 0.497184
+Epoch 176 train losses: {'total_loss': 0.3417020633321284, 'invariant_loss': 0.183377175379897, 'sigreg_loss': 7.915640984654732}
+Epoch 176 val losses: {'total_loss': 0.31011692464959867, 'invariant_loss': 0.12584057442691862, 'sigreg_loss': 9.214604591836734}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [177/200]
+Learning rate: 1.9908134e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0177/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.491449
+Local-global AUC, QCD val vs WJet: 0.488399
+Epoch 177 train losses: {'total_loss': 0.3417829906239229, 'invariant_loss': 0.18326328953971033, 'sigreg_loss': 7.925471547314578}
+Epoch 177 val losses: {'total_loss': 0.31019084824591264, 'invariant_loss': 0.12622839322655785, 'sigreg_loss': 9.197863520408163}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [178/200]
+Learning rate: 1.8343629e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0178/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.489757
+Local-global AUC, QCD val vs WJet: 0.485649
+Epoch 178 train losses: {'total_loss': 0.34076828038905893, 'invariant_loss': 0.1826288390266316, 'sigreg_loss': 7.907169117647059}
+Epoch 178 val losses: {'total_loss': 0.30754100713802845, 'invariant_loss': 0.12671750316358343, 'sigreg_loss': 9.040338010204081}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [179/200]
+Learning rate: 1.6842525e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0179/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.496155
+Local-global AUC, QCD val vs WJet: 0.492786
+Epoch 179 train losses: {'total_loss': 0.3416793419958076, 'invariant_loss': 0.18322645213521654, 'sigreg_loss': 7.922234654731458}
+Epoch 179 val losses: {'total_loss': 0.30881879022535014, 'invariant_loss': 0.12766644286409934, 'sigreg_loss': 9.057238520408163}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [180/200]
+Learning rate: 1.5405232e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0180/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.493453
+Local-global AUC, QCD val vs WJet: 0.493123
+Epoch 180 train losses: {'total_loss': 0.3414840335431306, 'invariant_loss': 0.18344075009798455, 'sigreg_loss': 7.900855179028133}
+Epoch 180 val losses: {'total_loss': 0.3094370877560304, 'invariant_loss': 0.12664052790829114, 'sigreg_loss': 9.13982780612245}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [181/200]
+Learning rate: 1.4032144e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0181/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.502708
+Local-global AUC, QCD val vs WJet: 0.499081
+Epoch 181 train losses: {'total_loss': 0.34016437310239545, 'invariant_loss': 0.1835734451289677, 'sigreg_loss': 7.829124040920716}
+Epoch 181 val losses: {'total_loss': 0.3097691666714999, 'invariant_loss': 0.12545793925469018, 'sigreg_loss': 9.216677295918368}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [182/200]
+Learning rate: 1.2723635e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0182/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.492119
+Local-global AUC, QCD val vs WJet: 0.489957
+Epoch 182 train losses: {'total_loss': 0.3408481512990449, 'invariant_loss': 0.1834124099186924, 'sigreg_loss': 7.8711237212276215}
+Epoch 182 val losses: {'total_loss': 0.30874989181756973, 'invariant_loss': 0.12746800162962504, 'sigreg_loss': 9.064572704081632}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [183/200]
+Learning rate: 1.1480064e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0183/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.498648
+Local-global AUC, QCD val vs WJet: 0.498948
+Epoch 183 train losses: {'total_loss': 0.34052270060152656, 'invariant_loss': 0.18270482629766244, 'sigreg_loss': 7.890185421994885}
+Epoch 183 val losses: {'total_loss': 0.30833277288748295, 'invariant_loss': 0.12506786277707743, 'sigreg_loss': 9.162627551020408}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [184/200]
+Learning rate: 1.0301769e-05
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0184/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.495256
+Local-global AUC, QCD val vs WJet: 0.494383
+Epoch 184 train losses: {'total_loss': 0.3406841565885812, 'invariant_loss': 0.1825191148787813, 'sigreg_loss': 7.908407928388747}
+Epoch 184 val losses: {'total_loss': 0.30723949521780014, 'invariant_loss': 0.12696406138794764, 'sigreg_loss': 9.012595663265307}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [185/200]
+Learning rate: 9.1890747e-06
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0185/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.488969
+Local-global AUC, QCD val vs WJet: 0.485791
+Epoch 185 train losses: {'total_loss': 0.3412361819954479, 'invariant_loss': 0.18338334074486856, 'sigreg_loss': 7.891664002557545}
+Epoch 185 val losses: {'total_loss': 0.3084445499948093, 'invariant_loss': 0.1260067288364683, 'sigreg_loss': 9.121014030612244}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [186/200]
+Learning rate: 8.1422836e-06
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0186/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.498791
+Local-global AUC, QCD val vs WJet: 0.495720
+Epoch 186 train losses: {'total_loss': 0.3418014345647734, 'invariant_loss': 0.1834471999379375, 'sigreg_loss': 7.9174792199488495}
+Epoch 186 val losses: {'total_loss': 0.30770461276477695, 'invariant_loss': 0.12577001910124505, 'sigreg_loss': 9.096460459183673}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [187/200]
+Learning rate: 7.1616823e-06
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0187/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.499223
+Local-global AUC, QCD val vs WJet: 0.499087
+Epoch 187 train losses: {'total_loss': 0.3410459416906547, 'invariant_loss': 0.1832805162348101, 'sigreg_loss': 7.887547953964194}
+Epoch 187 val losses: {'total_loss': 0.3078257427835951, 'invariant_loss': 0.12605058846577089, 'sigreg_loss': 9.088329081632653}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [188/200]
+Learning rate: 6.247539e-06
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0188/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.501856
+Local-global AUC, QCD val vs WJet: 0.496200
+Epoch 188 train losses: {'total_loss': 0.3404033667100665, 'invariant_loss': 0.18283462768320538, 'sigreg_loss': 7.878316815856778}
+Epoch 188 val losses: {'total_loss': 0.3084506038196233, 'invariant_loss': 0.12547467614771152, 'sigreg_loss': 9.14923469387755}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [189/200]
+Learning rate: 5.4001035e-06
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0189/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.501237
+Local-global AUC, QCD val vs WJet: 0.497386
+Epoch 189 train losses: {'total_loss': 0.3404734322177175, 'invariant_loss': 0.18293466464714017, 'sigreg_loss': 7.876498561381074}
+Epoch 189 val losses: {'total_loss': 0.30819456309688337, 'invariant_loss': 0.12723155034591957, 'sigreg_loss': 9.04751275510204}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [190/200]
+Learning rate: 4.6196076e-06
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0190/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.489457
+Local-global AUC, QCD val vs WJet: 0.488498
+Epoch 190 train losses: {'total_loss': 0.3406400133657943, 'invariant_loss': 0.18299821968121296, 'sigreg_loss': 7.882273017902813}
+Epoch 190 val losses: {'total_loss': 0.3065460763719617, 'invariant_loss': 0.12609625714165823, 'sigreg_loss': 9.02407525510204}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [191/200]
+Learning rate: 3.9062645e-06
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0191/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.496090
+Local-global AUC, QCD val vs WJet: 0.495088
+Epoch 191 train losses: {'total_loss': 0.3402268165517646, 'invariant_loss': 0.18302022987771827, 'sigreg_loss': 7.860493925831202}
+Epoch 191 val losses: {'total_loss': 0.3082727528348261, 'invariant_loss': 0.12708552900169576, 'sigreg_loss': 9.060108418367347}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [192/200]
+Learning rate: 3.2602693e-06
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0192/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.498429
+Local-global AUC, QCD val vs WJet: 0.495047
+Epoch 192 train losses: {'total_loss': 0.3404688545314552, 'invariant_loss': 0.18321169152512878, 'sigreg_loss': 7.8626718350383635}
+Epoch 192 val losses: {'total_loss': 0.30715705697633783, 'invariant_loss': 0.12464449775158143, 'sigreg_loss': 9.127072704081632}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [193/200]
+Learning rate: 2.6817987e-06
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0193/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.503991
+Local-global AUC, QCD val vs WJet: 0.502858
+Epoch 193 train losses: {'total_loss': 0.3404433707065899, 'invariant_loss': 0.18293707169916318, 'sigreg_loss': 7.875799232736573}
+Epoch 193 val losses: {'total_loss': 0.3085251953072694, 'invariant_loss': 0.12661551467466112, 'sigreg_loss': 9.095982142857142}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [194/200]
+Learning rate: 2.1710107e-06
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0194/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.493490
+Local-global AUC, QCD val vs WJet: 0.489789
+Epoch 194 train losses: {'total_loss': 0.3392894353022051, 'invariant_loss': 0.1822426950039766, 'sigreg_loss': 7.851822250639386}
+Epoch 194 val losses: {'total_loss': 0.3080396440868475, 'invariant_loss': 0.12602034887793112, 'sigreg_loss': 9.102997448979592}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [195/200]
+Learning rate: 1.7280451e-06
+Saved new best model to plots/run-lejepa/best_model.pth
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0195/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.504691
+Local-global AUC, QCD val vs WJet: 0.502643
+Epoch 195 train losses: {'total_loss': 0.3410602379637911, 'invariant_loss': 0.18348650447547893, 'sigreg_loss': 7.8784367007672635}
+Epoch 195 val losses: {'total_loss': 0.3057709203995004, 'invariant_loss': 0.12500222350413703, 'sigreg_loss': 9.037627551020408}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [196/200]
+Learning rate: 1.3530229e-06
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0196/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.502501
+Local-global AUC, QCD val vs WJet: 0.499547
+Epoch 196 train losses: {'total_loss': 0.34072980433321365, 'invariant_loss': 0.18389536049741004, 'sigreg_loss': 7.84107257033248}
+Epoch 196 val losses: {'total_loss': 0.3067277409896559, 'invariant_loss': 0.12498248083402916, 'sigreg_loss': 9.088488520408163}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [197/200]
+Learning rate: 1.0460466e-06
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0197/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.497941
+Local-global AUC, QCD val vs WJet: 0.499114
+Epoch 197 train losses: {'total_loss': 0.3400925428742338, 'invariant_loss': 0.182877839173731, 'sigreg_loss': 7.860653772378517}
+Epoch 197 val losses: {'total_loss': 0.3091927905167852, 'invariant_loss': 0.12714360034739486, 'sigreg_loss': 9.10188137755102}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [198/200]
+Learning rate: 8.0720021e-07
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0198/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.499617
+Local-global AUC, QCD val vs WJet: 0.495061
+Epoch 198 train losses: {'total_loss': 0.33994750259325024, 'invariant_loss': 0.182911376971418, 'sigreg_loss': 7.851822250639386}
+Epoch 198 val losses: {'total_loss': 0.30731527385663016, 'invariant_loss': 0.12552517192552284, 'sigreg_loss': 9.089604591836734}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [199/200]
+Learning rate: 6.3654898e-07
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0199/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.494803
+Local-global AUC, QCD val vs WJet: 0.492559
+Epoch 199 train losses: {'total_loss': 0.340616804521407, 'invariant_loss': 0.18316233097134954, 'sigreg_loss': 7.872842071611253}
+Epoch 199 val losses: {'total_loss': 0.30972459760247445, 'invariant_loss': 0.12672375724175755, 'sigreg_loss': 9.150350765306122}
+Updated run summary at plots/run-lejepa/summary.json
+
+Epoch [200/200]
+Learning rate: 5.3413958e-07
+Local-global metrics saved to plots/run-lejepa/local-global_eval/epoch_0200/local-global_metrics.json
+Local-global AUC, QCD train vs WJet: 0.490977
+Local-global AUC, QCD val vs WJet: 0.487500
+Epoch 200 train losses: {'total_loss': 0.3405744005423373, 'invariant_loss': 0.18258294284038837, 'sigreg_loss': 7.898897058823529}
+Epoch 200 val losses: {'total_loss': 0.3082773353980512, 'invariant_loss': 0.12596905752256207, 'sigreg_loss': 9.114477040816327}
+Updated run summary at plots/run-lejepa/summary.json
+Saved run summary to plots/run-lejepa/summary.json
