@@ -2263,6 +2263,7 @@ class TrainLeJEPAParticleTransformer:
             "ffn_mult": self.args.ffn_mult,
             "dropout": self.args.dropout,
             "num_trainable_parameters": int(self.num_params),
+            "pairwise_hidden_dim": self.pairwise_hidden_dim, 
 
             # Optimization.
             "epochs": self.args.epochs,

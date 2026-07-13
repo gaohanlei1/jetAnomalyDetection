@@ -59,12 +59,16 @@ except ImportError:
     )
 
 from models.part_jetclass import (
+    CorruptedNegativeAugmentationConfig,
     LeJEPALossConfig,
     LeJEPAParticleTransformerRepresentation,
     LeJEPASemiSupervisedParticleTransformerRepresentation,
+    LeJEPASemiSupervisedTripletParticleTransformerRepresentation,
+    LeJEPATripletParticleTransformerRepresentation,
     MultiViewAugmentationConfig,
     ParticleTransformerConfig,
     SemiSupervisedLossConfig,
+    TripletLossConfig,
 )
 from visualize.plot_metrics import plot_roc_curve
 
@@ -118,6 +122,16 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=128,
         help="Training default is 128; summary.json currently does not store it.",
+    )
+    parser.add_argument(
+        "--full-latent-space",
+        choices=["representation", "cls"],
+        default="representation",
+        help=(
+            "Which unaugmented latent to use for density scores. "
+            "'representation' applies representation_head to the CLS state and "
+            "matches LeJEPA/triplet losses; 'cls' keeps old raw-CLS behavior."
+        ),
     )
     return parser.parse_args()
 
@@ -240,6 +254,53 @@ def build_model(summary: Dict[str, object], device: torch.device) -> torch.nn.Mo
     )
 
     model_name = str(summary.get("model", "semi-sup"))
+
+    negative_augmentation_config = None
+    triplet_loss_config = None
+    if model_name in {"triplet", "semi-sup-triplet"}:
+        negative_augmentation_config = CorruptedNegativeAugmentationConfig(
+            num_negative_views=int(summary.get("num_negative_views", 4)),
+            batch_mix_prob=float(summary.get("batch_mix_prob", 0.45)),
+            pt_resample_prob=float(summary.get("pt_resample_prob", 0.25)),
+            node_eta_phi_rotation_prob=float(
+                summary.get("node_eta_phi_rotation_prob", 0.20)
+            ),
+            eta_phi_shuffle_prob=float(summary.get("eta_phi_shuffle_prob", 0.05)),
+            identity_shuffle_prob=float(summary.get("identity_shuffle_prob", 0.05)),
+            min_nodes=int(summary.get("min_nodes", 4)),
+            eps=float(summary.get("eps", 1e-8)),
+            eta_index=features.index("part_eta"),
+            phi_index=features.index("part_phi"),
+            deta_index=features.index("part_deta"),
+            dphi_index=features.index("part_dphi"),
+            pt_index=features.index("part_pt"),
+            d0_index=features.index("part_d0val"),
+            dz_index=features.index("part_dzval"),
+            charge_index=features.index("part_charge"),
+            identity_start_index=features.index("part_isChargedHadron"),
+            identity_end_index=features.index("part_isMuon") + 1,
+            corrupt_node_frac=float(summary.get("corrupt_node_frac", 0.5)),
+            batch_mix_anchor_frac_min=float(
+                summary.get("batch_mix_anchor_frac_min", 0.3)
+            ),
+            batch_mix_anchor_frac_max=float(
+                summary.get("batch_mix_anchor_frac_max", 0.7)
+            ),
+            renormalize_pt_sum=bool(
+                summary.get("renormalize_negative_pt_sum", True)
+            ),
+        )
+        triplet_loss_config = TripletLossConfig(
+            triplet_weight=float(summary.get("triplet_weight", 0.1)),
+            triplet_margin=float(summary.get("triplet_margin", 1.0)),
+            normalize_representations_for_triplet=bool(
+                summary.get("normalize_representations_for_triplet", False)
+            ),
+            use_global_views_as_positives=not bool(
+                summary.get("use_all_views_as_triplet_positives", False)
+            ),
+        )
+
     if model_name == "semi-sup":
         backgrounds = list(summary["background_labels"])
         model = LeJEPASemiSupervisedParticleTransformerRepresentation(
@@ -253,6 +314,29 @@ def build_model(summary: Dict[str, object], device: torch.device) -> torch.nn.Mo
                 ),
             ),
         )
+    elif model_name == "semi-sup-triplet":
+        backgrounds = list(summary["background_labels"])
+        model = LeJEPASemiSupervisedTripletParticleTransformerRepresentation(
+            model_config=model_config,
+            augmentation_config=augmentation_config,
+            negative_augmentation_config=negative_augmentation_config,
+            loss_config=loss_config,
+            triplet_loss_config=triplet_loss_config,
+            semi_supervised_config=SemiSupervisedLossConfig(
+                classification_weight=float(summary.get("classification_weight", 0.1)),
+                num_classes=int(
+                    summary.get("num_classification_classes", len(backgrounds))
+                ),
+            ),
+        )
+    elif model_name == "triplet":
+        model = LeJEPATripletParticleTransformerRepresentation(
+            model_config=model_config,
+            augmentation_config=augmentation_config,
+            negative_augmentation_config=negative_augmentation_config,
+            loss_config=loss_config,
+            triplet_loss_config=triplet_loss_config,
+        )
     elif model_name == "lejepa":
         model = LeJEPAParticleTransformerRepresentation(
             model_config=model_config,
@@ -261,7 +345,8 @@ def build_model(summary: Dict[str, object], device: torch.device) -> torch.nn.Mo
         )
     else:
         raise ValueError(
-            "This one-off script supports model='semi-sup' and 'lejepa'; "
+            "This diagnostic script supports model='lejepa', 'semi-sup', "
+            "'triplet', and 'semi-sup-triplet'; "
             f"found {model_name!r}."
         )
     return model.to(device)
@@ -290,6 +375,23 @@ def read_state_dict(checkpoint_path: Path, device: torch.device) -> Dict[str, to
 
 
 @torch.no_grad()
+def encode_single_view(
+    model: torch.nn.Module,
+    x: torch.Tensor,
+    padding_mask: torch.Tensor,
+    latent_space: str = "representation",
+) -> torch.Tensor:
+    cls = model(x, padding_mask=padding_mask)
+    if latent_space == "cls":
+        return cls
+    if latent_space != "representation":
+        raise ValueError(f"Unknown latent_space={latent_space!r}.")
+    if hasattr(model, "representation_head"):
+        return model.representation_head(cls)
+    return cls
+
+
+@torch.no_grad()
 def collect_full_latents(
     model: torch.nn.Module,
     loader: DataLoader,
@@ -297,6 +399,7 @@ def collect_full_latents(
     device: torch.device,
     precision: str,
     description: str,
+    latent_space: str = "representation",
 ) -> Tuple[np.ndarray, np.ndarray]:
     model.eval()
     zs, ys = [], []
@@ -306,7 +409,12 @@ def collect_full_latents(
         x = batch["x_particles"].to(device, non_blocking=True)
         mask = batch["padding_mask"].to(device, non_blocking=True)
         with autocast_context(device, precision):
-            z = model(x, padding_mask=mask)
+            z = encode_single_view(
+                model,
+                x,
+                padding_mask=mask,
+                latent_space=latent_space,
+            )
         zs.append(z.detach().float().cpu())
         ys.append(batch["y"].float())
     return torch.cat(zs).numpy(), torch.cat(ys).numpy()
@@ -315,7 +423,7 @@ def collect_full_latents(
 def project_labels(
     y: torch.Tensor, model_name: str, background_labels: Sequence[str]
 ) -> torch.Tensor:
-    if model_name != "semi-sup":
+    if model_name not in {"semi-sup", "semi-sup-triplet"}:
         return y
     indices = [JETCLASS_LABELS.index(label) for label in background_labels]
     return y[:, indices]
@@ -418,6 +526,130 @@ def collect_local_global_metrics(
         for key, values in collected.items()
     }
 
+
+
+def triplet_response_metrics(
+    z_views: torch.Tensor,
+    z_negatives: torch.Tensor,
+    num_global_views: int,
+    margin: float,
+    use_global_views_as_positives: bool,
+    normalize: bool = False,
+) -> Dict[str, torch.Tensor]:
+    """Event-level diagnostics matching the triplet training geometry.
+
+    Returns shape-(B,) tensors. Larger `margin_score` or `hinge_violation`
+    means the event violates the learned positive-vs-negative separation more.
+    """
+
+    if z_views.ndim != 3 or z_negatives.ndim != 3:
+        raise ValueError(
+            f"Expected z_views/z_negatives as (V,B,D)/(K,B,D), got "
+            f"{tuple(z_views.shape)} and {tuple(z_negatives.shape)}."
+        )
+    if not 1 <= num_global_views <= z_views.size(0):
+        raise ValueError(
+            f"Invalid num_global_views={num_global_views} for z_views={tuple(z_views.shape)}."
+        )
+
+    z_views = z_views.float()
+    z_negatives = z_negatives.float()
+    if normalize:
+        z_views = F.normalize(z_views, p=2, dim=-1)
+        z_negatives = F.normalize(z_negatives, p=2, dim=-1)
+
+    anchor = z_views[:num_global_views].mean(dim=0)
+    positives = z_views[:num_global_views] if use_global_views_as_positives else z_views
+
+    d_pos = (positives - anchor.unsqueeze(0)).square().mean(dim=-1)  # (P, B)
+    d_neg = (z_negatives - anchor.unsqueeze(0)).square().mean(dim=-1)  # (K, B)
+
+    # Per-event average distances.
+    d_pos_mean = d_pos.mean(dim=0)
+    d_neg_mean = d_neg.mean(dim=0)
+
+    # AUC is invariant under adding the constant margin, but keeping it makes
+    # the number directly interpretable as a margin violation before ReLU.
+    margin_score = d_pos_mean - d_neg_mean + float(margin)
+
+    # Exact event-wise analogue of the training triplet loss before batch mean.
+    hinge_violation = F.relu(
+        d_pos.unsqueeze(0) - d_neg.unsqueeze(1) + float(margin)
+    ).mean(dim=(0, 1))
+
+    cosine_pos = (
+        1.0
+        - F.cosine_similarity(positives, anchor.unsqueeze(0), dim=-1, eps=1e-12)
+    ).mean(dim=0)
+    cosine_neg = (
+        1.0
+        - F.cosine_similarity(z_negatives, anchor.unsqueeze(0), dim=-1, eps=1e-12)
+    ).mean(dim=0)
+    cosine_margin_score = cosine_pos - cosine_neg + float(margin)
+
+    return {
+        "triplet_pos_distance": d_pos_mean,
+        "triplet_neg_distance": d_neg_mean,
+        "triplet_distance_gap": d_neg_mean - d_pos_mean,
+        "triplet_margin_score": margin_score,
+        "triplet_hinge_violation": hinge_violation,
+        "triplet_pos_cosine_distance": cosine_pos,
+        "triplet_neg_cosine_distance": cosine_neg,
+        "triplet_cosine_margin_score": cosine_margin_score,
+    }
+
+
+@torch.no_grad()
+def collect_triplet_metrics(
+    model: torch.nn.Module,
+    loader: DataLoader,
+    steps: int,
+    device: torch.device,
+    precision: str,
+    model_name: str,
+    background_labels: Sequence[str],
+    num_global_views: int,
+    margin: float,
+    use_global_views_as_positives: bool,
+    normalize: bool,
+    description: str,
+) -> Dict[str, np.ndarray]:
+    model.eval()
+    collected: Dict[str, List[torch.Tensor]] = {}
+    iterator = iter(loader)
+
+    for _ in tqdm(range(steps), desc=description):
+        batch = next(iterator)
+        x = batch["x_particles"].to(device, non_blocking=True)
+        mask = batch["padding_mask"].to(device, non_blocking=True)
+        y = project_labels(
+            batch["y"].to(device, non_blocking=True),
+            model_name,
+            background_labels,
+        )
+        with autocast_context(device, precision):
+            output = model.forward_pretrain(x, y, padding_mask=mask)
+
+        if "z_negatives" not in output:
+            raise RuntimeError(
+                "The loaded model did not return z_negatives. "
+                "Triplet diagnostics require model='triplet' or 'semi-sup-triplet'."
+            )
+        metrics = triplet_response_metrics(
+            output["z_views"],
+            output["z_negatives"],
+            num_global_views=num_global_views,
+            margin=margin,
+            use_global_views_as_positives=use_global_views_as_positives,
+            normalize=normalize,
+        )
+        for key, value in metrics.items():
+            collected.setdefault(key, []).append(value.detach().float().cpu())
+
+    return {
+        key: torch.cat(values).numpy().astype(np.float64)
+        for key, values in collected.items()
+    }
 
 def label_ids(y: np.ndarray) -> np.ndarray:
     if y.ndim != 2 or y.shape[1] != len(JETCLASS_LABELS):
@@ -1019,7 +1251,7 @@ def main() -> None:
     checkpoint_path = (
         args.checkpoint.expanduser().resolve()
         if args.checkpoint
-        else run_dir / "best_model.pth"
+        else run_dir / "last_model.pth"
     )
     output_dir = (
         args.output_dir.expanduser().resolve()
@@ -1071,6 +1303,7 @@ def main() -> None:
 
     print(f"Loading {checkpoint_path} on {device}")
     print(f"Sampling {steps} x {batch_size} events from each split")
+    print(f"Full-jet density latent space: {args.full_latent_space}")
     model = build_model(summary, device)
     model.load_state_dict(read_state_dict(checkpoint_path, device), strict=True)
     model.eval()
@@ -1092,6 +1325,7 @@ def main() -> None:
         device,
         precision,
         "Full latent: background train",
+        latent_space=args.full_latent_space,
     )
     val_z, val_y = collect_full_latents(
         model,
@@ -1100,6 +1334,7 @@ def main() -> None:
         device,
         precision,
         "Full latent: background validation",
+        latent_space=args.full_latent_space,
     )
     signal_z, _ = collect_full_latents(
         model,
@@ -1108,6 +1343,7 @@ def main() -> None:
         device,
         precision,
         "Full latent: Wjet",
+        latent_space=args.full_latent_space,
     )
 
     fit_idx, heldout_idx = stratified_split(
@@ -1365,7 +1601,161 @@ def main() -> None:
         f"{np.median(signal_lg_metrics['global_anchor_norm']):.6f}"
     )
 
-    print("\n[4/8] Per-class centroid and Mahalanobis diagnostic")
+
+
+    triplet_response = None
+    triplet_metric_arrays: Dict[str, Dict[str, np.ndarray]] = {}
+    if model_name in {"triplet", "semi-sup-triplet"}:
+        print("\n[4/9] Triplet positive-vs-corrupted-negative response diagnostic")
+        triplet_margin = float(summary.get("triplet_margin", 1.0))
+        triplet_use_global_positives = not bool(
+            summary.get("use_all_views_as_triplet_positives", False)
+        )
+        triplet_normalize = bool(
+            summary.get("normalize_representations_for_triplet", False)
+        )
+
+        train_triplet_metrics = collect_triplet_metrics(
+            model,
+            make_loader(train_dir, backgrounds, seed=seed + 101, **common),
+            steps,
+            device,
+            precision,
+            model_name,
+            backgrounds,
+            num_global_views,
+            triplet_margin,
+            triplet_use_global_positives,
+            triplet_normalize,
+            "Triplet response: background train",
+        )
+        val_triplet_metrics = collect_triplet_metrics(
+            model,
+            make_loader(val_dir, backgrounds, seed=seed + 202, **common),
+            steps,
+            device,
+            precision,
+            model_name,
+            backgrounds,
+            num_global_views,
+            triplet_margin,
+            triplet_use_global_positives,
+            triplet_normalize,
+            "Triplet response: background validation",
+        )
+        signal_triplet_metrics = collect_triplet_metrics(
+            model,
+            make_loader(test_dir, signals, seed=seed + 303, **common),
+            steps,
+            device,
+            precision,
+            model_name,
+            backgrounds,
+            num_global_views,
+            triplet_margin,
+            triplet_use_global_positives,
+            triplet_normalize,
+            "Triplet response: Wjet",
+        )
+
+        triplet_metric_arrays = {
+            "train": train_triplet_metrics,
+            "validation": val_triplet_metrics,
+            "wjet": signal_triplet_metrics,
+        }
+
+        triplet_response = {
+            "definition": (
+                "event-level triplet response from generated positive views and "
+                "corrupted negative views; larger margin/hinge scores indicate "
+                "weaker learned separation"
+            ),
+            "triplet_margin": triplet_margin,
+            "use_global_views_as_positives": triplet_use_global_positives,
+            "normalize_representations_for_triplet": triplet_normalize,
+            "metrics": {},
+        }
+        for key in (
+            "triplet_margin_score",
+            "triplet_hinge_violation",
+            "triplet_distance_gap",
+            "triplet_pos_distance",
+            "triplet_neg_distance",
+            "triplet_cosine_margin_score",
+            "triplet_pos_cosine_distance",
+            "triplet_neg_cosine_distance",
+        ):
+            train_values = train_triplet_metrics[key]
+            val_values = val_triplet_metrics[key]
+            signal_values = signal_triplet_metrics[key]
+            # For distance_gap, normal events should usually have larger
+            # negative-positive gap, so use the sign that makes larger=anomaly.
+            if key == "triplet_distance_gap":
+                train_score_for_auc = -train_values
+                val_score_for_auc = -val_values
+                signal_score_for_auc = -signal_values
+                score_description = "negative distance gap, i.e. d_pos - d_neg"
+            else:
+                train_score_for_auc = train_values
+                val_score_for_auc = val_values
+                signal_score_for_auc = signal_values
+                score_description = key
+
+            triplet_response["metrics"][key] = {
+                "score_used_for_auc": score_description,
+                "auc_train_vs_wjet": auc(train_score_for_auc, signal_score_for_auc),
+                "auc_validation_vs_wjet": auc(val_score_for_auc, signal_score_for_auc),
+                "train_background_scores": score_stats(train_values),
+                "validation_background_scores": score_stats(val_values),
+                "wjet_scores": score_stats(signal_values),
+            }
+
+        triplet_margin_train = train_triplet_metrics["triplet_margin_score"]
+        triplet_margin_val = val_triplet_metrics["triplet_margin_score"]
+        triplet_margin_signal = signal_triplet_metrics["triplet_margin_score"]
+        triplet_hinge_train = train_triplet_metrics["triplet_hinge_violation"]
+        triplet_hinge_val = val_triplet_metrics["triplet_hinge_violation"]
+        triplet_hinge_signal = signal_triplet_metrics["triplet_hinge_violation"]
+
+        plot_one_roc(
+            triplet_margin_val,
+            triplet_margin_signal,
+            "QCD+Hbb+Hcc (validation, triplet margin score)",
+            output_dir / "11_triplet_margin_score_validation_vs_wjet.png",
+        )
+        plot_score_distribution(
+            triplet_margin_val,
+            triplet_margin_signal,
+            "Triplet margin-score distribution",
+            r"$d_+ - d_- + m$",
+            output_dir / "11_triplet_margin_score_distribution.png",
+        )
+        plot_one_roc(
+            triplet_hinge_val,
+            triplet_hinge_signal,
+            "QCD+Hbb+Hcc (validation, triplet hinge violation)",
+            output_dir / "12_triplet_hinge_violation_validation_vs_wjet.png",
+        )
+        plot_score_distribution(
+            triplet_hinge_val,
+            triplet_hinge_signal,
+            "Triplet hinge-violation distribution",
+            r"mean ReLU$(d_+ - d_- + m)$",
+            output_dir / "12_triplet_hinge_violation_distribution.png",
+        )
+
+        print(
+            "Triplet margin score: "
+            f"AUC train={triplet_response['metrics']['triplet_margin_score']['auc_train_vs_wjet']:.6f}, "
+            f"validation={triplet_response['metrics']['triplet_margin_score']['auc_validation_vs_wjet']:.6f}"
+        )
+        print(
+            "Triplet hinge violation: "
+            f"AUC train={triplet_response['metrics']['triplet_hinge_violation']['auc_train_vs_wjet']:.6f}, "
+            f"validation={triplet_response['metrics']['triplet_hinge_violation']['auc_validation_vs_wjet']:.6f}"
+        )
+
+    print("\n[5/9] Per-class centroid and Mahalanobis diagnostic")
     per_class: Dict[str, Dict[str, object]] = {}
     validation_curves = []
     for label in backgrounds:
@@ -1439,7 +1829,7 @@ def main() -> None:
     )
 
     print(
-        "\n[5/8] Multi-Gaussian nearest-component Mahalanobis diagnostic"
+        "\n[6/9] Multi-Gaussian nearest-component Mahalanobis diagnostic"
     )
     (
         multi_means,
@@ -1585,7 +1975,7 @@ def main() -> None:
     )
 
 
-    print("\n[6/8] Standardized latent-space kNN diagnostic")
+    print("\n[7/9] Standardized latent-space kNN diagnostic")
     knn_mean, knn_scale = fit_latent_standardizer(train_z[fit_idx])
     knn_reference_z = standardize_latents(
         train_z[fit_idx],
@@ -1661,7 +2051,7 @@ def main() -> None:
         f"validation={knn_diagnostic['auc_validation_vs_wjet']:.6f}"
     )
 
-    print("\n[7/8] Class-conditional Gaussian-mixture likelihood diagnostic")
+    print("\n[8/9] Class-conditional Gaussian-mixture likelihood diagnostic")
     (
         class_mix_means,
         class_mix_precisions,
@@ -1764,7 +2154,7 @@ def main() -> None:
         f"validation={class_conditional_mixture['auc_validation_vs_wjet']:.6f}"
     )
 
-    print("\n[8/8] Two-sided local-global consistency diagnostic")
+    print("\n[9/9] Two-sided local-global consistency diagnostic")
     lg_fit_idx, lg_heldout_idx = random_split_indices(
         len(train_lg),
         args.fit_fraction,
@@ -1841,24 +2231,40 @@ def main() -> None:
         "Two-sided local-global empirical-tail ROC",
         output_dir / "07_two_sided_local_global_comparison.png",
     )
+    comparison_curves = [
+        ("Single Gaussian Mahalanobis", val_score, signal_score),
+        (f"kNN k={effective_knn_k}", knn_val_score, knn_signal_score),
+        (
+            "Class-conditional mixture NLL",
+            class_mix_val_score,
+            class_mix_signal_score,
+        ),
+        ("Raw local-global MSE", val_lg, signal_lg),
+        ("Local-global cosine distance", val_lg_cos, signal_lg_cos),
+        ("Local-global normalized MSE", val_lg_nmse, signal_lg_nmse),
+        (
+            "Two-sided local-global",
+            lg_two_val_score,
+            lg_two_signal_score,
+        ),
+    ]
+    if triplet_response is not None:
+        comparison_curves.extend(
+            [
+                (
+                    "Triplet margin score",
+                    triplet_metric_arrays["validation"]["triplet_margin_score"],
+                    triplet_metric_arrays["wjet"]["triplet_margin_score"],
+                ),
+                (
+                    "Triplet hinge violation",
+                    triplet_metric_arrays["validation"]["triplet_hinge_violation"],
+                    triplet_metric_arrays["wjet"]["triplet_hinge_violation"],
+                ),
+            ]
+        )
     plot_comparison(
-        [
-            ("Single Gaussian Mahalanobis", val_score, signal_score),
-            (f"kNN k={effective_knn_k}", knn_val_score, knn_signal_score),
-            (
-                "Class-conditional mixture NLL",
-                class_mix_val_score,
-                class_mix_signal_score,
-            ),
-            ("Raw local-global MSE", val_lg, signal_lg),
-            ("Local-global cosine distance", val_lg_cos, signal_lg_cos),
-            ("Local-global normalized MSE", val_lg_nmse, signal_lg_nmse),
-            (
-                "Two-sided local-global",
-                lg_two_val_score,
-                lg_two_signal_score,
-            ),
-        ],
+        comparison_curves,
         "Validation anomaly-score ROC comparison",
         output_dir / "08_validation_score_comparison.png",
     )
@@ -1885,6 +2291,7 @@ def main() -> None:
             "seed": seed,
         },
         "labels": {"background": backgrounds, "signal": signals},
+        "full_latent_space": args.full_latent_space,
         "sample_counts": {
             "background_train_total": int(len(train_z)),
             "background_train_fit": int(len(fit_idx)),
@@ -1902,6 +2309,7 @@ def main() -> None:
         "local_global_cosine": local_global_cosine,
         "local_global_normalized_mse": local_global_normalized_mse,
         "two_sided_local_global": two_sided_local_global,
+        "triplet_response": triplet_response,
         "per_class": per_class,
     }
     with (output_dir / "diagnostic_results.json").open("w") as f:
@@ -1956,6 +2364,16 @@ def main() -> None:
         two_sided_local_global_validation_pvalue=lg_two_val_p,
         two_sided_local_global_wjet_pvalue=lg_two_signal_p,
     )
+    if triplet_response is not None:
+        np.savez_compressed(
+            output_dir / "triplet_diagnostic_scores.npz",
+            **{
+                f"{split}_{key}": values
+                for split, metrics in triplet_metric_arrays.items()
+                for key, values in metrics.items()
+            },
+        )
+
     print(f"\nSaved diagnostics to {output_dir}")
 
 
