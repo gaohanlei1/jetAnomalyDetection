@@ -2,7 +2,7 @@
 
 # Debugging
 dbg:
-  measure_perf: true
+  measure_perf: false
   # 10: DEBUG; 20: INFO; 30: WARNING; 40: ERROR
   logging_level: 20
   only_one_progress_bar: false
@@ -16,17 +16,24 @@ data:
   
   #raw_qcd: /isilon/export/home/mstamenk/jet-anomaly-summer25/downloads/jekrupa/v2_2/2017/QCD/QCD_Pt_1000to1400_TuneCP5_13TeV_pythia8/QCD_Pt_1000to1400/211109_133059/0000/
   #raw_wjet: /isilon/export/home/mstamenk/jet-anomaly-summer25/downloads/jekrupa/v2_2/2017/WJetsToQQ/WJetsToQQ_HT-400to600_TuneCP5_13TeV-madgraphMLM-pythia8/WJetsToQQ_HT-400to600/211108_171900/0000/
-  # local/symlinked data
-  raw_qcd: data/raw/qcd/
-  raw_wjet: data/raw/wjet/
+  # DeepNTuplizer AK8 ntuples (ak8-v2) — preferred LeJEPA input via dataloader.read_file
+  raw_qcd: /HEP/export/home/hgao50/jet-anomaly-data/ak8-v2/qcd/
+  raw_wjet: /HEP/export/home/hgao50/jet-anomaly-data/ak8-v2/wjets/
+  raw_zjet: /HEP/export/home/hgao50/jet-anomaly-data/ak8-v2/zjets/
+  raw_ttbar: /HEP/export/home/hgao50/jet-anomaly-data/ak8-v2/ttbar/
+  raw_hbb: /HEP/export/home/hgao50/jet-anomaly-data/ak8-v2/hbb/
+  # legacy NanoAOD paths (unused for AK8 pipeline)
+  raw_qcd_nano: data/raw/qcd/
+  raw_wjet_nano: data/raw/wjet/
   # after preprocessing, move the raw data file into a subfolder?
   move_to_used: false
   
   preprocessed_qcd: data/preprocessed/qcd/qcd_with_metadata2
   preprocessed_wjet: data/preprocessed/wjet
-  processed_data_dir: data/processed/PT-200to400/scaledby_QCD
-  background_file: QCD_scaled.pkl
-  signal_file: WJet_scaled.pkl
+  processed_data_dir: /HEP/export/home/hgao50/jet-anomaly-data/ak8-v2
+  processed_data_dir_ak8: /HEP/export/home/hgao50/jet-anomaly-data/ak8-v2
+  background_file: qcd
+  signal_file: wjets
 
 # Model Hyperparameters
 model:

@@ -163,10 +163,10 @@ def modify_df(df: pd.DataFrame, pdg: List[str]) -> pd.DataFrame:
     logging.info(f"Found log_pt {timer.time_taken()}, calculating one-hot lists...")
 
     print("Columns before one-hot encoding:", df.columns.tolist())
-    # Compute one-hot encodings using full PDG set
-    unique_pdg_ids = sorted(df['pdgId'].explode().unique().tolist())
-    # TAKES THE MOST TIME!!!
-    df = df.apply(lambda row: one_hot_encode_pdgId(row, unique_pdg_ids), axis=1)
+    df = df.apply(
+        lambda row: one_hot_encode_pdgId(row, c.STANDARD_PDG_ONEHOT_IDS),
+        axis=1,
+    )
     logging.info(f"Found one-hot lists {timer.time_taken()}, now filtering out-of-bounds particles...")
 
     print("Columns after one-hot encoding:", df.columns.tolist())

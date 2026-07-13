@@ -16,15 +16,28 @@ FATJET_DELTA_PT_BOUND = 1
 # for graph structure 
 CLOSEST_NEIGHBORS = 10
 GRAPH_METHODS = ("eta_phi", "all_features", "fully_connected", "mass_knn", "hybrid_knn")
-PT_MAX = 400
+PT_MAX = 2000
 PT_MIN = 200
 
-# for preproc/proc data/names
+# DeepNTuplizer AK8 jet-level metadata written with fj_ prefix.
 RAW_FATJET_PROPERTIES = [
+    "phi",
+    "eta",
+    "pt",
+    "mass",
+    "qk_charge_05",
+    "qk_charge_10",
+]
+
+# Legacy NanoAOD fat-jet branches kept for backward compatibility with old pickles.
+RAW_FATJET_PROPERTIES_NANOAOD = [
     "phi", "eta", "pt", "mass", "msoftdrop",
     "particleNetWithMass_QCD", "particleNet_XbbVsQCD",
     "particleNet_XccVsQCD", "particleNet_XqqVsQCD",
-    "particleNet_QCD", "particleNet_massCorr"
+    "particleNet_QCD", "particleNet_massCorr",
 ]
 # to distinguish from the processed columns
 RAW_FATJET_PROPERTIES_PREFIX = "fj_"
+
+# Fixed PDG one-hot columns expected by LeJEPA PART training.
+STANDARD_PDG_ONEHOT_IDS = [-211, -13, -11, 11, 13, 22, 130, 211]

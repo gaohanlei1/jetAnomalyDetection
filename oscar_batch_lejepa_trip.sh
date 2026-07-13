@@ -64,28 +64,37 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #   --pairwise-hidden-dim 16 \
 #   --output-dir "plots/run-lejepa-mahala-0.02-radius-20.0"
 
+NTUPLE_ROOT=${NTUPLE_ROOT:-"/HEP/export/home/hgao50/jet-anomaly-data/ak8-v2"}
+BG_ROOT=${BG_ROOT:-"${NTUPLE_ROOT}/smoke/smoke_qcd_PT600to800_0.root"}
+SG_ROOT=${SG_ROOT:-"${NTUPLE_ROOT}/smoke/smoke_wjets_Wto2Q_PTQQ200_0.root"}
+OUTPUT_DIR=${OUTPUT_DIR:-"plots/run-lejepa-ak8-root-smoke"}
+
 python -u scripts/run_train_lejepa_trip_part.py \
-  --background "data/processed/qcd-vs-wjet-pt-200to400/QCD_scaled_scaled.pkl" \
-  --signal "data/processed/qcd-vs-wjet-pt-200to400/WJet_scaled_scaled.pkl" \
+  --background "${BG_ROOT}" \
+  --signal "${SG_ROOT}" \
+  --lowerpt 150 \
   --model "lejepa" \
   --anomaly-score "local-global" \
+  --no-normalize-features \
   --embed-dim 128 \
   --representation-dim 128 \
   --num-layers 8 \
   --num-heads 8 \
-  --batch-size 256 \
-  --epochs 50 \
+  --batch-size 64 \
+  --epochs 3 \
   --learning-rate 5e-4 \
   --weight-decay 5e-2 \
   --precision bf16 \
   --num-global-views 2 \
-  --num-local-views 6 \
+  --num-local-views 3 \
   --global-drop-pt-frac-min 0.0 \
   --global-drop-pt-frac-max 0.50 \
   --local-drop-pt-frac-min 0.50 \
   --local-drop-pt-frac-max 0.95 \
   --pairwise-hidden-dim 16 \
-  --output-dir "plots/run-lejepa"
+  --max-background-events 500 \
+  --max-signal-events 200 \
+  --output-dir "${OUTPUT_DIR}"
 
 #  --triplet-weight 0.1 \
 #  --triplet-margin 1.0 \

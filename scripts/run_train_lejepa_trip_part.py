@@ -12,7 +12,12 @@ training script:
 - It plots the full-jet representation space for background validation jets
   and signal jets without any crop/drop augmentation.
 
-Expected node feature order by default:
+Expected input (preferred): DeepNTuplizer AK8 ROOT via JetClass-style
+``dataloader.read_file`` (called once in ``load`` / ``build_node_datasets``).
+
+Legacy ``.pkl`` DataFrames are still supported.
+
+Default node feature order:
 
     [
         eta, phi, pt, d0/d0Err, dz/dzErr, charge, mass, log_pt,
@@ -20,26 +25,16 @@ Expected node feature order by default:
         pdgId_13, pdgId_22, pdgId_130, pdgId_211,
     ]
 
-Example command:
+Example (ROOT):
 
 python -u scripts/run_train_lejepa_trip_part.py \
-  --background "data/processed/qcd-vs-wjet-pt-200to400/QCD_scaled_scaled.pkl" \
-  --signal "data/processed/qcd-vs-wjet-pt-200to400/WJet_scaled_scaled.pkl" \
-  --embed-dim 128 \
-  --representation-dim 128 \
-  --num-layers 8 \
-  --num-heads 8 \
-  --batch-size 128 \
-  --epochs 50 \
-  --learning-rate 5e-4 \
-  --weight-decay 5e-2 \
-  --precision bf16 \
-  --triplet-weight 0.1 \
-  --triplet-margin 1.0 \
-  --num-global-views 2 \
-  --num-local-views 3 \
-  --num-negative-views 4 \
-  --output-dir "plots/run-lejepa-trip-part"
+  --background /HEP/export/home/hgao50/jet-anomaly-data/ak8-v2/qcd \
+  --signal /HEP/export/home/hgao50/jet-anomaly-data/ak8-v2/wjets \
+  --lowerpt 150 \
+  --max-background-events 5000 \
+  --max-signal-events 2000 \
+  --no-normalize-features \
+  --output-dir plots/run-lejepa-ak8-root
 """
 
 import argparse
@@ -64,6 +59,7 @@ from sklearn.metrics import roc_auc_score
 from visualize.plot_metrics import plot_anomaly_score, plot_roc_curve
 
 from helpers import helpers_main
+from dataloader import particles_to_node_tensors, read_files
 from models.part import (
     CorruptedNegativeAugmentationConfig,
     LeJEPALossConfig,
@@ -419,56 +415,134 @@ class TrainLeJEPAParticleTransformer:
         )
         helpers_main.log_config(self.session_name)
 
+    def _is_root_source(self, path: str) -> bool:
+        if path.endswith(".root"):
+            return True
+        if os.path.isdir(path):
+            for root, _, files in os.walk(path):
+                if any(f.endswith(".root") for f in files):
+                    return True
+        return False
+
     def load(self) -> None:
         """
-        Load background and signal DataFrames.
+        Load background and signal once per run.
 
-        No pt slicing is performed here. The input files are assumed to have
-        already been sliced/preprocessed upstream.
+        Supports:
+        - DeepNTuplizer ROOT file / directory via JetClass-style ``read_file``
+        - Legacy processed ``.pkl`` DataFrames
         """
 
         print(f"Loading background from {self.bg_file}")
         print(f"Loading signal from {self.sg_file}")
-
-        self.bg_data = pd.read_pickle(self.bg_file)
-        self.sg_data = pd.read_pickle(self.sg_file)
-
-        if self.args.max_background_events is not None:
-            self.bg_data = self.bg_data.head(self.args.max_background_events)
-        if self.args.max_signal_events is not None:
-            self.sg_data = self.sg_data.head(self.args.max_signal_events)
-
-        print(f"Background rows: {len(self.bg_data)}")
-        print(f"Signal rows: {len(self.sg_data)}")
-        print(f"Background columns: {self.bg_data.columns.tolist()}")
-        print(f"Signal columns: {self.sg_data.columns.tolist()}")
-
-        print(f"Background rows: {len(self.bg_data)}")
-        print(f"Signal rows: {len(self.sg_data)}")
         print(f"Node feature names: {self.node_feature_names}")
+
+        self.bg_data = None
+        self.sg_data = None
+        self.bg_x_particles = None
+        self.sg_x_particles = None
+        self.data_source = "pickle"
+
+        if self._is_root_source(self.bg_file) or self._is_root_source(self.sg_file):
+            if not (self._is_root_source(self.bg_file) and self._is_root_source(self.sg_file)):
+                raise ValueError(
+                    "Background and signal must both be ROOT sources (file or directory) "
+                    "or both be .pkl files."
+                )
+            self.data_source = "root"
+            print(
+                "Using JetClass-style dataloader.read_file on DeepNTuplizer ROOT "
+                f"(pt >= {self.args.lowerpt}"
+                + (f", pt <= {self.args.upperpt}" if self.args.upperpt is not None else "")
+                + f", max_num_particles={self.args.max_num_particles})"
+            )
+            self.bg_x_particles, self.bg_x_jets, self.bg_y = read_files(
+                self.bg_file,
+                max_num_particles=self.args.max_num_particles,
+                particle_features=self.node_feature_names,
+                lowerpt=self.args.lowerpt,
+                upperpt=self.args.upperpt,
+                class_index=self.args.background_class_index,
+                num_classes=self.args.num_classes,
+                max_files=self.args.max_root_files,
+                max_jets=self.args.max_background_events,
+            )
+            self.sg_x_particles, self.sg_x_jets, self.sg_y = read_files(
+                self.sg_file,
+                max_num_particles=self.args.max_num_particles,
+                particle_features=self.node_feature_names,
+                lowerpt=self.args.lowerpt,
+                upperpt=self.args.upperpt,
+                class_index=self.args.signal_class_index,
+                num_classes=self.args.num_classes,
+                max_files=self.args.max_root_files,
+                max_jets=self.args.max_signal_events,
+            )
+            print(
+                f"Background jets: {self.bg_x_particles.shape[0]}  "
+                f"x_particles={tuple(self.bg_x_particles.shape)}"
+            )
+            print(
+                f"Signal jets: {self.sg_x_particles.shape[0]}  "
+                f"x_particles={tuple(self.sg_x_particles.shape)}"
+            )
+        else:
+            self.bg_data = pd.read_pickle(self.bg_file)
+            self.sg_data = pd.read_pickle(self.sg_file)
+
+            if self.args.max_background_events is not None:
+                self.bg_data = self.bg_data.head(self.args.max_background_events)
+            if self.args.max_signal_events is not None:
+                self.sg_data = self.sg_data.head(self.args.max_signal_events)
+
+            print(f"Background rows: {len(self.bg_data)}")
+            print(f"Signal rows: {len(self.sg_data)}")
+            print(f"Background columns: {self.bg_data.columns.tolist()}")
+            print(f"Signal columns: {self.sg_data.columns.tolist()}")
 
     def build_node_datasets(self) -> None:
         """
-        Convert DataFrames into variable-length node tensor datasets.
+        Convert loaded data into variable-length node tensor datasets.
+
+        Called once per training run (after ``load``).
         """
 
         print("Loading background node tensors...")
-        bg_nodes, bg_labels = dataframe_to_node_tensors(
-            df=self.bg_data,
-            node_feature_names=self.node_feature_names,
-            label=0,
-            min_nodes=self.args.min_nodes,
-            max_events=None,
-        )
-
-        print("Loading signal node tensors...")
-        sg_nodes, sg_labels = dataframe_to_node_tensors(
-            df=self.sg_data,
-            node_feature_names=self.node_feature_names,
-            label=1,
-            min_nodes=self.args.min_nodes,
-            max_events=None,
-        )
+        if self.data_source == "root":
+            pt_index = (
+                self.node_feature_names.index("pt")
+                if "pt" in self.node_feature_names
+                else 0
+            )
+            bg_nodes, bg_labels = particles_to_node_tensors(
+                self.bg_x_particles,
+                min_nodes=self.args.min_nodes,
+                pt_feature_index=pt_index,
+                label=0,
+            )
+            print("Loading signal node tensors...")
+            sg_nodes, sg_labels = particles_to_node_tensors(
+                self.sg_x_particles,
+                min_nodes=self.args.min_nodes,
+                pt_feature_index=pt_index,
+                label=1,
+            )
+        else:
+            bg_nodes, bg_labels = dataframe_to_node_tensors(
+                df=self.bg_data,
+                node_feature_names=self.node_feature_names,
+                label=0,
+                min_nodes=self.args.min_nodes,
+                max_events=None,
+            )
+            print("Loading signal node tensors...")
+            sg_nodes, sg_labels = dataframe_to_node_tensors(
+                df=self.sg_data,
+                node_feature_names=self.node_feature_names,
+                label=1,
+                min_nodes=self.args.min_nodes,
+                max_events=None,
+            )
 
         if len(bg_nodes) == 0:
             raise ValueError("No valid background events were loaded.")
@@ -482,7 +556,7 @@ class TrainLeJEPAParticleTransformer:
         random.shuffle(bg_indices)
         bg_nodes = [bg_nodes[i] for i in bg_indices]
         bg_labels = [bg_labels[i] for i in bg_indices]
-        
+
         self.bg_train_nodes = bg_nodes[:train_size]
         self.bg_train_labels = bg_labels[:train_size]
         self.bg_val_nodes = bg_nodes[train_size:]
@@ -2406,14 +2480,62 @@ if __name__ == "__main__":
         "-b",
         type=str,
         default=bg_file,
-        help="Path to processed .pkl background dataset. Defaults to background_file in config.yaml.",
+        help=(
+            "Background dataset: DeepNTuplizer ROOT file/directory (preferred) "
+            "or legacy processed .pkl. Defaults to config.yaml."
+        ),
     )
     parser.add_argument(
         "--signal",
         "-s",
         type=str,
         default=sg_file,
-        help="Path to processed .pkl signal dataset. Defaults to signal_file in config.yaml.",
+        help=(
+            "Signal dataset: DeepNTuplizer ROOT file/directory (preferred) "
+            "or legacy processed .pkl. Defaults to config.yaml."
+        ),
+    )
+    parser.add_argument(
+        "--lowerpt",
+        type=float,
+        default=150.0,
+        help="Minimum AK8 jet pT [GeV] when reading ROOT. Default: 150.",
+    )
+    parser.add_argument(
+        "--upperpt",
+        type=float,
+        default=None,
+        help="Optional maximum AK8 jet pT [GeV] when reading ROOT. Default: None.",
+    )
+    parser.add_argument(
+        "--max-num-particles",
+        type=int,
+        default=128,
+        help="Pad/truncate constituents per jet (JetClass-style). Default: 128.",
+    )
+    parser.add_argument(
+        "--max-root-files",
+        type=int,
+        default=None,
+        help="Optional cap on ROOT files read per sample (smoke tests).",
+    )
+    parser.add_argument(
+        "--num-classes",
+        type=int,
+        default=4,
+        help="One-hot label axis length for read_file (QCD/W/Z/ttbar). Default: 4.",
+    )
+    parser.add_argument(
+        "--background-class-index",
+        type=int,
+        default=0,
+        help="class_index passed to read_file for background (QCD=0). Default: 0.",
+    )
+    parser.add_argument(
+        "--signal-class-index",
+        type=int,
+        default=1,
+        help="class_index passed to read_file for signal (W=1,Z=2,tt=3). Default: 1.",
     )
     parser.add_argument(
         "--node-features",
