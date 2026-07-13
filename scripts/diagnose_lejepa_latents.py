@@ -1251,7 +1251,7 @@ def main() -> None:
     checkpoint_path = (
         args.checkpoint.expanduser().resolve()
         if args.checkpoint
-        else run_dir / "last_model.pth"
+        else run_dir / "best_model.pth"
     )
     output_dir = (
         args.output_dir.expanduser().resolve()
