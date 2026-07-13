@@ -395,10 +395,12 @@ class TrainNAE:
 
         self.backbone = build_backbone_from_summary(
             self.backbone_summary,
-            self.device,
+            torch.device("cpu"),
         )
         state_dict = read_state_dict(checkpoint, self.device)
         self.backbone.load_state_dict(state_dict, strict=True)
+        del state_dict
+        self.backbone = self.backbone.to(self.device)
         self.backbone.eval()
         self.backbone.requires_grad_(False)
 

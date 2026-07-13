@@ -1,0 +1,77 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 3942318
+##  Job Name : JETANOMALY-JETCLASS
+##  Nodelist : gpu3101
+##      CPUs : 1
+##  Mem/Node : 96000 MB
+## Directory : /oscar/home/lwang223/jetAnomalyDetection
+##   Job Started : Mon Jul 13 09:26:07 AM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Mon Jul 13 09:26:07 AM EDT 2026
+Job ID: 3942318
+Node: gpu3101
+==========================================
+
+GPU Information (from host):
+Mon Jul 13 09:26:07 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:21:00.0 Off |                    0 |
+| N/A   29C    P8             32W /  350W |      74MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+|   1  NVIDIA L40S                    On  |   00000000:C1:00.0 Off |                    0 |
+| N/A   25C    P8             32W /  350W |      74MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          182625      G   /usr/libexec/Xorg                        64MiB |
+|    1   N/A  N/A          182625      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch version: 2.6.0+cu124
+Loaded frozen backbone from plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth
+Backbone model: semi-sup
+Representation dimension: 128
+NAE model:
+NormalizedAutoencoder(
+  (encoder): Sequential(
+    (0): Linear(in_features=128, out_features=64, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=64, out_features=32, bias=True)
+    (3): ReLU()
+    (4): Linear(in_features=32, out_features=16, bias=True)
+    (5): ReLU()
+    (6): Linear(in_features=16, out_features=8, bias=True)
+    (7): ReLU()
+    (8): Linear(in_features=8, out_features=6, bias=True)
+    (9): Identity()
+  )
+  (decoder): Sequential(
+    (0): Linear(in_features=6, out_features=8, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=8, out_features=16, bias=True)
+    (3): ReLU()
+    (4): Linear(in_features=16, out_features=32, bias=True)
+    (5): ReLU()
+    (6): Linear(in_features=32, out_features=64, bias=True)
+    (7): ReLU()
+    (8): Linear(in_features=64, out_features=128, bias=True)
+    (9): Identity()
+  )
+)
+NAE trainable parameters: 22230
+
+Epoch [1/50] — ae_pretrain

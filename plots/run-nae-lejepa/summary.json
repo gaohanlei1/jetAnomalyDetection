@@ -1,0 +1,63 @@
+{
+  "status": "training",
+  "backbone_dir": "plots/run-lejepa-semi-sup-jetclass-ddp",
+  "backbone_checkpoint": "plots/run-lejepa-semi-sup-jetclass-ddp/best_model.pth",
+  "backbone_model": "semi-sup",
+  "dataset_root": "/HEP/export/home/lwang223/JetClass/JetClass/Pythia",
+  "background_labels": [
+    "label_QCD",
+    "label_Hbb",
+    "label_Hcc"
+  ],
+  "signal_labels": [
+    "label_Wqq"
+  ],
+  "particle_features": [
+    "part_px",
+    "part_py",
+    "part_pz",
+    "part_energy",
+    "part_pt",
+    "part_eta",
+    "part_phi",
+    "part_deta",
+    "part_dphi",
+    "part_d0val",
+    "part_d0err",
+    "part_dzval",
+    "part_dzerr",
+    "part_charge",
+    "part_isChargedHadron",
+    "part_isNeutralHadron",
+    "part_isPhoton",
+    "part_isElectron",
+    "part_isMuon"
+  ],
+  "representation_dim": 128,
+  "hidden_dims": [
+    64,
+    32,
+    16,
+    8
+  ],
+  "bottleneck_dim": 6,
+  "activation": "relu",
+  "ae_pretrain_epochs": 25,
+  "nae_epochs": 25,
+  "steps_per_epoch": 4000,
+  "val_steps": 50,
+  "eval_steps": 50,
+  "batch_size": 256,
+  "world_size": 2,
+  "per_rank_batch_size": 128,
+  "learning_rate": 0.0001,
+  "weight_decay": 0.0,
+  "langevin_steps": 20,
+  "langevin_step_size": 0.01,
+  "langevin_noise_scale": 0.01,
+  "negative_init_noise": 0.01,
+  "negative_energy_weight": 1.0,
+  "best_pretrain_val_energy": null,
+  "best_nae_abs_energy_difference": null,
+  "best_nae_epoch": null
+}
