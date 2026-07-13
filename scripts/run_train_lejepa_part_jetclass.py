@@ -242,14 +242,25 @@ def discover_jetclass_files(
 
 
 
-# New JetClass dense tensor dataset and loading functions
 class JetClassIterableDataset(IterableDataset):
     """
-    Stream JetClass ROOT shards lazily.
+    Stream JetClass ROOT shards lazily with class-stratified shard mixing.
 
-    Each worker owns a disjoint subset of ROOT files. A worker loads one shard,
-    preprocesses it in memory, yields events, then releases that shard before
-    moving to the next one. The full split is never materialized in RAM.
+    Training behavior:
+        - Files are grouped by label.
+        - Each label is independently sharded across all DDP ranks and workers.
+        - Each label maintains its own active shard pool.
+        - Events are yielded according to a shuffled balanced label cycle.
+        - When one shard is exhausted, it is replaced only by another shard
+          from the same label.
+
+    This avoids long class-composition blocks caused by using a single shared
+    active shard pool containing class-pure ROOT files.
+
+    Evaluation behavior:
+        - If shuffle_files=False, files and events are read deterministically.
+        - Labels are still interleaved to avoid exhausting one class before
+          moving to the next.
     """
 
     def __init__(
@@ -267,7 +278,11 @@ class JetClassIterableDataset(IterableDataset):
         world_size: int = 1,
     ):
         super().__init__()
+
         validate_requested_labels(labels_to_load)
+
+        if len(labels_to_load) == 0:
+            raise ValueError("labels_to_load must contain at least one label.")
 
         self.split_dir = split_dir
         self.labels_to_load = list(labels_to_load)
@@ -275,12 +290,17 @@ class JetClassIterableDataset(IterableDataset):
         self.max_num_particles = int(max_num_particles)
         self.max_events = max_events
         self.shuffle_files = bool(shuffle_files)
-        self.shuffle_active_shards = max(1, int(shuffle_active_shards))
+        self.shuffle_active_shards = max(
+            len(self.labels_to_load),
+            int(shuffle_active_shards),
+        )
+        self.infinite = bool(infinite)
         self.seed = int(seed)
         self.rank = int(rank)
-        self.infinite = bool(infinite)
         self.world_size = int(world_size)
 
+        # Keep this for compatibility / diagnostics, although __iter__ rebuilds
+        # the per-label file lists explicitly.
         self.filepaths = discover_jetclass_files(
             split_dir,
             self.labels_to_load,
@@ -304,15 +324,11 @@ class JetClassIterableDataset(IterableDataset):
             self.world_size * local_num_workers
         )
 
-        # Build one globally interleaved file list before sharding.
-        #
-        # Example:
-        #   QCD_0, Hbb_0, Hcc_0,
-        #   QCD_1, Hbb_1, Hcc_1,
-        #   ...
-        #
-        # Sharding happens only after this interleaving step.
-        label_groups: List[List[str]] = []
+        # -------------------------------------------------------------
+        # Build and shard file lists independently for every label.
+        # -------------------------------------------------------------
+
+        worker_files_by_label: Dict[str, List[str]] = {}
 
         for label in self.labels_to_load:
             prefix = LABEL_TO_FILE_PREFIX[label]
@@ -326,52 +342,61 @@ class JetClassIterableDataset(IterableDataset):
                 )
             )
 
-            label_groups.append(label_files)
+            if len(label_files) == 0:
+                raise RuntimeError(
+                    f"No ROOT shards found for label {label!r} "
+                    f"in {self.split_dir!r}."
+                )
 
-        all_files: List[str] = []
+            worker_label_files = label_files[
+                global_worker_id::global_num_workers
+            ]
 
-        max_group_len = max(
-            (
-                len(group)
-                for group in label_groups
-            ),
-            default=0,
-        )
+            if len(worker_label_files) == 0:
+                raise RuntimeError(
+                    "This rank/worker received no ROOT shards for one label. "
+                    f"label={label!r}, "
+                    f"global_worker_id={global_worker_id}, "
+                    f"global_num_workers={global_num_workers}, "
+                    f"num_label_files={len(label_files)}. "
+                    "Reduce the total number of workers or provide more shards."
+                )
 
-        for i in range(max_group_len):
-            for group in label_groups:
-                if i < len(group):
-                    all_files.append(group[i])
+            worker_files_by_label[label] = worker_label_files
 
-        # Shard the interleaved stream across all DDP ranks and DataLoader workers
-        worker_base_files = all_files[
-            global_worker_id::global_num_workers
-        ]
-
-        if not worker_base_files:
-            raise RuntimeError(
-                "This rank/worker received no ROOT shards. "
-                f"global_worker_id={global_worker_id}, "
-                f"global_num_workers={global_num_workers}, "
-                f"total_files={len(all_files)}."
-            )
-
-        worker_quota = None
+        # Split max_events approximately evenly across all workers.
+        worker_quota: Optional[int] = None
 
         if self.max_events is not None:
-            base = (
-                self.max_events
-                // global_num_workers
-            )
-            remainder = (
-                self.max_events
-                % global_num_workers
-            )
+            base = self.max_events // global_num_workers
+            remainder = self.max_events % global_num_workers
 
             worker_quota = (
                 base
                 + int(global_worker_id < remainder)
             )
+
+        # Divide active-shard budget across labels.
+        #
+        # Example:
+        #   3 labels, shuffle_active_shards=3 -> 1 shard per label
+        #   3 labels, shuffle_active_shards=6 -> 2 shards per label
+        num_labels = len(self.labels_to_load)
+
+        base_active_per_label = (
+            self.shuffle_active_shards // num_labels
+        )
+        active_remainder = (
+            self.shuffle_active_shards % num_labels
+        )
+
+        active_budget_by_label = {
+            label: (
+                base_active_per_label
+                + int(label_idx < active_remainder)
+            )
+            for label_idx, label in enumerate(self.labels_to_load)
+        }
 
         pass_index = 0
 
@@ -382,42 +407,103 @@ class JetClassIterableDataset(IterableDataset):
                 + 104729 * pass_index
             )
 
-            worker_files = list(worker_base_files) # copy the list of shards for shuffling
+            files_by_label: Dict[str, List[str]] = {
+                label: list(files)
+                for label, files in worker_files_by_label.items()
+            }
 
             if self.shuffle_files:
-                rng.shuffle(worker_files)
+                for label in self.labels_to_load:
+                    rng.shuffle(files_by_label[label])
 
             yielded = 0
 
-            if not self.shuffle_files:
-                # Deterministic finite evaluation pass.
-                for filepath in worker_files:
-                    x_particles, y = (
-                        load_and_preprocess_jetclass_file(
-                            filepath=filepath,
-                            particle_features=self.particle_features,
-                            max_num_particles=self.max_num_particles,
-                        )
-                    )
+            # =========================================================
+            # Deterministic finite evaluation
+            # =========================================================
 
-                    for event_x, event_y in zip(x_particles, y):
-                        if worker_quota is not None and yielded >= worker_quota:
+            if not self.shuffle_files:
+                loaded_by_label: Dict[str, List[Tuple[torch.Tensor, torch.Tensor]]] = {}
+
+                for label in self.labels_to_load:
+                    label_events: List[Tuple[torch.Tensor, torch.Tensor]] = []
+
+                    for filepath in files_by_label[label]:
+                        x_particles, y = (
+                            load_and_preprocess_jetclass_file(
+                                filepath=filepath,
+                                particle_features=self.particle_features,
+                                max_num_particles=self.max_num_particles,
+                            )
+                        )
+
+                        label_events.extend(
+                            (
+                                torch.from_numpy(event_x),
+                                torch.from_numpy(event_y),
+                            )
+                            for event_x, event_y in zip(x_particles, y)
+                        )
+
+                    loaded_by_label[label] = label_events
+
+                cursors = {
+                    label: 0
+                    for label in self.labels_to_load
+                }
+
+                # Deterministic round-robin over labels.
+                while True:
+                    made_progress = False
+
+                    for label in self.labels_to_load:
+                        cursor = cursors[label]
+                        events = loaded_by_label[label]
+
+                        if cursor >= len(events):
+                            continue
+
+                        if (
+                            worker_quota is not None
+                            and yielded >= worker_quota
+                        ):
                             break
 
-                        yield torch.from_numpy(event_x), torch.from_numpy(event_y)
+                        yield events[cursor]
 
+                        cursors[label] += 1
                         yielded += 1
+                        made_progress = True
 
-                    if worker_quota is not None and yielded >= worker_quota:
-                        break # quit also the outside for-loop
+                    if (
+                        worker_quota is not None
+                        and yielded >= worker_quota
+                    ):
+                        break
+
+                    if not made_progress:
+                        break
+
+            # =========================================================
+            # Class-balanced shuffled training stream
+            # =========================================================
 
             else:
-                file_iter = iter(worker_files)
-                active = []
+                file_iters_by_label = {
+                    label: iter(files_by_label[label])
+                    for label in self.labels_to_load
+                }
 
-                def load_next_shard():
+                active_by_label: Dict[str, List[Dict[str, object]]] = {
+                    label: []
+                    for label in self.labels_to_load
+                }
+
+                def load_next_shard(label: str):
                     try:
-                        filepath = next(file_iter)
+                        filepath = next(
+                            file_iters_by_label[label]
+                        )
                     except StopIteration:
                         return None
 
@@ -429,7 +515,10 @@ class JetClassIterableDataset(IterableDataset):
                         )
                     )
 
-                    order = np.arange(len(x_particles), dtype=np.int64,)
+                    order = np.arange(
+                        len(x_particles),
+                        dtype=np.int64,
+                    )
 
                     np.random.default_rng(
                         rng.randrange(2**32)
@@ -439,63 +528,116 @@ class JetClassIterableDataset(IterableDataset):
                         "x": x_particles,
                         "y": y,
                         "order": order,
-                        "cursor": 0, # has yielded to which jet?
+                        "cursor": 0,
+                        "filepath": filepath,
                     }
 
-                for _ in range(
-                    min(
-                        self.shuffle_active_shards,
-                        len(worker_files),
-                    )
-                ):
-                    shard = load_next_shard()
+                # Initialize one independent active pool per label.
+                for label in self.labels_to_load:
+                    budget = active_budget_by_label[label]
 
-                    if shard is not None:
-                        active.append(shard)
+                    for _ in range(
+                        min(
+                            budget,
+                            len(files_by_label[label]),
+                        )
+                    ):
+                        shard = load_next_shard(label)
 
-                while active:
-                    if worker_quota is not None and yielded >= worker_quota:
+                        if shard is not None:
+                            active_by_label[label].append(shard)
+
+                # Labels that currently still have available active shards.
+                available_labels = [
+                    label
+                    for label in self.labels_to_load
+                    if len(active_by_label[label]) > 0
+                ]
+
+                while available_labels:
+                    if (
+                        worker_quota is not None
+                        and yielded >= worker_quota
+                    ):
                         break
 
-                    shard_idx = rng.randrange(len(active)) # randomly pick a shard from active shards
-                    shard = active[shard_idx]
+                    # Balanced cycle:
+                    # every cycle contains each currently available label once,
+                    # but the ordering of labels inside the cycle is random.
+                    label_cycle = list(available_labels)
+                    rng.shuffle(label_cycle)
 
-                    event_idx = int(
-                        shard["order"][
-                            shard["cursor"]
-                        ]
-                    )
+                    for label in label_cycle:
+                        if (
+                            worker_quota is not None
+                            and yielded >= worker_quota
+                        ):
+                            break
 
-                    shard["cursor"] += 1
+                        active_label_shards = active_by_label[label]
 
-                    yield ( # randomly select an event from the shard
-                        torch.from_numpy(shard["x"][event_idx]),
-                        torch.from_numpy(shard["y"][event_idx]),
-                    )
+                        if len(active_label_shards) == 0:
+                            continue
 
-                    yielded += 1
-                    
-                    # if run out of events in this shard, replace with a new shard
-                    if shard["cursor"] >= len(shard["order"]): 
-                        replacement = load_next_shard()
+                        shard_idx = rng.randrange(
+                            len(active_label_shards)
+                        )
+                        shard = active_label_shards[shard_idx]
 
-                        if replacement is None:
-                            active.pop(shard_idx)
-                        else:
-                            active[shard_idx] = replacement
+                        cursor = int(shard["cursor"])
+                        order = shard["order"]
+
+                        event_idx = int(order[cursor])
+                        shard["cursor"] = cursor + 1
+
+                        x_particles = shard["x"]
+                        y = shard["y"]
+
+                        yield (
+                            torch.from_numpy(
+                                x_particles[event_idx]
+                            ),
+                            torch.from_numpy(
+                                y[event_idx]
+                            ),
+                        )
+
+                        yielded += 1
+
+                        # Replace exhausted shard only with a new shard
+                        # from the same label.
+                        if shard["cursor"] >= len(order):
+                            replacement = load_next_shard(label)
+
+                            if replacement is None:
+                                active_label_shards.pop(
+                                    shard_idx
+                                )
+                            else:
+                                active_label_shards[
+                                    shard_idx
+                                ] = replacement
+
+                    available_labels = [
+                        label
+                        for label in self.labels_to_load
+                        if len(active_by_label[label]) > 0
+                    ]
 
             if not self.infinite:
                 break
 
             if yielded == 0:
                 raise RuntimeError(
-                    "Infinite JetClass stream completed "
-                    "a pass without yielding any events on "
-                    f"global_worker_id={global_worker_id}."
+                    "Infinite JetClass stream completed a pass "
+                    "without yielding any events. "
+                    f"global_worker_id={global_worker_id}, "
+                    f"global_num_workers={global_num_workers}."
                 )
 
             pass_index += 1
-
+            
+            
 def load_and_preprocess_jetclass_file(
     filepath: str,
     particle_features: Sequence[str],
@@ -2263,7 +2405,7 @@ class TrainLeJEPAParticleTransformer:
             "ffn_mult": self.args.ffn_mult,
             "dropout": self.args.dropout,
             "num_trainable_parameters": int(self.num_params),
-            "pairwise_hidden_dim": self.pairwise_hidden_dim, 
+            "pairwise_hidden_dim": self.args.pairwise_hidden_dim, 
 
             # Optimization.
             "epochs": self.args.epochs,
@@ -2995,8 +3137,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sigreg-weight",
         type=float,
-        default=0.02,
-        help="Weight for SIGReg loss, matching LeJEPA lambda by default. Default: 0.02.",
+        default=0.05,
+        help="Weight for SIGReg loss, matching LeJEPA lambda by default. Default: 0.05.",
     )
     parser.add_argument(
         "--epps-pulley-num-points",

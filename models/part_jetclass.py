@@ -837,6 +837,11 @@ class MinimalParticleTransformer(nn.Module):
         Returns:
             cls: Tensor of shape (B, embed_dim).
         """
+        
+        ###########
+        ########### Temporarily disable part_eta and part_phi features!!!!
+        ###########
+        x[:, :, [5, 6]] = 0.0
 
         if x.ndim != 3:
             raise ValueError(f"Expected x to have shape (B, N, F), got {tuple(x.shape)}.")
