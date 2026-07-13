@@ -1,0 +1,783 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 3930281
+##  Job Name : JETANOMALY-JETCLASS
+##  Nodelist : gpu3003
+##      CPUs : 1
+##  Mem/Node : 96000 MB
+## Directory : /oscar/home/lwang223/jetAnomalyDetection
+##   Job Started : Sun Jul 12 01:15:24 PM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Sun Jul 12 01:15:24 PM EDT 2026
+Job ID: 3930281
+Node: gpu3003
+==========================================
+
+GPU Information (from host):
+Sun Jul 12 13:15:24 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:A1:00.0 Off |                    0 |
+| N/A   29C    P8             33W /  350W |      77MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+|   1  NVIDIA L40S                    On  |   00000000:E1:00.0 Off |                    0 |
+| N/A   27C    P8             32W /  350W |      77MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          179375      G   /usr/libexec/Xorg                        64MiB |
+|    1   N/A  N/A          179375      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch version: 2.6.0+cu124
+JetClass root: /HEP/export/home/lwang223/JetClass/JetClass/Pythia
+Background labels: ['label_QCD', 'label_Hbb', 'label_Hcc']
+Signal labels: ['label_Wqq']
+Particle features: ['part_px', 'part_py', 'part_pz', 'part_energy', 'part_pt', 'part_eta', 'part_phi', 'part_deta', 'part_dphi', 'part_d0val', 'part_d0err', 'part_dzval', 'part_dzerr', 'part_charge', 'part_isChargedHadron', 'part_isNeutralHadron', 'part_isPhoton', 'part_isElectron', 'part_isMuon']
+Lazy JetClass datasets ready; no full split has been loaded into RAM.
+Background train ROOT shards: 300
+Background val ROOT shards: 15
+Signal test ROOT shards: 20
+Per-event particle shape: (128, 19)
+Selected SSL model: semi-sup-triplet
+Model summary:
+LeJEPASemiSupervisedTripletParticleTransformerRepresentation(
+  (node_embedding): NodeEmbedding(
+    (net): Sequential(
+      (0): Linear(in_features=19, out_features=128, bias=True)
+      (1): GELU(approximate='none')
+      (2): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+      (3): Linear(in_features=128, out_features=512, bias=True)
+      (4): GELU(approximate='none')
+      (5): LayerNorm((512,), eps=1e-05, elementwise_affine=True)
+      (6): Linear(in_features=512, out_features=128, bias=True)
+      (7): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (pairwise_bias): PairwiseAttentionBias(
+    (mlp): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=4, out_features=16, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.1, inplace=False)
+      (4): Linear(in_features=16, out_features=16, bias=True)
+      (5): SiLU()
+      (6): Dropout(p=0.1, inplace=False)
+      (7): Linear(in_features=16, out_features=8, bias=True)
+    )
+  )
+  (encoder): ParticleTransformerEncoder(
+    (layers): ModuleList(
+      (0-7): 8 x ParticleTransformerBlock(
+        (attn_norm): RMSNorm()
+        (self_attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=128, out_features=128, bias=True)
+        )
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (ffn_norm): RMSNorm()
+        (ffn): SwiGLUFFN(
+          (fc1): Linear(in_features=128, out_features=1024, bias=True)
+          (act): SwiGLU()
+          (fc2): Linear(in_features=512, out_features=128, bias=True)
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+      )
+    )
+  )
+  (cls_pooling): CLSPooling(
+    (layers): ModuleList(
+      (0-1): 2 x ClassAttentionBlock(
+        (query_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (context_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=128, out_features=128, bias=True)
+        )
+        (attn_dropout): Dropout(p=0.0, inplace=False)
+        (ffn_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (ffn): Sequential(
+          (0): Linear(in_features=128, out_features=512, bias=True)
+          (1): GELU(approximate='none')
+          (2): Dropout(p=0.0, inplace=False)
+          (3): Linear(in_features=512, out_features=128, bias=True)
+          (4): Dropout(p=0.0, inplace=False)
+        )
+      )
+    )
+  )
+  (augmentation): MultiViewAugmentation()
+  (negative_augmentation): CorruptedNegativeAugmentation()
+  (loss): LeJEPASIGRegTripletClassificationLoss(
+    (triplet_loss): LeJEPASIGRegTripletLoss(
+      (lejepa_loss): LeJEPASIGRegLoss(
+        (sigreg_loss_fn): SlicingUnivariateTest(
+          (univariate_test): EppsPulley()
+        )
+      )
+    )
+  )
+  (representation_head): RepresentationHead(
+    (net): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=128, out_features=128, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.1, inplace=False)
+      (4): Linear(in_features=128, out_features=128, bias=True)
+    )
+  )
+  (classification_head): CategoricalClassificationHead(
+    (net): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=128, out_features=128, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.1, inplace=False)
+      (4): Linear(in_features=128, out_features=3, bias=True)
+    )
+  )
+)
+Number of trainable parameters: 2695919
+
+Epoch [1/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0001/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.525875
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.529607
+Epoch 1 train losses: {'total_loss': 4.503340055346489, 'invariant_loss': 0.04935808898555115, 'sigreg_loss': 213.00825, 'triplet_loss': 0.8501072459816933, 'triplet_pos_distance': 0.017840975171886386, 'triplet_neg_distance': 0.2088942070119083, 'classification_loss': 1.0881499222517013}
+Epoch 1 val losses: {'total_loss': 1.7253617238998413, 'invariant_loss': 0.013658781982958317, 'sigreg_loss': 76.03, 'triplet_loss': 0.8276624810695649, 'triplet_pos_distance': 0.0027546593034639953, 'triplet_neg_distance': 0.2527193567156792, 'classification_loss': 1.081554491519928}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [2/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0002/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.513551
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.515000
+Epoch 2 train losses: {'total_loss': 1.2699327357411385, 'invariant_loss': 0.09032870398461819, 'sigreg_loss': 49.70825, 'triplet_loss': 0.7739744529128074, 'triplet_pos_distance': 0.030863258630037308, 'triplet_neg_distance': 0.361320979654789, 'classification_loss': 1.0795267981886865}
+Epoch 2 val losses: {'total_loss': 1.1235581421852112, 'invariant_loss': 0.023209059573709966, 'sigreg_loss': 45.545, 'triplet_loss': 0.8110768377780915, 'triplet_pos_distance': 0.004005397101864218, 'triplet_neg_distance': 0.3016115456819534, 'classification_loss': 1.0853826093673706}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [3/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0003/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.467488
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.470239
+Epoch 3 train losses: {'total_loss': 0.9705579681396485, 'invariant_loss': 0.10864746959507465, 'sigreg_loss': 33.917, 'triplet_loss': 0.7555927318930626, 'triplet_pos_distance': 0.03671982447430491, 'triplet_neg_distance': 0.3914834451377392, 'classification_loss': 1.079918521463871}
+Epoch 3 val losses: {'total_loss': 0.9062675380706787, 'invariant_loss': 0.021150602772831918, 'sigreg_loss': 34.8175, 'triplet_loss': 0.8043763053417206, 'triplet_pos_distance': 0.0031023403257131577, 'triplet_neg_distance': 0.29369920551776885, 'classification_loss': 1.0842929434776307}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [4/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0004/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.491734
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.491914
+Epoch 4 train losses: {'total_loss': 0.8384463812708854, 'invariant_loss': 0.12116447661072016, 'sigreg_loss': 26.766875, 'triplet_loss': 0.7398130248785019, 'triplet_pos_distance': 0.04155829333513975, 'triplet_neg_distance': 0.40492202630639074, 'classification_loss': 1.0797442877292633}
+Epoch 4 val losses: {'total_loss': 0.8081696927547455, 'invariant_loss': 0.022588258236646654, 'sigreg_loss': 29.865, 'triplet_loss': 0.7976691055297852, 'triplet_pos_distance': 0.003260273770429194, 'triplet_neg_distance': 0.2973877313733101, 'classification_loss': 1.0831451773643495}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [5/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0005/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.484639
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.480527
+Epoch 5 train losses: {'total_loss': 0.7573640449047089, 'invariant_loss': 0.12489877402037382, 'sigreg_loss': 22.556, 'triplet_loss': 0.734670049905777, 'triplet_pos_distance': 0.0427122159935534, 'triplet_neg_distance': 0.40907238247990607, 'classification_loss': 1.078810780107975}
+Epoch 5 val losses: {'total_loss': 0.7372631561756134, 'invariant_loss': 0.02501061301678419, 'sigreg_loss': 26.2375, 'triplet_loss': 0.7937503337860108, 'triplet_pos_distance': 0.0034985827794298528, 'triplet_neg_distance': 0.3006117904186249, 'classification_loss': 1.0842437362670898}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [6/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0006/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.529093
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.524519
+Epoch 6 train losses: {'total_loss': 0.7029228218793869, 'invariant_loss': 0.12586321210116147, 'sigreg_loss': 19.8440625, 'triplet_loss': 0.7225909206271172, 'triplet_pos_distance': 0.04289988260343671, 'triplet_neg_distance': 0.4246144467294216, 'classification_loss': 1.0790598458051681}
+Epoch 6 val losses: {'total_loss': 0.6623232805728912, 'invariant_loss': 0.026899563744664193, 'sigreg_loss': 22.6575, 'triplet_loss': 0.7402582192420959, 'triplet_pos_distance': 0.005276099219918251, 'triplet_neg_distance': 0.3599225354194641, 'classification_loss': 1.0831195569038392}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [7/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0007/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.503985
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.495810
+Epoch 7 train losses: {'total_loss': 0.6530095618367195, 'invariant_loss': 0.13255127535760403, 'sigreg_loss': 17.893375, 'triplet_loss': 0.5479945456385612, 'triplet_pos_distance': 0.04706598864868283, 'triplet_neg_distance': 0.7021816925704479, 'classification_loss': 1.0780336232781411}
+Epoch 7 val losses: {'total_loss': 0.6131983327865601, 'invariant_loss': 0.03344669491052628, 'sigreg_loss': 21.78, 'triplet_loss': 0.3585532969236374, 'triplet_pos_distance': 0.009840791523456573, 'triplet_neg_distance': 1.0540605390071869, 'classification_loss': 1.0834943199157714}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [8/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0008/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.502301
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.496997
+Epoch 8 train losses: {'total_loss': 0.5824112520217896, 'invariant_loss': 0.13279524952918292, 'sigreg_loss': 16.307375, 'triplet_loss': 0.15667541214078665, 'triplet_pos_distance': 0.0470943457596004, 'triplet_neg_distance': 1.8147837282419206, 'classification_loss': 1.0779807014465332}
+Epoch 8 val losses: {'total_loss': 0.5005737751722336, 'invariant_loss': 0.02423346571624279, 'sigreg_loss': 18.03625, 'triplet_loss': 0.07824131883680821, 'triplet_pos_distance': 0.004078802559524775, 'triplet_neg_distance': 2.238500361442566, 'classification_loss': 1.0777398538589478}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [9/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0009/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.518216
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.513725
+Epoch 9 train losses: {'total_loss': 0.5511973393857479, 'invariant_loss': 0.13033018999546767, 'sigreg_loss': 15.3501875, 'triplet_loss': 0.06102620154619217, 'triplet_pos_distance': 0.045941945254802705, 'triplet_neg_distance': 2.5591185965538026, 'classification_loss': 1.0775281049013137}
+Epoch 9 val losses: {'total_loss': 0.5056850451231003, 'invariant_loss': 0.020449646972119807, 'sigreg_loss': 18.595, 'triplet_loss': 0.05346278086304665, 'triplet_pos_distance': 0.003056509152520448, 'triplet_neg_distance': 2.55372962474823, 'classification_loss': 1.0801411437988282}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [10/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0010/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.506400
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.509699
+Epoch 10 train losses: {'total_loss': 0.5330111905038357, 'invariant_loss': 0.12996296593546866, 'sigreg_loss': 14.6213125, 'triplet_loss': 0.04411799549963325, 'triplet_pos_distance': 0.045935473918914796, 'triplet_neg_distance': 2.668022371292114, 'classification_loss': 1.0623017430305481}
+Epoch 10 val losses: {'total_loss': 0.47557134747505186, 'invariant_loss': 0.01861636321991682, 'sigreg_loss': 17.54875, 'triplet_loss': 0.043039388954639435, 'triplet_pos_distance': 0.002861736537888646, 'triplet_neg_distance': 2.9078044366836546, 'classification_loss': 1.0167447972297667}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [11/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0011/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.499256
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.502242
+Epoch 11 train losses: {'total_loss': 0.5113670050799847, 'invariant_loss': 0.13030891068279743, 'sigreg_loss': 13.875, 'triplet_loss': 0.03397057528980076, 'triplet_pos_distance': 0.046574945379048584, 'triplet_neg_distance': 2.8836368021965026, 'classification_loss': 1.0013564474582672}
+Epoch 11 val losses: {'total_loss': 0.42690726459026335, 'invariant_loss': 0.01639588501304388, 'sigreg_loss': 15.8675, 'triplet_loss': 0.027406763546168805, 'triplet_pos_distance': 0.0024233722127974034, 'triplet_neg_distance': 2.680614891052246, 'classification_loss': 0.9034882748126983}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [12/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0012/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.509708
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.511883
+Epoch 12 train losses: {'total_loss': 0.48985091456770896, 'invariant_loss': 0.1299388935416937, 'sigreg_loss': 13.194, 'triplet_loss': 0.031836292030289766, 'triplet_pos_distance': 0.04708428191766143, 'triplet_neg_distance': 3.1554782180786134, 'classification_loss': 0.9286217925548553}
+Epoch 12 val losses: {'total_loss': 0.43882015228271487, 'invariant_loss': 0.015359614584594965, 'sigreg_loss': 16.6525, 'triplet_loss': 0.04425606120377779, 'triplet_pos_distance': 0.002831119035836309, 'triplet_neg_distance': 2.4844350957870485, 'classification_loss': 0.859880520105362}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [13/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0013/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.511244
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.501569
+Epoch 13 train losses: {'total_loss': 0.4775581084489822, 'invariant_loss': 0.12919834027439356, 'sigreg_loss': 12.88275, 'triplet_loss': 0.019874573363165837, 'triplet_pos_distance': 0.04724406119063496, 'triplet_neg_distance': 3.4185886442661286, 'classification_loss': 0.887414482831955}
+Epoch 13 val losses: {'total_loss': 0.41049649477005007, 'invariant_loss': 0.010804131776094437, 'sigreg_loss': 15.6425, 'triplet_loss': 0.029697128236293793, 'triplet_pos_distance': 0.0015949706453830003, 'triplet_neg_distance': 2.977761359214783, 'classification_loss': 0.8383202278614044}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [14/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0014/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.535742
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.525505
+Epoch 14 train losses: {'total_loss': 0.4682450560927391, 'invariant_loss': 0.1285414280965924, 'sigreg_loss': 12.5784375, 'triplet_loss': 0.016765255863487254, 'triplet_pos_distance': 0.04726989782229066, 'triplet_neg_distance': 3.5120448668003084, 'classification_loss': 0.8644702172875405}
+Epoch 14 val losses: {'total_loss': 0.4224200415611267, 'invariant_loss': 0.008854169966652989, 'sigreg_loss': 16.59125, 'triplet_loss': 0.013062597634270787, 'triplet_pos_distance': 0.0014693782513495535, 'triplet_neg_distance': 3.0379264974594116, 'classification_loss': 0.8046273338794708}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [15/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0015/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.527277
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.514625
+Epoch 15 train losses: {'total_loss': 0.46140145087242124, 'invariant_loss': 0.12847626275569202, 'sigreg_loss': 12.311125, 'triplet_loss': 0.01612542854057392, 'triplet_pos_distance': 0.04759886104241014, 'triplet_neg_distance': 3.4999342927932737, 'classification_loss': 0.8509389219880104}
+Epoch 15 val losses: {'total_loss': 0.3868335455656052, 'invariant_loss': 0.008469943376258015, 'sigreg_loss': 14.82, 'triplet_loss': 0.032443952448666095, 'triplet_pos_distance': 0.0012308234395459294, 'triplet_neg_distance': 2.776598505973816, 'classification_loss': 0.7879108166694642}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [16/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0016/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.559882
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.551340
+Epoch 16 train losses: {'total_loss': 0.45679907950758936, 'invariant_loss': 0.12885630840063095, 'sigreg_loss': 12.1035, 'triplet_loss': 0.01718009789317148, 'triplet_pos_distance': 0.04802870085835457, 'triplet_neg_distance': 3.0765967152118683, 'classification_loss': 0.8411538379788399}
+Epoch 16 val losses: {'total_loss': 0.38754150331020354, 'invariant_loss': 0.0072039377689361575, 'sigreg_loss': 15.06625, 'triplet_loss': 0.023511648327112198, 'triplet_pos_distance': 0.001107059408677742, 'triplet_neg_distance': 2.1341505813598634, 'classification_loss': 0.7669733583927154}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [17/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0017/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.550780
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.541950
+Epoch 17 train losses: {'total_loss': 0.44791724625229834, 'invariant_loss': 0.1284597462564707, 'sigreg_loss': 11.8761875, 'triplet_loss': 0.011162379182875156, 'triplet_pos_distance': 0.04796401376277208, 'triplet_neg_distance': 2.865574980020523, 'classification_loss': 0.8080317332148552}
+Epoch 17 val losses: {'total_loss': 0.3848265415430069, 'invariant_loss': 0.006417114529758692, 'sigreg_loss': 15.1775, 'triplet_loss': 0.02022455496713519, 'triplet_pos_distance': 0.0009377779229544103, 'triplet_neg_distance': 2.1111828899383545, 'classification_loss': 0.7267603254318238}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [18/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0018/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.555811
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.541243
+Epoch 18 train losses: {'total_loss': 0.44388327771425246, 'invariant_loss': 0.12943380242586136, 'sigreg_loss': 11.725125, 'triplet_loss': 0.012049797408573796, 'triplet_pos_distance': 0.04835480042919517, 'triplet_neg_distance': 2.683324839115143, 'classification_loss': 0.7874546973705292}
+Epoch 18 val losses: {'total_loss': 0.3726534062623978, 'invariant_loss': 0.006532989609986543, 'sigreg_loss': 14.55125, 'triplet_loss': 0.01565048025920987, 'triplet_pos_distance': 0.0009110396506730467, 'triplet_neg_distance': 2.0640685081481935, 'classification_loss': 0.7353974032402039}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [19/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0019/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.554665
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.543261
+Epoch 19 train losses: {'total_loss': 0.44251659098267554, 'invariant_loss': 0.12979076875001191, 'sigreg_loss': 11.7044375, 'triplet_loss': 0.011631638398685027, 'triplet_pos_distance': 0.04867385672032833, 'triplet_neg_distance': 2.4838966275453567, 'classification_loss': 0.7745425734817982}
+Epoch 19 val losses: {'total_loss': 0.42072781920433044, 'invariant_loss': 0.006606180919334292, 'sigreg_loss': 16.745, 'triplet_loss': 0.01754612969234586, 'triplet_pos_distance': 0.0009475075302179903, 'triplet_neg_distance': 1.7156093573570252, 'classification_loss': 0.7748421120643616}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [20/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0020/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.573505
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.560861
+Epoch 20 train losses: {'total_loss': 0.4391191209256649, 'invariant_loss': 0.12958286330103874, 'sigreg_loss': 11.533625, 'triplet_loss': 0.009964246235787868, 'triplet_pos_distance': 0.04853284354880452, 'triplet_neg_distance': 2.3773277442455294, 'classification_loss': 0.778777205646038}
+Epoch 20 val losses: {'total_loss': 0.3815490794181824, 'invariant_loss': 0.005682562114670873, 'sigreg_loss': 14.845, 'triplet_loss': 0.017644216641783714, 'triplet_pos_distance': 0.0008471605298109353, 'triplet_neg_distance': 1.6570898222923278, 'classification_loss': 0.7718802583217621}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [21/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0021/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.548494
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.536493
+Epoch 21 train losses: {'total_loss': 0.43525158271193504, 'invariant_loss': 0.12910391142964364, 'sigreg_loss': 11.40175, 'triplet_loss': 0.008530704067030456, 'triplet_pos_distance': 0.04858947173878551, 'triplet_neg_distance': 2.3090209355354308, 'classification_loss': 0.772467457473278}
+Epoch 21 val losses: {'total_loss': 0.4024409645795822, 'invariant_loss': 0.005897775944322348, 'sigreg_loss': 15.79875, 'triplet_loss': 0.012601930731907487, 'triplet_pos_distance': 0.0008804864494595676, 'triplet_neg_distance': 1.5762199187278747, 'classification_loss': 0.7930642712116241}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [22/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0022/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.556669
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.545673
+Epoch 22 train losses: {'total_loss': 0.43393728786706925, 'invariant_loss': 0.12926032255589961, 'sigreg_loss': 11.336625, 'triplet_loss': 0.00910219067253638, 'triplet_pos_distance': 0.04857869252189994, 'triplet_neg_distance': 2.2921298809051516, 'classification_loss': 0.7703041426539421}
+Epoch 22 val losses: {'total_loss': 0.39607137262821196, 'invariant_loss': 0.005566364256665111, 'sigreg_loss': 15.7275, 'triplet_loss': 0.009602991295978427, 'triplet_pos_distance': 0.0008460456749889999, 'triplet_neg_distance': 1.4662692713737489, 'classification_loss': 0.7505251598358155}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [23/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0023/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.565356
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.551542
+Epoch 23 train losses: {'total_loss': 0.4304420431554318, 'invariant_loss': 0.12962161569297315, 'sigreg_loss': 11.17225, 'triplet_loss': 0.00867857338959584, 'triplet_pos_distance': 0.048787252850830555, 'triplet_neg_distance': 2.3131072655916216, 'classification_loss': 0.7652288017868996}
+Epoch 23 val losses: {'total_loss': 0.37849396765232085, 'invariant_loss': 0.005218244735151529, 'sigreg_loss': 14.7875, 'triplet_loss': 0.00925803238991648, 'triplet_pos_distance': 0.0007888656831346452, 'triplet_neg_distance': 1.532782814502716, 'classification_loss': 0.7664679265022278}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [24/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0024/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.561909
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.542147
+Epoch 24 train losses: {'total_loss': 0.4306885564923286, 'invariant_loss': 0.12995121374726296, 'sigreg_loss': 11.1859375, 'triplet_loss': 0.007513685976504348, 'triplet_pos_distance': 0.04893884467706084, 'triplet_neg_distance': 2.297567577123642, 'classification_loss': 0.7627015078067779}
+Epoch 24 val losses: {'total_loss': 0.37954201936721804, 'invariant_loss': 0.005429936992004514, 'sigreg_loss': 14.83625, 'triplet_loss': 0.014211668595671655, 'triplet_pos_distance': 0.000843404303304851, 'triplet_neg_distance': 1.5752750778198241, 'classification_loss': 0.7585497617721557}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [25/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0025/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.563660
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.551433
+Epoch 25 train losses: {'total_loss': 0.42773226484656335, 'invariant_loss': 0.129865587875247, 'sigreg_loss': 11.0545, 'triplet_loss': 0.008030905920022632, 'triplet_pos_distance': 0.04901852693036199, 'triplet_neg_distance': 2.3002345781326294, 'classification_loss': 0.7598448311090469}
+Epoch 25 val losses: {'total_loss': 0.37302650392055514, 'invariant_loss': 0.005131061328575015, 'sigreg_loss': 14.62, 'triplet_loss': 0.014882258558645844, 'triplet_pos_distance': 0.0007657970581203699, 'triplet_neg_distance': 1.6115059280395507, 'classification_loss': 0.7394628131389618}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [26/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0026/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.588409
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.567769
+Epoch 26 train losses: {'total_loss': 0.426612488001585, 'invariant_loss': 0.129647143907845, 'sigreg_loss': 11.02, 'triplet_loss': 0.00658864454808645, 'triplet_pos_distance': 0.049144584752619264, 'triplet_neg_distance': 2.3183143842220306, 'classification_loss': 0.759119454562664}
+Epoch 26 val losses: {'total_loss': 0.41456329822540283, 'invariant_loss': 0.005059377173893154, 'sigreg_loss': 16.685, 'triplet_loss': 0.011414423137903213, 'triplet_pos_distance': 0.0008069629909005016, 'triplet_neg_distance': 1.456407060623169, 'classification_loss': 0.746124758720398}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [27/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0027/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.564533
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.556382
+Epoch 27 train losses: {'total_loss': 0.4252642039954662, 'invariant_loss': 0.12994778909534216, 'sigreg_loss': 10.9745625, 'triplet_loss': 0.007320380625955295, 'triplet_pos_distance': 0.04914319675043225, 'triplet_neg_distance': 2.331706489801407, 'classification_loss': 0.7508632692098618}
+Epoch 27 val losses: {'total_loss': 0.38113187849521635, 'invariant_loss': 0.004955837316811085, 'sigreg_loss': 15.105, 'triplet_loss': 0.009799982919357717, 'triplet_pos_distance': 0.0007096246350556612, 'triplet_neg_distance': 1.4975505566596985, 'classification_loss': 0.7320385110378266}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [28/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0028/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.583080
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.565977
+Epoch 28 train losses: {'total_loss': 0.4241389617919922, 'invariant_loss': 0.13040229249000548, 'sigreg_loss': 10.904375, 'triplet_loss': 0.007716868445510045, 'triplet_pos_distance': 0.049392798747867346, 'triplet_neg_distance': 2.342989987611771, 'classification_loss': 0.7486927668452263}
+Epoch 28 val losses: {'total_loss': 0.3740337687730789, 'invariant_loss': 0.00569125097244978, 'sigreg_loss': 14.625, 'triplet_loss': 0.006805142315570265, 'triplet_pos_distance': 0.0008801437995862216, 'triplet_neg_distance': 1.4927750396728516, 'classification_loss': 0.7524012708663941}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [29/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0029/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.552323
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.532031
+Epoch 29 train losses: {'total_loss': 0.41337117528915407, 'invariant_loss': 0.13045277059078217, 'sigreg_loss': 10.8725, 'triplet_loss': 0.010481565064168535, 'triplet_pos_distance': 0.049397594805806876, 'triplet_neg_distance': 2.3264361147880552, 'classification_loss': 0.6443469916582107}
+Epoch 29 val losses: {'total_loss': 0.3632564032077789, 'invariant_loss': 0.005465994887053967, 'sigreg_loss': 14.8775, 'triplet_loss': 0.009609118150547147, 'triplet_pos_distance': 0.0007841158472001552, 'triplet_neg_distance': 1.5345727944374083, 'classification_loss': 0.5917324638366699}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [30/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0030/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.546701
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.500635
+Epoch 30 train losses: {'total_loss': 0.4020290833413601, 'invariant_loss': 0.1309847926646471, 'sigreg_loss': 10.772375, 'triplet_loss': 0.010171780853066593, 'triplet_pos_distance': 0.04942572497949004, 'triplet_neg_distance': 2.306897362470627, 'classification_loss': 0.5459351786673069}
+Epoch 30 val losses: {'total_loss': 0.3551579815149307, 'invariant_loss': 0.005451293718069791, 'sigreg_loss': 14.76625, 'triplet_loss': 0.007775406623259187, 'triplet_pos_distance': 0.0009313199121970683, 'triplet_neg_distance': 1.4671519589424133, 'classification_loss': 0.5357757931947709}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [31/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0031/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.580583
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.551568
+Epoch 31 train losses: {'total_loss': 0.3982505719065666, 'invariant_loss': 0.130692146204412, 'sigreg_loss': 10.7061875, 'triplet_loss': 0.009062393228057773, 'triplet_pos_distance': 0.049361504413187506, 'triplet_neg_distance': 2.2257226328849793, 'classification_loss': 0.5252620984613895}
+Epoch 31 val losses: {'total_loss': 0.34796477138996124, 'invariant_loss': 0.006069118361920118, 'sigreg_loss': 14.56, 'triplet_loss': 0.01021121176891029, 'triplet_pos_distance': 0.0009680064441636205, 'triplet_neg_distance': 1.5712411785125733, 'classification_loss': 0.4958546704053879}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [32/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0032/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.562067
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.517190
+Epoch 32 train losses: {'total_loss': 0.39797814083099364, 'invariant_loss': 0.1308720956593752, 'sigreg_loss': 10.7375625, 'triplet_loss': 0.008787710834410973, 'triplet_pos_distance': 0.04939806901291013, 'triplet_neg_distance': 2.2222535924911497, 'classification_loss': 0.5147336727976799}
+Epoch 32 val losses: {'total_loss': 0.3703480875492096, 'invariant_loss': 0.0053945636935532094, 'sigreg_loss': 15.71875, 'triplet_loss': 0.008246815078891814, 'triplet_pos_distance': 0.000861621128860861, 'triplet_neg_distance': 1.5727359223365784, 'classification_loss': 0.498319673538208}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [33/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0033/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.546233
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.497835
+Epoch 33 train losses: {'total_loss': 0.39469391644001006, 'invariant_loss': 0.13064028357714413, 'sigreg_loss': 10.6456875, 'triplet_loss': 0.00785232220927719, 'triplet_pos_distance': 0.04937719471380114, 'triplet_neg_distance': 2.1786175236701966, 'classification_loss': 0.5036898636221886}
+Epoch 33 val losses: {'total_loss': 0.3734264504909515, 'invariant_loss': 0.005841605169698596, 'sigreg_loss': 15.8775, 'triplet_loss': 0.007266331082209945, 'triplet_pos_distance': 0.0010019097686745227, 'triplet_neg_distance': 1.594963743686676, 'classification_loss': 0.4931915056705475}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [34/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0034/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.584356
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.550096
+Epoch 34 train losses: {'total_loss': 0.3934655100107193, 'invariant_loss': 0.13072134862095117, 'sigreg_loss': 10.6104375, 'triplet_loss': 0.008135142279264982, 'triplet_pos_distance': 0.0496228063069284, 'triplet_neg_distance': 2.1913437411785126, 'classification_loss': 0.49738263759016993}
+Epoch 34 val losses: {'total_loss': 0.33601138949394227, 'invariant_loss': 0.00535543218255043, 'sigreg_loss': 14.09875, 'triplet_loss': 0.007952698264271021, 'triplet_pos_distance': 0.0008058343268930912, 'triplet_neg_distance': 1.5948990082740784, 'classification_loss': 0.4788803368806839}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [35/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0035/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.573162
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.478099
+Epoch 35 train losses: {'total_loss': 0.39131965601444246, 'invariant_loss': 0.13032529754191638, 'sigreg_loss': 10.5540625, 'triplet_loss': 0.007216519304085523, 'triplet_pos_distance': 0.04930059558525682, 'triplet_neg_distance': 2.1873692235946653, 'classification_loss': 0.4917309719324112}
+Epoch 35 val losses: {'total_loss': 0.3477956634759903, 'invariant_loss': 0.004573976336978376, 'sigreg_loss': 14.4125, 'triplet_loss': 0.007345327078364789, 'triplet_pos_distance': 0.0006544498819857835, 'triplet_neg_distance': 1.5612096428871154, 'classification_loss': 0.5428402596712112}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [36/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0036/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.565237
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.498082
+Epoch 36 train losses: {'total_loss': 0.3897190376222134, 'invariant_loss': 0.1302317211702466, 'sigreg_loss': 10.5206875, 'triplet_loss': 0.006891435496800114, 'triplet_pos_distance': 0.04907095144689083, 'triplet_neg_distance': 2.186746102333069, 'classification_loss': 0.48385087397694587}
+Epoch 36 val losses: {'total_loss': 0.3415368610620499, 'invariant_loss': 0.0049300906248390675, 'sigreg_loss': 14.46875, 'triplet_loss': 0.007475877003744244, 'triplet_pos_distance': 0.0007324842712841929, 'triplet_neg_distance': 1.5752753448486327, 'classification_loss': 0.4644511967897415}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [37/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0037/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.556022
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.497771
+Epoch 37 train losses: {'total_loss': 0.38875069585442545, 'invariant_loss': 0.13033645847439765, 'sigreg_loss': 10.4825625, 'triplet_loss': 0.006551065709500108, 'triplet_pos_distance': 0.04922476406022906, 'triplet_neg_distance': 2.209078987836838, 'classification_loss': 0.48112646424770356}
+Epoch 37 val losses: {'total_loss': 0.35860367596149445, 'invariant_loss': 0.005244340668432415, 'sigreg_loss': 15.33375, 'triplet_loss': 0.009947964530438185, 'triplet_pos_distance': 0.0007673523819539695, 'triplet_neg_distance': 1.523010106086731, 'classification_loss': 0.45880166232585906}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [38/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0038/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.567884
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.505259
+Epoch 38 train losses: {'total_loss': 0.38504609489440916, 'invariant_loss': 0.12995445121079682, 'sigreg_loss': 10.399875, 'triplet_loss': 0.006861379212583415, 'triplet_pos_distance': 0.049159453842788935, 'triplet_neg_distance': 2.189224426150322, 'classification_loss': 0.4641136509478092}
+Epoch 38 val losses: {'total_loss': 0.35597582697868346, 'invariant_loss': 0.004982726406306029, 'sigreg_loss': 14.9, 'triplet_loss': 0.007097332607954741, 'triplet_pos_distance': 0.0007482122199144215, 'triplet_neg_distance': 1.5641176009178162, 'classification_loss': 0.5227555280923843}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [39/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0039/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.568198
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.520526
+Epoch 39 train losses: {'total_loss': 0.38256322211027144, 'invariant_loss': 0.12927549321204423, 'sigreg_loss': 10.3766875, 'triplet_loss': 0.006560491778072901, 'triplet_pos_distance': 0.04926264223828912, 'triplet_neg_distance': 2.2210203013420107, 'classification_loss': 0.4510140653848648}
+Epoch 39 val losses: {'total_loss': 0.3310788947343826, 'invariant_loss': 0.005079787876456976, 'sigreg_loss': 13.77625, 'triplet_loss': 0.006246176989516243, 'triplet_pos_distance': 0.0008019346790388227, 'triplet_neg_distance': 1.598953652381897, 'classification_loss': 0.4976902318000793}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [40/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0040/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.574969
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.501712
+Epoch 40 train losses: {'total_loss': 0.38233348190784455, 'invariant_loss': 0.1294994174838066, 'sigreg_loss': 10.3841875, 'triplet_loss': 0.006586518626019824, 'triplet_pos_distance': 0.0494192463234067, 'triplet_neg_distance': 2.1949226183891297, 'classification_loss': 0.44493771690130235}
+Epoch 40 val losses: {'total_loss': 0.3415133810043335, 'invariant_loss': 0.004751670183613896, 'sigreg_loss': 14.2625, 'triplet_loss': 0.005587682421319187, 'triplet_pos_distance': 0.0006827184546273202, 'triplet_neg_distance': 1.5709175062179566, 'classification_loss': 0.5094903522729873}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [41/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0041/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.575955
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.491544
+Epoch 41 train losses: {'total_loss': 0.37992688193917273, 'invariant_loss': 0.12932671235501766, 'sigreg_loss': 10.3086875, 'triplet_loss': 0.006453509162005502, 'triplet_pos_distance': 0.04901696434617043, 'triplet_neg_distance': 2.1575309166908263, 'classification_loss': 0.4378880242407322}
+Epoch 41 val losses: {'total_loss': 0.35444914519786835, 'invariant_loss': 0.004383612312376499, 'sigreg_loss': 14.9275, 'triplet_loss': 0.0054984770272858445, 'triplet_pos_distance': 0.0006255324551602826, 'triplet_neg_distance': 1.5496100497245788, 'classification_loss': 0.5096100133657455}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [42/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0042/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.579505
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.506671
+Epoch 42 train losses: {'total_loss': 0.3803573016524315, 'invariant_loss': 0.12945034862309696, 'sigreg_loss': 10.32975, 'triplet_loss': 0.006058484542241786, 'triplet_pos_distance': 0.04908306707814336, 'triplet_neg_distance': 2.186833471298218, 'classification_loss': 0.437132138967514}
+Epoch 42 val losses: {'total_loss': 0.3479635626077652, 'invariant_loss': 0.005198117271065712, 'sigreg_loss': 14.43875, 'triplet_loss': 0.00520455242251046, 'triplet_pos_distance': 0.0007592719234526158, 'triplet_neg_distance': 1.5934085440635681, 'classification_loss': 0.5341686171293258}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [43/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0043/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.596696
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.514981
+Epoch 43 train losses: {'total_loss': 0.3777610755860806, 'invariant_loss': 0.1290698915719986, 'sigreg_loss': 10.2331875, 'triplet_loss': 0.00610682226048084, 'triplet_pos_distance': 0.04912962133064866, 'triplet_neg_distance': 2.222264789581299, 'classification_loss': 0.4341839227676392}
+Epoch 43 val losses: {'total_loss': 0.33255891263484955, 'invariant_loss': 0.004359054705128073, 'sigreg_loss': 13.8075, 'triplet_loss': 0.004609487663256005, 'triplet_pos_distance': 0.0006867328623775393, 'triplet_neg_distance': 1.567010338306427, 'classification_loss': 0.515670353770256}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [44/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0044/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.552999
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.460350
+Epoch 44 train losses: {'total_loss': 0.3773732794523239, 'invariant_loss': 0.12903486356139182, 'sigreg_loss': 10.2420625, 'triplet_loss': 0.005776783060224261, 'triplet_pos_distance': 0.049015496633946894, 'triplet_neg_distance': 2.174992033958435, 'classification_loss': 0.42917964002490044}
+Epoch 44 val losses: {'total_loss': 0.36721394896507265, 'invariant_loss': 0.004584114765748382, 'sigreg_loss': 15.44125, 'triplet_loss': 0.004350301236845553, 'triplet_pos_distance': 0.0006881248491117731, 'triplet_neg_distance': 1.535004560947418, 'classification_loss': 0.5340573781728745}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [45/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0045/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.588427
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.534392
+Epoch 45 train losses: {'total_loss': 0.3759532996416092, 'invariant_loss': 0.12891870767623187, 'sigreg_loss': 10.1893125, 'triplet_loss': 0.005841201242816169, 'triplet_pos_distance': 0.049023123290389777, 'triplet_neg_distance': 2.1814282915592194, 'classification_loss': 0.42658479665219784}
+Epoch 45 val losses: {'total_loss': 0.343374108672142, 'invariant_loss': 0.004648876804858446, 'sigreg_loss': 14.58625, 'triplet_loss': 0.00454993071849458, 'triplet_pos_distance': 0.0007359192532021552, 'triplet_neg_distance': 1.5007450938224793, 'classification_loss': 0.4657102280855179}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [46/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0046/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.590345
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.531306
+Epoch 46 train losses: {'total_loss': 0.37297463726997376, 'invariant_loss': 0.12866986652463674, 'sigreg_loss': 10.0789375, 'triplet_loss': 0.005885432529437821, 'triplet_pos_distance': 0.04886713563278317, 'triplet_neg_distance': 2.214865794420242, 'classification_loss': 0.421361488878727}
+Epoch 46 val losses: {'total_loss': 0.3304566329717636, 'invariant_loss': 0.004639019188471138, 'sigreg_loss': 13.86125, 'triplet_loss': 0.005935453050769865, 'triplet_pos_distance': 0.0007540431863162667, 'triplet_neg_distance': 1.510413978099823, 'classification_loss': 0.47938911080360413}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [47/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0047/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.584733
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.534932
+Epoch 47 train losses: {'total_loss': 0.37277809077501295, 'invariant_loss': 0.12882403534650802, 'sigreg_loss': 10.09221875, 'triplet_loss': 0.005464606946974527, 'triplet_pos_distance': 0.048978942699730396, 'triplet_neg_distance': 2.2099285938739777, 'classification_loss': 0.4156286896020174}
+Epoch 47 val losses: {'total_loss': 0.34561686754226684, 'invariant_loss': 0.004123682845383883, 'sigreg_loss': 15.05375, 'triplet_loss': 0.005955156779382378, 'triplet_pos_distance': 0.0006535990454722196, 'triplet_neg_distance': 1.518723919391632, 'classification_loss': 0.39842979729175565}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [48/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0048/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.579588
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.504652
+Epoch 48 train losses: {'total_loss': 0.37232989048957826, 'invariant_loss': 0.12880802523344756, 'sigreg_loss': 10.12375, 'triplet_loss': 0.005461406838032417, 'triplet_pos_distance': 0.04898341893032193, 'triplet_neg_distance': 2.239047498703003, 'classification_loss': 0.4048841981291771}
+Epoch 48 val losses: {'total_loss': 0.3187995690107346, 'invariant_loss': 0.004541075662709773, 'sigreg_loss': 13.69625, 'triplet_loss': 0.004550716266967356, 'triplet_pos_distance': 0.000688863592222333, 'triplet_neg_distance': 1.597073483467102, 'classification_loss': 0.39916700959205625}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [49/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0049/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.602840
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.528154
+Epoch 49 train losses: {'total_loss': 0.37066700592637064, 'invariant_loss': 0.1283513347581029, 'sigreg_loss': 10.1023125, 'triplet_loss': 0.00465799611521652, 'triplet_pos_distance': 0.048640895646065475, 'triplet_neg_distance': 2.172140728712082, 'classification_loss': 0.39796160607039927}
+Epoch 49 val losses: {'total_loss': 0.34114318788051606, 'invariant_loss': 0.00390965118072927, 'sigreg_loss': 14.935, 'triplet_loss': 0.005092872218228877, 'triplet_pos_distance': 0.0006403420865535736, 'triplet_neg_distance': 1.5469090914726258, 'classification_loss': 0.3828675132989883}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [50/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0050/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.589589
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.512448
+Epoch 50 train losses: {'total_loss': 0.3698838267326355, 'invariant_loss': 0.12820319559425117, 'sigreg_loss': 10.08121875, 'triplet_loss': 0.004444660032051615, 'triplet_pos_distance': 0.048717067919671536, 'triplet_neg_distance': 2.176082056283951, 'classification_loss': 0.3961409386396408}
+Epoch 50 val losses: {'total_loss': 0.31221237242221833, 'invariant_loss': 0.003570475149899721, 'sigreg_loss': 13.47875, 'triplet_loss': 0.005808437227969989, 'triplet_pos_distance': 0.0005524731782497838, 'triplet_neg_distance': 1.5646137404441833, 'classification_loss': 0.3833449423313141}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [51/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0051/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.581062
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.494476
+Epoch 51 train losses: {'total_loss': 0.36788041347265243, 'invariant_loss': 0.12818724040687085, 'sigreg_loss': 10.0155, 'triplet_loss': 0.0043354932004585865, 'triplet_pos_distance': 0.04875500718131662, 'triplet_neg_distance': 2.153799140691757, 'classification_loss': 0.38946147276461124}
+Epoch 51 val losses: {'total_loss': 0.3245359802246094, 'invariant_loss': 0.004079425018280744, 'sigreg_loss': 14.14, 'triplet_loss': 0.005504343017237261, 'triplet_pos_distance': 0.0006257959851063788, 'triplet_neg_distance': 1.488624267578125, 'classification_loss': 0.37132681846618654}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [52/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0052/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.586991
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.524426
+Epoch 52 train losses: {'total_loss': 0.36496187511086464, 'invariant_loss': 0.12760642857849597, 'sigreg_loss': 9.9288125, 'triplet_loss': 0.004295428257144522, 'triplet_pos_distance': 0.04859849144145846, 'triplet_neg_distance': 2.165935819387436, 'classification_loss': 0.38341919767856597}
+Epoch 52 val losses: {'total_loss': 0.32216583311557767, 'invariant_loss': 0.003617366971448064, 'sigreg_loss': 14.08125, 'triplet_loss': 0.003915343072731048, 'triplet_pos_distance': 0.0005640830862103031, 'triplet_neg_distance': 1.592959246635437, 'classification_loss': 0.3661396050453186}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [53/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0053/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.603007
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.524008
+Epoch 53 train losses: {'total_loss': 0.3642061578631401, 'invariant_loss': 0.12747750835865737, 'sigreg_loss': 9.912875, 'triplet_loss': 0.004143888267746661, 'triplet_pos_distance': 0.04857130329310894, 'triplet_neg_distance': 2.215748676300049, 'classification_loss': 0.38057423985004424}
+Epoch 53 val losses: {'total_loss': 0.3300187957286835, 'invariant_loss': 0.0035531096160411834, 'sigreg_loss': 14.53375, 'triplet_loss': 0.004296485009836033, 'triplet_pos_distance': 0.0005543684039730579, 'triplet_neg_distance': 1.5428735733032226, 'classification_loss': 0.35411040306091307}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [54/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0054/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.591259
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.519298
+Epoch 54 train losses: {'total_loss': 0.3641635911166668, 'invariant_loss': 0.12746279272437094, 'sigreg_loss': 9.93059375, 'triplet_loss': 0.004468519477697555, 'triplet_pos_distance': 0.048764456056058406, 'triplet_neg_distance': 2.178578696012497, 'classification_loss': 0.3764457087516785}
+Epoch 54 val losses: {'total_loss': 0.32902884006500244, 'invariant_loss': 0.003392841131426394, 'sigreg_loss': 14.43625, 'triplet_loss': 0.0032475317118223755, 'triplet_pos_distance': 0.0005267942015780136, 'triplet_neg_distance': 1.561727831363678, 'classification_loss': 0.36502653658390044}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [55/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0055/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.601791
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.512364
+Epoch 55 train losses: {'total_loss': 0.3623767981827259, 'invariant_loss': 0.12719083145260812, 'sigreg_loss': 9.87384375, 'triplet_loss': 0.003996976749622263, 'triplet_pos_distance': 0.04857990361750126, 'triplet_neg_distance': 2.1781034376621244, 'classification_loss': 0.373263087362051}
+Epoch 55 val losses: {'total_loss': 0.3133666414022446, 'invariant_loss': 0.003510284423828125, 'sigreg_loss': 13.725, 'triplet_loss': 0.0036816759395878764, 'triplet_pos_distance': 0.0005246523168170825, 'triplet_neg_distance': 1.5548577857017518, 'classification_loss': 0.3509366083145142}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [56/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0056/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.595811
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.505659
+Epoch 56 train losses: {'total_loss': 0.3620391165614128, 'invariant_loss': 0.12730471090972423, 'sigreg_loss': 9.869125, 'triplet_loss': 0.004389772869937587, 'triplet_pos_distance': 0.048477434672415255, 'triplet_neg_distance': 2.169692170381546, 'classification_loss': 0.36917498087882994}
+Epoch 56 val losses: {'total_loss': 0.3154099178314209, 'invariant_loss': 0.0027992694359272718, 'sigreg_loss': 13.90625, 'triplet_loss': 0.0034863514732569457, 'triplet_pos_distance': 0.0004431965382536873, 'triplet_neg_distance': 1.5818753266334533, 'classification_loss': 0.3413701158761978}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [57/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0057/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.604765
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.502659
+Epoch 57 train losses: {'total_loss': 0.3638041815161705, 'invariant_loss': 0.12720130179077388, 'sigreg_loss': 9.83390625, 'triplet_loss': 0.00237200848502107, 'triplet_pos_distance': 0.04820698995515704, 'triplet_neg_distance': 2.1996083664894104, 'classification_loss': 0.39687944447994233}
+Epoch 57 val losses: {'total_loss': 0.32168628871440885, 'invariant_loss': 0.003077339776791632, 'sigreg_loss': 13.67625, 'triplet_loss': 0.004286228633718565, 'triplet_pos_distance': 0.0004585835494799539, 'triplet_neg_distance': 1.6455414700508117, 'classification_loss': 0.44840482890605926}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [58/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0058/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.593826
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.486409
+Epoch 58 train losses: {'total_loss': 0.36295188519358634, 'invariant_loss': 0.1272457105666399, 'sigreg_loss': 9.778, 'triplet_loss': 0.001763222090783529, 'triplet_pos_distance': 0.048374653078615666, 'triplet_neg_distance': 2.2340133447647093, 'classification_loss': 0.39960516169667243}
+Epoch 58 val losses: {'total_loss': 0.3282614779472351, 'invariant_loss': 0.002788556427694857, 'sigreg_loss': 14.0575, 'triplet_loss': 0.0037976409785915165, 'triplet_pos_distance': 0.000441081874887459, 'triplet_neg_distance': 1.5764923429489135, 'classification_loss': 0.4396034568548203}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [59/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0059/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.595232
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.478637
+Epoch 59 train losses: {'total_loss': 0.3620152577161789, 'invariant_loss': 0.12700154980272055, 'sigreg_loss': 9.7664375, 'triplet_loss': 0.0018042203512741253, 'triplet_pos_distance': 0.048151525031775236, 'triplet_neg_distance': 2.226973531484604, 'classification_loss': 0.39510043197870254}
+Epoch 59 val losses: {'total_loss': 0.3244020056724548, 'invariant_loss': 0.0026218503760173915, 'sigreg_loss': 13.82375, 'triplet_loss': 0.004210219342494384, 'triplet_pos_distance': 0.0004208335239673033, 'triplet_neg_distance': 1.5992530059814454, 'classification_loss': 0.44894289135932924}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [60/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0060/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.599807
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.493310
+Epoch 60 train losses: {'total_loss': 0.3610816262960434, 'invariant_loss': 0.12651190357655287, 'sigreg_loss': 9.7435625, 'triplet_loss': 0.0016968220237176866, 'triplet_pos_distance': 0.04802068930864334, 'triplet_neg_distance': 2.2276955418586732, 'classification_loss': 0.3951918136179447}
+Epoch 60 val losses: {'total_loss': 0.3287926161289215, 'invariant_loss': 0.002739845220930874, 'sigreg_loss': 14.05, 'triplet_loss': 0.0034235676866956055, 'triplet_pos_distance': 0.0004317101259948686, 'triplet_neg_distance': 1.5553284168243409, 'classification_loss': 0.4465572649240494}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [61/80]
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp/mahalanobis_eval/epoch_0061/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Hbb+Hcc train vs Wqq: 0.590784
+Mahalanobis AUC, QCD+Hbb+Hcc val vs Wqq: 0.477090
+Epoch 61 train losses: {'total_loss': 0.35972136542201044, 'invariant_loss': 0.12631942561268805, 'sigreg_loss': 9.72640625, 'triplet_loss': 0.0017785074969870038, 'triplet_pos_distance': 0.0480007634870708, 'triplet_neg_distance': 2.214149252653122, 'classification_loss': 0.3870651105642319}
+Epoch 61 val losses: {'total_loss': 0.3215570509433746, 'invariant_loss': 0.0025065265176817775, 'sigreg_loss': 13.80875, 'triplet_loss': 0.003577672236133367, 'triplet_pos_distance': 0.0003999783343169838, 'triplet_neg_distance': 1.5767607736587523, 'classification_loss': 0.4250134950876236}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp/summary.json
+
+Epoch [62/80]

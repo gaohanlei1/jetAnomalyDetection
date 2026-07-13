@@ -4,7 +4,8 @@ Train ParticleTransformer representation models with LeJEPA on JetClass.
 The script supports:
     - LeJEPA + SIGReg self-supervised learning;
     - LeJEPA + SIGReg + corrupted-negative triplet learning;
-    - LeJEPA + SIGReg + semi-supervised background classification.
+    - LeJEPA + SIGReg + semi-supervised background classification;
+    - LeJEPA + SIGReg + triplet + semi-supervised classification.
 
 JetClass ROOT shards are streamed lazily with an IterableDataset. In DDP
 training, ROOT shards are partitioned across ranks and DataLoader workers,
@@ -19,7 +20,7 @@ Single-GPU example:
 
 python -u scripts/run_train_lejepa_part_jetclass.py \
     --dataset-root "/HEP/export/home/lwang223/JetClass/JetClass/Pythia" \
-    --model semi-sup \
+    --model semi-sup-triplet \
     --background-labels "label_QCD,label_Hbb,label_Hcc" \
     --signal-labels "label_Wqq" \
     --embed-dim 128 \
@@ -41,14 +42,14 @@ python -u scripts/run_train_lejepa_part_jetclass.py \
     --triplet-margin 1.0 \
     --anomaly-score mahalanobis \
     --num-workers 4 \
-    --output-dir "plots/run-lejepa-semi-sup-jetclass"
+    --output-dir "plots/run-lejepa-semi-sup-triplet-jetclass"
 
 Four-GPU DDP example:
 
 torchrun --standalone --nproc-per-node=4 \
     scripts/run_train_lejepa_part_jetclass.py \
     --dataset-root "/HEP/export/home/lwang223/JetClass/JetClass/Pythia" \
-    --model semi-sup \
+    --model semi-sup-triplet \
     --background-labels "label_QCD,label_Hbb,label_Hcc" \
     --signal-labels "label_Wqq" \
     --embed-dim 128 \
@@ -70,7 +71,7 @@ torchrun --standalone --nproc-per-node=4 \
     --triplet-margin 1.0 \
     --anomaly-score mahalanobis \
     --num-workers 4 \
-    --output-dir "plots/run-lejepa-semi-sup-jetclass-ddp"
+    --output-dir "plots/run-lejepa-semi-sup-triplet-jetclass-ddp"
 """
 
 import argparse
@@ -108,6 +109,7 @@ from models.part_jetclass import (
     MultiViewAugmentationConfig,
     TripletLossConfig,
     LeJEPASemiSupervisedParticleTransformerRepresentation,
+    LeJEPASemiSupervisedTripletParticleTransformerRepresentation,
 )
 from torch.profiler import (
     profile,
@@ -559,6 +561,8 @@ def load_and_preprocess_jetclass_file(
     part_pt = x_particles[:, :, feature_index["part_pt"]]
     part_eta = x_particles[:, :, feature_index["part_eta"]]
     part_energy = x_particles[:, :, feature_index["part_energy"]]
+    part_deta = x_particles[:, :, feature_index["part_deta"]]
+    part_dphi = x_particles[:, :, feature_index["part_dphi"]]
 
     # Invalid constituents become padding rows. This preprocessing happens only
     # for the current shard, so cleaned arrays can be released after iteration.
@@ -567,6 +571,7 @@ def load_and_preprocess_jetclass_file(
         & (part_energy > 0)
         & (part_eta >= -2.5)
         & (part_eta <= 2.5)
+        & (np.sqrt(np.square(part_deta) + np.square(part_dphi)) < 0.8) # DeltaR cut
     )
     x_particles[~valid_particles] = 0.0
 
@@ -650,18 +655,24 @@ class TrainLeJEPAParticleTransformer:
     Shared driver for LeJEPA ParticleTransformer SSL pretraining.
 
     Supported models:
-        triplet:
-            LeJEPA + SIGReg + corrupted-negative triplet loss
+        lejepa:
+            LeJEPA invariant loss + SIGReg.
 
-        mahalanobis:
-            LeJEPA + SIGReg + corrupted-negative Mahalanobis objective
-            with EMA normal-distribution statistics
+        triplet:
+            LeJEPA + SIGReg + corrupted-negative triplet loss.
+
+        semi-sup:
+            LeJEPA + SIGReg + background classification.
+
+        semi-sup-triplet:
+            LeJEPA + SIGReg + corrupted-negative triplet loss
+            + background classification.
     """
     
     def _prepare_labels_for_model(self, y: torch.Tensor) -> torch.Tensor:
         """Project 10-class JetClass one-hot labels to the selected backgrounds."""
 
-        if self.model_name != "semi-sup":
+        if self.model_name not in {"semi-sup", "semi-sup-triplet"}:
             return y
 
         indices = [
@@ -744,6 +755,17 @@ class TrainLeJEPAParticleTransformer:
                 "triplet_neg_distance",
             ]
         
+        elif self.model_name == "semi-sup-triplet":
+            self.ssl_metric_keys = [
+                "total_loss",
+                "invariant_loss",
+                "sigreg_loss",
+                "triplet_loss",
+                "triplet_pos_distance",
+                "triplet_neg_distance",
+                "classification_loss",
+            ]
+
         elif self.model_name == "lejepa":
             self.ssl_metric_keys = [
                 "total_loss",
@@ -1051,6 +1073,17 @@ class TrainLeJEPAParticleTransformer:
                 "d-": f"{metrics['triplet_neg_distance']:.4g}",
             }
         
+        if self.model_name == "semi-sup-triplet":
+            return {
+                "total": f"{metrics['total_loss']:.4g}",
+                "inv": f"{metrics['invariant_loss']:.4g}",
+                "sig": f"{metrics['sigreg_loss']:.4g}",
+                "tri": f"{metrics['triplet_loss']:.4g}",
+                "d+": f"{metrics['triplet_pos_distance']:.4g}",
+                "d-": f"{metrics['triplet_neg_distance']:.4g}",
+                "cls": f"{metrics['classification_loss']:.4g}",
+            }
+
         if self.model_name == "lejepa":
             return {
                 "total": f"{metrics['total_loss']:.4g}",
@@ -1194,7 +1227,9 @@ class TrainLeJEPAParticleTransformer:
             num_slices=self.args.num_slices,
         )
         negative_augmentation_config = None
-        if self.model_name == "triplet":
+        triplet_loss_config = None
+
+        if self.model_name in {"triplet", "semi-sup-triplet"}:
             negative_augmentation_config = CorruptedNegativeAugmentationConfig(
                 num_negative_views=self.args.num_negative_views,
 
@@ -1209,6 +1244,8 @@ class TrainLeJEPAParticleTransformer:
 
                 eta_index=self.particle_feature_names.index("part_eta"),
                 phi_index=self.particle_feature_names.index("part_phi"),
+                deta_index=self.particle_feature_names.index("part_deta"),
+                dphi_index=self.particle_feature_names.index("part_dphi"),
                 pt_index=self.particle_feature_names.index("part_pt"),
                 d0_index=self.particle_feature_names.index("part_d0val"),
                 dz_index=self.particle_feature_names.index("part_dzval"),
@@ -1225,7 +1262,7 @@ class TrainLeJEPAParticleTransformer:
                 batch_mix_anchor_frac_max=self.args.batch_mix_anchor_frac_max,
                 renormalize_pt_sum=self.args.renormalize_negative_pt_sum,
             )
-                
+
             triplet_loss_config = TripletLossConfig(
                 triplet_weight=self.args.triplet_weight,
                 triplet_margin=self.args.triplet_margin,
@@ -1234,6 +1271,7 @@ class TrainLeJEPAParticleTransformer:
                 ),
             )
 
+        if self.model_name == "triplet":
             core_model = (
                 LeJEPATripletParticleTransformerRepresentation(
                     model_config=model_config,
@@ -1246,7 +1284,7 @@ class TrainLeJEPAParticleTransformer:
                 )
                 .to(DEVICE)
             )
-        
+
         elif self.model_name == "lejepa":
             core_model = (
                 LeJEPAParticleTransformerRepresentation(
@@ -1256,7 +1294,7 @@ class TrainLeJEPAParticleTransformer:
                 )
                 .to(DEVICE)
             )
-        
+
         elif self.model_name == "semi-sup":
             semi_supervised_loss_config = SemiSupervisedLossConfig(
                 classification_weight=self.args.classification_weight,
@@ -1267,6 +1305,25 @@ class TrainLeJEPAParticleTransformer:
                     model_config=model_config,
                     augmentation_config=augmentation_config,
                     loss_config=loss_config,
+                    semi_supervised_config=semi_supervised_loss_config,
+                )
+                .to(DEVICE)
+            )
+
+        elif self.model_name == "semi-sup-triplet":
+            semi_supervised_loss_config = SemiSupervisedLossConfig(
+                classification_weight=self.args.classification_weight,
+                num_classes=len(self.background_labels),
+            )
+            core_model = (
+                LeJEPASemiSupervisedTripletParticleTransformerRepresentation(
+                    model_config=model_config,
+                    augmentation_config=augmentation_config,
+                    negative_augmentation_config=(
+                        negative_augmentation_config
+                    ),
+                    loss_config=loss_config,
+                    triplet_loss_config=triplet_loss_config,
                     semi_supervised_config=semi_supervised_loss_config,
                 )
                 .to(DEVICE)
@@ -1498,6 +1555,9 @@ class TrainLeJEPAParticleTransformer:
             "triplet": "LeJEPA + Triplet SSL",
             "lejepa": "LeJEPA SSL",
             "semi-sup": "LeJEPA + Semi-Supervised Classification",
+            "semi-sup-triplet": (
+                "LeJEPA + Triplet + Semi-Supervised Classification"
+            ),
         }[self.model_name]
         fig.suptitle(f"{model_title} Training Progress")
         fig.tight_layout()
@@ -2259,7 +2319,7 @@ class TrainLeJEPAParticleTransformer:
         }
         
         # Add info about negative augmentation only if the model uses it.
-        if self.model_name in ["triplet"]:
+        if self.model_name in {"triplet", "semi-sup-triplet"}:
             summary.update(
                 {
                     # Negative augmentation.
@@ -2278,7 +2338,7 @@ class TrainLeJEPAParticleTransformer:
                 }
             )
         # Add model-specific hyperparameters to the summary.
-        if self.model_name == "triplet":
+        if self.model_name in {"triplet", "semi-sup-triplet"}:
             summary.update(
                 {
                     "triplet_weight": (
@@ -2293,7 +2353,7 @@ class TrainLeJEPAParticleTransformer:
                 }
             )
         
-        if self.model_name == "semi-sup":
+        if self.model_name in {"semi-sup", "semi-sup-triplet"}:
             summary.update(
                 {
                     "classification_weight":
@@ -2364,6 +2424,7 @@ class TrainLeJEPAParticleTransformer:
 
         best_val_loss = float("inf")
         best_model_path = os.path.join(self.output_dir, "best_model.pth")
+        last_model_path = os.path.join(self.output_dir, "last_model.pth")
 
         profiler_schedule = schedule(
             wait=2,
@@ -2389,7 +2450,6 @@ class TrainLeJEPAParticleTransformer:
                 total=self.args.steps_per_epoch,
                 desc=f"Train Epoch {epoch}/{self.args.epochs}",
                 disable=not self.is_main_process,
-                miniters=50,
             )
 
             # Profile only the first epoch.
@@ -2411,7 +2471,7 @@ class TrainLeJEPAParticleTransformer:
             )
 
             with profiler_context as prof:
-                for step in pbar:
+                for step in range(self.args.steps_per_epoch):
                     batch = next(train_iter)
                     x_particles = batch["x_particles"].to(
                         DEVICE,
@@ -2468,13 +2528,16 @@ class TrainLeJEPAParticleTransformer:
                         epoch_train[key].append(step_losses[key])
 
                     with record_function("progress_bar_update"):
-                        pbar.set_postfix(
-                            self._progress_postfix(step_losses),
-                            refresh=False,
-                        )
+                        if (step+1) % 50 == 0 or step == 0:
+                            pbar.set_postfix(
+                                self._progress_postfix(step_losses),
+                                refresh=False,
+                            )
+                            pbar.update(1 if step == 0 else 50)
                     # Advance profiler state once per training iteration.
                     if should_profile:
                         prof.step()
+                pbar.close()    
 
             if should_profile and self.is_main_process:
                 print(
@@ -2511,42 +2574,44 @@ class TrainLeJEPAParticleTransformer:
                     total=self.args.val_steps,
                     desc=f"Val Epoch {epoch}/{self.args.epochs}",
                     disable=not self.is_main_process,
-                    miniters=5,
                 )
 
                 with torch.no_grad():
-                    for val_step in pbar:
+                    for val_step in range(self.args.val_steps):
                         batch = next(val_iter)
-                    x_particles = batch["x_particles"].to(DEVICE, non_blocking=True)
-                    y = batch["y"].to(DEVICE, non_blocking=True)
-                    y = self._prepare_labels_for_model(y)
-                    padding_mask = batch["padding_mask"].to(DEVICE, non_blocking=True)
+                        x_particles = batch["x_particles"].to(DEVICE, non_blocking=True)
+                        y = batch["y"].to(DEVICE, non_blocking=True)
+                        y = self._prepare_labels_for_model(y)
+                        padding_mask = batch["padding_mask"].to(DEVICE, non_blocking=True)
 
-                    with torch.autocast(
-                        device_type=DEVICE.type,
-                        dtype=dtype,
-                        enabled=use_autocast,
-                    ):
-                        output = self.model( # validation forward
-                            x_particles,
-                            y,
-                            padding_mask=padding_mask,
+                        with torch.autocast(
+                            device_type=DEVICE.type,
+                            dtype=dtype,
+                            enabled=use_autocast,
+                        ):
+                            output = self.model( # validation forward
+                                x_particles,
+                                y,
+                                padding_mask=padding_mask,
+                            )
+
+                        step_losses = (
+                            self._extract_ssl_metrics(output)
                         )
 
-                    step_losses = (
-                        self._extract_ssl_metrics(output)
-                    )
-
-                    for key in epoch_val:
-                        epoch_val[key].append(step_losses[key])
-
-                    pbar.set_postfix(
-                        self._progress_postfix(
-                            step_losses
-                        ),
-                        refresh=False,
-                    )
-
+                        for key in epoch_val:
+                            epoch_val[key].append(step_losses[key])
+                        
+                        if (val_step+1) % 5 == 0 or val_step == 0:
+                            pbar.set_postfix(
+                                self._progress_postfix(
+                                    step_losses
+                                ),
+                                refresh=False,
+                            )
+                            pbar.update(1 if val_step == 0 else 5)
+                    pbar.close()
+            
             mean_val = {
                 key: float(np.nanmean(values))
                 for key, values in epoch_val.items()
@@ -2569,6 +2634,16 @@ class TrainLeJEPAParticleTransformer:
                         "Saved new best model state_dict to "
                         f"{best_model_path}"
                     )
+            
+            if self.is_main_process:
+                torch.save(
+                    self.model_core.state_dict(),
+                    last_model_path,
+                )
+                print(
+                    "Saved last model state_dict to "
+                    f"{last_model_path}"
+                )
 
             if ( # Plot latent space and evaluate ROC only at specified intervals or at the final epoch.
                 self.args.roc_eval_every > 0
@@ -2669,6 +2744,7 @@ if __name__ == "__main__":
             "triplet",
             "lejepa",
             "semi-sup",
+            "semi-sup-triplet",
         ],
         default="semi-sup",
         help=(
@@ -2677,7 +2753,8 @@ if __name__ == "__main__":
             "triplet loss. "
             "'lejepa' uses LeJEPA + SIGReg only, without any corrupted-negative loss. "
             "'semi-sup' uses semi-supervised learning with LeJEPA + SIGReg. "
-            "Default: semi-sup."
+            "'semi-sup-triplet' adds corrupted-negative triplet loss to the "
+            "semi-supervised objective. Default: semi-sup."
         ),
     )
     # Anomaly score function.
@@ -3015,7 +3092,7 @@ if __name__ == "__main__":
         "--renormalize-negative-pt-sum",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Renormalize corrupted negative pt sums to the original event pt sum. Default: True.",
+        help="Renormalize corrupted negative sample's pt sums to the original event pt sum. Default: True.",
     )
     
     # Optimization.

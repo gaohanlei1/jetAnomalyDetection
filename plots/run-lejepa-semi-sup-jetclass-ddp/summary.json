@@ -1,8 +1,8 @@
 {
   "model": "semi-sup",
-  "status": "training",
-  "current_epoch": 0,
-  "completed_epochs": 0,
+  "status": "completed",
+  "current_epoch": 200,
+  "completed_epochs": 200,
   "dataset_root": "/HEP/export/home/lwang223/JetClass/JetClass/Pythia",
   "background_labels": [
     "label_QCD",
@@ -73,11 +73,21 @@
   "base_seed": 42,
   "device": "cuda:0",
   "warmup_steps": 10000,
-  "current_learning_rate": 5.0000000000000004e-08,
-  "best_val_loss": null,
-  "final_val_loss": null,
-  "latest_train_losses": null,
-  "latest_val_losses": null,
+  "current_learning_rate": 5e-07,
+  "best_val_loss": 0.29129358172416686,
+  "final_val_loss": 0.29767162799835206,
+  "latest_train_losses": {
+    "total_loss": 0.3311388973593712,
+    "invariant_loss": 0.12007461225241423,
+    "sigreg_loss": 9.181375,
+    "classification_loss": 0.2744221430569887
+  },
+  "latest_val_losses": {
+    "total_loss": 0.29767162799835206,
+    "invariant_loss": 0.001661311706993729,
+    "sigreg_loss": 13.53875,
+    "classification_loss": 0.25248595982789995
+  },
   "distributed": true,
   "train_infinite_stream": true,
   "world_size": 2,

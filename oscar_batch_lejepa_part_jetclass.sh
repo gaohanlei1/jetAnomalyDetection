@@ -1,11 +1,12 @@
 #!/bin/bash
 #SBATCH --nodes=1               # node count
-#SBATCH --nodelist=gpu3003      # the L40S GPU!! 3001-3005, 3101-3102, 2708 are L40S
+# SBATCH --nodelist=gpu3003      # the L40S GPU!! 3001-3005, 3101-3102, 2708 are L40S
 #SBATCH -p gpu --gres=gpu:2     # number of gpus per node
 #SBATCH --ntasks-per-node=1     # total number of tasks across all nodes
 #SBATCH --cpus-per-task=12       # cpu-cores per task (>1 if multi-threaded tasks)
-#SBATCH -t 40:00:00             # total run time limit (HH:MM:SS)
+#SBATCH -t 42:00:00             # total run time limit (HH:MM:SS)
 #SBATCH --mem=96000MB           # CPU RAM
+#SBATCH --constraint=l40s
 #SBATCH --job-name='JETANOMALY-JETCLASS'
 #SBATCH --output=slurm_logs/R-%x.%j/log.out
 #SBATCH --error=slurm_logs/R-%x.%j/log.err
@@ -38,7 +39,7 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 torchrun --standalone --nproc-per-node=2 \
     scripts/run_train_lejepa_part_jetclass.py \
     --dataset-root "/HEP/export/home/lwang223/JetClass/JetClass/Pythia" \
-    --model semi-sup \
+    --model semi-sup-triplet \
     --background-labels "label_QCD,label_Hbb,label_Hcc" \
     --signal-labels "label_Wqq" \
     --embed-dim 128 \
@@ -49,14 +50,24 @@ torchrun --standalone --nproc-per-node=2 \
     --steps-per-epoch 1000 \
     --val-steps 50 \
     --eval-steps 50 \
-    --epochs 200 \
-    --learning-rate 5e-4 \
+    --epochs 80 \
+    --learning-rate 1e-3 \
     --weight-decay 5e-2 \
     --precision bf16 \
     --num-global-views 2 \
     --num-local-views 6 \
+    --num-negative-views 4 \
+    --batch-mix-prob 0.2 \
+    --pt-resample-prob 0.2 \
+    --node-eta-phi-rotation-prob 0.2 \
+    --eta-phi-shuffle-prob 0.2 \
+    --identity-shuffle-prob 0.2 \
     --anomaly-score mahalanobis \
+    --pairwise-hidden-dim 16 \
+    --triplet-weight 0.1 \
+    --triplet-margin 1.0 \
+    --classification-weight 0.1 \
     --num-workers 4 \
     --prefetch-factor 2 \
     --shuffle-active-shards 3 \
-    --output-dir "plots/run-lejepa-semi-sup-jetclass-ddp"
+    --output-dir "plots/run-lejepa-semi-sup-triplet-jetclass-ddp"
