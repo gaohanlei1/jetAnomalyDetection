@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --nodes=1               # node count
-# SBATCH --nodelist=gpu3003      # the L40S GPU!! 3001-3005, 3101-3102, 2708 are L40S
-#SBATCH -p gpu --gres=gpu:1     # number of gpus per node
+#SBATCH --nodelist=gpu3101      # the L40S GPU!! 3001-3005, 3101-3102, 2708 are L40S
+#SBATCH -p gpu --gres=gpu:2     # number of gpus per node
 #SBATCH --ntasks-per-node=1     # total number of tasks across all nodes
 #SBATCH --cpus-per-task=12       # cpu-cores per task (>1 if multi-threaded tasks)
 #SBATCH -t 42:00:00             # total run time limit (HH:MM:SS)
@@ -35,17 +35,18 @@ conda activate jet
 # check pytorch version
 python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 
-# torchrun --standalone --nproc-per-node=2 \
-python -u \
+
+# python -u \
+torchrun --standalone --nproc-per-node=2 \
     scripts/run_train_nae_part_jetclass.py \
-    --backbone-dir "plots/run-lejepa-semi-sup-triplet-jetclass-ddp" \
-    --backbone-checkpoint "plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth" \
-    --ae-pretrain-epochs 100 \
-    --nae-epochs 100 \
+    --backbone-dir "plots/run-lejepa-semi-sup-jetclass-ddp" \
+    --ae-pretrain-epochs 25 \
+    --nae-epochs 25 \
     --batch-size 256 \
-    --steps-per-epoch 1000 \
+    --steps-per-epoch 4000 \
     --val-steps 50 \
     --eval-steps 50 \
+    --bottleneck-dim 6 \
     --learning-rate 1e-4 \
     --langevin-steps 20 \
     --langevin-step-size 1e-2 \
@@ -54,4 +55,6 @@ python -u \
     --num-workers 4 \
     --prefetch-factor 2 \
     --shuffle-active-shards 3 \
-    --output-dir "plots/run-nae-lejepa-triplet"
+    --output-dir "plots/run-nae-lejepa"
+
+# --backbone-checkpoint "plots/run-lejepa-semi-sup-triplet-jetclass-ddp/last_model.pth" \

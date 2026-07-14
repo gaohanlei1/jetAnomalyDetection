@@ -1,0 +1,3 @@
+Train Epoch 1/80:   0%|          | 0/1000 [00:00<?, ?it/s]/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/functional.py:5962: UserWarning: Support for mismatched key_padding_mask and attn_mask is deprecated. Use same type for both instead.
+  warnings.warn(
+Train Epoch 1/80:   0%|          | 1/1000 [00:59<16:27:19, 59.30s/it, total=5.301, inv=0.0007181, sig=256, tri=0.9914, d+=0.0001969, d-=0.008755, cls=0.7633][2026-07-13T12:56:23.279] error: *** JOB 3946619 ON gpu3003 CANCELLED AT 2026-07-13T12:56:23 DUE to SIGNAL Terminated ***

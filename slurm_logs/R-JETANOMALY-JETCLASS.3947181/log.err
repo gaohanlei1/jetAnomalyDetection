@@ -1,0 +1,59 @@
+Train Epoch 1/80:   0%|          | 0/1000 [00:00<?, ?it/s]Traceback (most recent call last):
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_train_lejepa_part_jetclass.py", line 3385, in <module>
+    trainer.train()
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_train_lejepa_part_jetclass.py", line 2641, in train
+    output = self.model( # train forward
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_train_lejepa_part_jetclass.py", line 201, in forward
+    return self.model.forward_pretrain(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/home/lwang223/jetAnomalyDetection/models/part_jetclass.py", line 3011, in forward_pretrain
+    views, view_padding_masks, view_types = self.augmentation(
+                                            ^^^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/home/lwang223/jetAnomalyDetection/models/part_jetclass.py", line 1325, in forward
+    view_x, view_mask = self._drop_nodes(
+                        ^^^^^^^^^^^^^^^^^
+  File "/oscar/home/lwang223/jetAnomalyDetection/models/part_jetclass.py", line 1242, in _drop_nodes
+    num_valid = valid_mask.sum(dim=1) # shape (B,)
+                ^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: CUDA error: an illegal memory access was encountered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+Train Epoch 1/80:   0%|          | 0/1000 [00:39<?, ?it/s]
+terminate called after throwing an instance of 'c10::Error'
+  what():  CUDA error: an illegal memory access was encountered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+Exception raised from c10_cuda_check_implementation at /pytorch/c10/cuda/CUDAException.cpp:43 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::string) + 0x96 (0x7fce261bd1b6 in /users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: c10::detail::torchCheckFail(char const*, char const*, unsigned int, std::string const&) + 0x64 (0x7fce26166a76 in /users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #2: c10::cuda::c10_cuda_check_implementation(int, char const*, char const*, int, bool) + 0x118 (0x7fce262ab918 in /users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/lib/libc10_cuda.so)
+frame #3: <unknown function> + 0x103ad78 (0x7fce27342d78 in /users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #4: <unknown function> + 0x10433c5 (0x7fce2734b3c5 in /users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #5: <unknown function> + 0x643582 (0x7fce70bd5582 in /users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/lib/libtorch_python.so)
+frame #6: <unknown function> + 0x6f30f (0x7fce2619e30f in /users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #7: c10::TensorImpl::~TensorImpl() + 0x21b (0x7fce2619733b in /users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #8: c10::TensorImpl::~TensorImpl() + 0x9 (0x7fce261974e9 in /users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #9: <unknown function> + 0x904458 (0x7fce70e96458 in /users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/lib/libtorch_python.so)
+frame #10: THPVariable_subclass_dealloc(_object*) + 0x2f6 (0x7fce70e967a6 in /users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/lib/libtorch_python.so)
+<omitting python frames>
+frame #21: <unknown function> + 0x2a610 (0x7fce9942b610 in /lib64/libc.so.6)
+frame #22: __libc_start_main + 0x80 (0x7fce9942b6c0 in /lib64/libc.so.6)
+
+/var/spool/slurmd/job3947181/slurm_script: line 127: 770183 Aborted                 (core dumped) python -u scripts/run_train_lejepa_part_jetclass.py --dataset-root "/HEP/export/home/lwang223/JetClass/JetClass/Pythia" --model semi-sup-triplet --background-labels "label_QCD,label_Wqq" --signal-labels "label_Hbb" --embed-dim 64 --representation-dim 64 --dropout 0.0 --num-layers 4 --num-heads 8 --batch-size 128 --steps-per-epoch 1000 --val-steps 50 --eval-steps 50 --epochs 80 --learning-rate 1e-3 --weight-decay 5e-2 --precision bf16 --num-global-views 2 --num-local-views 3 --num-negative-views 4 --batch-mix-prob 0.45 --pt-resample-prob 0.25 --node-eta-phi-rotation-prob 0.2 --eta-phi-shuffle-prob 0.05 --identity-shuffle-prob 0.05 --global-drop-pt-frac-min 0.0 --global-drop-pt-frac-max 0.3 --local-drop-pt-frac-min 0.3 --local-drop-pt-frac-max 0.75 --batch-mix-anchor-frac-min 0.4 --batch-mix-anchor-frac-max 0.6 --anomaly-score mahalanobis --pairwise-hidden-dim 64 --triplet-weight 0.1 --triplet-margin 1.0 --classification-weight 0.1 --num-workers 4 --prefetch-factor 2 --shuffle-active-shards 3 --output-dir "plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb"

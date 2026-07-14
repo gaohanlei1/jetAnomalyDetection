@@ -1,0 +1,166 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 3956008
+##  Job Name : JETANOMALY-JETCLASS
+##  Nodelist : gpu2708
+##      CPUs : 1
+##  Mem/Node : 48000 MB
+## Directory : /oscar/home/lwang223/jetAnomalyDetection
+##   Job Started : Mon Jul 13 05:22:41 PM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Mon Jul 13 05:22:41 PM EDT 2026
+Job ID: 3956008
+Node: gpu2708
+==========================================
+
+GPU Information (from host):
+Mon Jul 13 17:22:41 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:21:00.0 Off |                    0 |
+| N/A   27C    P8             32W /  350W |      76MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          157414      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch version: 2.6.0+cu124
+JetClass root: /HEP/export/home/lwang223/JetClass/JetClass/Pythia
+Background labels: ['label_QCD', 'label_Wqq', 'label_Hcc', 'label_Hgg']
+Signal labels: ['label_Hbb']
+Particle features: ['part_px', 'part_py', 'part_pz', 'part_energy', 'part_pt', 'part_eta', 'part_phi', 'part_deta', 'part_dphi', 'part_d0val', 'part_d0err', 'part_dzval', 'part_dzerr', 'part_charge', 'part_isChargedHadron', 'part_isNeutralHadron', 'part_isPhoton', 'part_isElectron', 'part_isMuon']
+Lazy JetClass datasets ready; no full split has been loaded into RAM.
+Background train ROOT shards: 400
+Background val ROOT shards: 20
+Signal test ROOT shards: 20
+Per-event particle shape: (128, 19)
+Selected SSL model: semi-sup-triplet
+Model summary:
+LeJEPASemiSupervisedTripletParticleTransformerRepresentation(
+  (node_embedding): NodeEmbedding(
+    (net): Sequential(
+      (0): Linear(in_features=19, out_features=32, bias=True)
+      (1): GELU(approximate='none')
+      (2): LayerNorm((32,), eps=1e-05, elementwise_affine=True)
+      (3): Linear(in_features=32, out_features=128, bias=True)
+      (4): GELU(approximate='none')
+      (5): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+      (6): Linear(in_features=128, out_features=32, bias=True)
+      (7): Dropout(p=0.01, inplace=False)
+    )
+  )
+  (pairwise_bias): PairwiseAttentionBias(
+    (mlp): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=4, out_features=32, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.01, inplace=False)
+      (4): Linear(in_features=32, out_features=32, bias=True)
+      (5): SiLU()
+      (6): Dropout(p=0.01, inplace=False)
+      (7): Linear(in_features=32, out_features=8, bias=True)
+    )
+  )
+  (encoder): ParticleTransformerEncoder(
+    (layers): ModuleList(
+      (0-3): 4 x ParticleTransformerBlock(
+        (attn_norm): RMSNorm()
+        (self_attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=32, out_features=32, bias=True)
+        )
+        (attn_dropout): Dropout(p=0.01, inplace=False)
+        (ffn_norm): RMSNorm()
+        (ffn): SwiGLUFFN(
+          (fc1): Linear(in_features=32, out_features=256, bias=True)
+          (act): SwiGLU()
+          (fc2): Linear(in_features=128, out_features=32, bias=True)
+          (dropout): Dropout(p=0.01, inplace=False)
+        )
+      )
+    )
+  )
+  (cls_pooling): CLSPooling(
+    (layers): ModuleList(
+      (0-1): 2 x ClassAttentionBlock(
+        (query_norm): LayerNorm((32,), eps=1e-05, elementwise_affine=True)
+        (context_norm): LayerNorm((32,), eps=1e-05, elementwise_affine=True)
+        (attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=32, out_features=32, bias=True)
+        )
+        (attn_dropout): Dropout(p=0.0, inplace=False)
+        (ffn_norm): LayerNorm((32,), eps=1e-05, elementwise_affine=True)
+        (ffn): Sequential(
+          (0): Linear(in_features=32, out_features=128, bias=True)
+          (1): GELU(approximate='none')
+          (2): Dropout(p=0.0, inplace=False)
+          (3): Linear(in_features=128, out_features=32, bias=True)
+          (4): Dropout(p=0.0, inplace=False)
+        )
+      )
+    )
+  )
+  (augmentation): MultiViewAugmentation()
+  (negative_augmentation): CorruptedNegativeAugmentation()
+  (loss): LeJEPASIGRegTripletClassificationLoss(
+    (triplet_loss): LeJEPASIGRegTripletLoss(
+      (lejepa_loss): LeJEPASIGRegLoss(
+        (sigreg_loss_fn): SlicingUnivariateTest(
+          (univariate_test): EppsPulley()
+        )
+      )
+    )
+  )
+  (representation_head): RepresentationHead(
+    (net): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=32, out_features=32, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.01, inplace=False)
+      (4): Linear(in_features=32, out_features=32, bias=True)
+    )
+  )
+  (classification_head): CategoricalClassificationHead(
+    (net): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=32, out_features=32, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.01, inplace=False)
+      (4): Linear(in_features=32, out_features=4, bias=True)
+    )
+  )
+)
+Number of trainable parameters: 107184
+
+Epoch [1/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb/last_model.pth
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb/mahalanobis_eval/epoch_0001/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Wqq+Hcc+Hgg train vs Hbb: 0.493383
+Mahalanobis AUC, QCD+Wqq+Hcc+Hgg val vs Hbb: 0.494780
+Epoch 1 train losses: {'total_loss': 7.614457960128784, 'invariant_loss': 0.00905187174846651, 'sigreg_loss': 149.925, 'triplet_loss': 0.3950881143510342, 'triplet_pos_distance': 0.002363977108776453, 'triplet_neg_distance': 0.18500576909910887, 'classification_loss': 1.393257915496826}
+Epoch 1 val losses: {'total_loss': 2.9188000345230103, 'invariant_loss': 0.012462729434482754, 'sigreg_loss': 56.0675, 'triplet_loss': 0.3343549582362175, 'triplet_pos_distance': 0.0024444505118299278, 'triplet_neg_distance': 0.3592727228999138, 'classification_loss': 1.386161323785782}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb/summary.json
+
+Epoch [2/80]
+Saved new best model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb/best_model.pth
+Saved last model state_dict to plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb/last_model.pth
+Mahalanobis metrics saved to plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb/mahalanobis_eval/epoch_0002/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+Wqq+Hcc+Hgg train vs Hbb: 0.488876
+Mahalanobis AUC, QCD+Wqq+Hcc+Hgg val vs Hbb: 0.488037
+Epoch 2 train losses: {'total_loss': 2.0640262110233305, 'invariant_loss': 0.020249570477753876, 'sigreg_loss': 38.8545, 'triplet_loss': 0.3173532480895519, 'triplet_pos_distance': 0.00513907251204364, 'triplet_neg_distance': 0.4569832138717175, 'classification_loss': 1.3839512839317323}
+Epoch 2 val losses: {'total_loss': 1.6554015219211577, 'invariant_loss': 0.014497158527374267, 'sigreg_loss': 30.80625, 'triplet_loss': 0.3139865732192993, 'triplet_pos_distance': 0.0025625019217841325, 'triplet_neg_distance': 0.5026042547821998, 'classification_loss': 1.382301549911499}
+Updated run summary at plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb/summary.json
+
+Epoch [3/80]
