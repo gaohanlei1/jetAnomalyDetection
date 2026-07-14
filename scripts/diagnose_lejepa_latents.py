@@ -1280,6 +1280,103 @@ def score_stats(x: np.ndarray) -> Dict[str, float]:
         "q95": float(np.quantile(x, 0.95)),
     }
 
+def plot_pair_latent_space(
+    background: np.ndarray,
+    signal: np.ndarray,
+    background_label: str,
+    signal_label: str,
+    path: Path,
+    seed: int,
+    max_points: int | None = None,
+) -> None:
+    """Plot one background class against the configured signal in one PCA basis."""
+
+    background = np.asarray(background, dtype=np.float64)
+    signal = np.asarray(signal, dtype=np.float64)
+
+    if background.ndim != 2 or signal.ndim != 2:
+        raise ValueError(
+            "Expected background and signal latents with shape (N, D), got "
+            f"{background.shape} and {signal.shape}."
+        )
+    if background.shape[1] != signal.shape[1]:
+        raise ValueError(
+            "Background and signal latent dimensions differ: "
+            f"{background.shape[1]} vs {signal.shape[1]}."
+        )
+    if len(background) == 0 or len(signal) == 0:
+        raise ValueError(
+            "Cannot plot an empty pairwise latent sample: "
+            f"background={len(background)}, signal={len(signal)}."
+        )
+
+    rng = np.random.default_rng(seed)
+    background_plot = background
+    signal_plot = signal
+
+    if max_points is not None:
+        max_points = int(max_points)
+        if max_points < 1:
+            raise ValueError("max_points must be positive when provided.")
+
+        if len(background_plot) > max_points:
+            indices = rng.choice(len(background_plot), max_points, replace=False)
+            background_plot = background_plot[indices]
+
+        if len(signal_plot) > max_points:
+            indices = rng.choice(len(signal_plot), max_points, replace=False)
+            signal_plot = signal_plot[indices]
+
+    combined = np.concatenate([background_plot, signal_plot], axis=0)
+    combined = combined - combined.mean(axis=0, keepdims=True)
+
+    _, singular_values, vh = np.linalg.svd(combined, full_matrices=False)
+    components = vh[:2].T
+    reduced = combined @ components
+
+    num_background = len(background_plot)
+    background_2d = reduced[:num_background]
+    signal_2d = reduced[num_background:]
+
+    total_variance = np.square(singular_values).sum()
+    explained_variance_ratio = (
+        np.square(singular_values[:2]) / total_variance
+        if total_variance > 0.0
+        else np.zeros(2, dtype=np.float64)
+    )
+
+    fig, ax = plt.subplots(figsize=(8, 7))
+    ax.scatter(
+        background_2d[:, 0],
+        background_2d[:, 1],
+        s=10,
+        alpha=0.45,
+        marker="o",
+        label=f"{background_label} (Background)",
+    )
+    ax.scatter(
+        signal_2d[:, 0],
+        signal_2d[:, 1],
+        s=18,
+        alpha=0.65,
+        marker="x",
+        label=f"{signal_label} (Signal)",
+    )
+
+    ax.set_xlabel(f"PC1 ({100.0 * explained_variance_ratio[0]:.1f}% variance)")
+    ax.set_ylabel(f"PC2 ({100.0 * explained_variance_ratio[1]:.1f}% variance)")
+    ax.set_title(f"Pairwise validation latent space: {background_label} vs {signal_label}")
+    ax.grid(alpha=0.2)
+    ax.legend(
+        loc="best",
+        fontsize=8,
+        frameon=True,
+        markerscale=1.3,
+    )
+
+    fig.tight_layout()
+    fig.savefig(path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
 
 def plot_one_roc(
     background: np.ndarray,
@@ -1538,6 +1635,26 @@ def main() -> None:
     val_y = validation_mixed_y[validation_background_mask]
     signal_z = validation_mixed_z[validation_signal_mask]
     signal_y = validation_mixed_y[validation_signal_mask]
+    
+    # Plot pair-wise latent space for each background class against the signal
+    for background_index, background in enumerate(backgrounds):
+        background_name = display_label(background)
+        background_pair_z = validation_mixed_z[
+            labels_mask(validation_mixed_y, [background])
+        ]
+        plot_pair_latent_space(
+            background=background_pair_z,
+            signal=signal_z,
+            background_label=background_name,
+            signal_label=signal_display_name,
+            path=(
+                output_dir
+                / f"00_pairwise_latent_{background_name.lower()}_vs_"
+                f"{signal_display_name.lower()}.png"
+            ),
+            seed=seed + 450 + background_index,
+            max_points=int(summary.get("max_latent_plot_points", 5000)),
+        )
 
     if len(train_z) == 0 or len(val_z) == 0 or len(signal_z) == 0:
         raise RuntimeError(
