@@ -4,7 +4,8 @@ Train ParticleTransformer representation models with LeJEPA on JetClass.
 The script supports:
     - LeJEPA + SIGReg self-supervised learning;
     - LeJEPA + SIGReg + corrupted-negative triplet learning;
-    - LeJEPA + SIGReg + semi-supervised background classification.
+    - LeJEPA + SIGReg + semi-supervised background classification;
+    - LeJEPA + SIGReg + triplet + semi-supervised classification.
 
 JetClass ROOT shards are streamed lazily with an IterableDataset. In DDP
 training, ROOT shards are partitioned across ranks and DataLoader workers,
@@ -19,7 +20,7 @@ Single-GPU example:
 
 python -u scripts/run_train_lejepa_part_jetclass.py \
     --dataset-root "/HEP/export/home/lwang223/JetClass/JetClass/Pythia" \
-    --model semi-sup \
+    --model semi-sup-triplet \
     --background-labels "label_QCD,label_Hbb,label_Hcc" \
     --signal-labels "label_Wqq" \
     --embed-dim 128 \
@@ -41,14 +42,14 @@ python -u scripts/run_train_lejepa_part_jetclass.py \
     --triplet-margin 1.0 \
     --anomaly-score mahalanobis \
     --num-workers 4 \
-    --output-dir "plots/run-lejepa-semi-sup-jetclass"
+    --output-dir "plots/run-lejepa-semi-sup-triplet-jetclass"
 
 Four-GPU DDP example:
 
 torchrun --standalone --nproc-per-node=4 \
     scripts/run_train_lejepa_part_jetclass.py \
     --dataset-root "/HEP/export/home/lwang223/JetClass/JetClass/Pythia" \
-    --model semi-sup \
+    --model semi-sup-triplet \
     --background-labels "label_QCD,label_Hbb,label_Hcc" \
     --signal-labels "label_Wqq" \
     --embed-dim 128 \
@@ -70,7 +71,7 @@ torchrun --standalone --nproc-per-node=4 \
     --triplet-margin 1.0 \
     --anomaly-score mahalanobis \
     --num-workers 4 \
-    --output-dir "plots/run-lejepa-semi-sup-jetclass-ddp"
+    --output-dir "plots/run-lejepa-semi-sup-triplet-jetclass-ddp"
 """
 
 import argparse
@@ -108,6 +109,7 @@ from models.part_jetclass import (
     MultiViewAugmentationConfig,
     TripletLossConfig,
     LeJEPASemiSupervisedParticleTransformerRepresentation,
+    LeJEPASemiSupervisedTripletParticleTransformerRepresentation,
 )
 from torch.profiler import (
     profile,
@@ -141,8 +143,26 @@ DEFAULT_PARTICLE_FEATURES = [
     "part_pz",
     "part_energy",
     "part_pt",
-    "part_eta",
-    "part_phi",
+    "log_pt_fraction",
+    "part_deta",
+    "part_dphi",
+    "d0_sig",
+    "dz_sig",
+    "part_charge",
+    "part_isChargedHadron",
+    "part_isNeutralHadron",
+    "part_isPhoton",
+    "part_isElectron",
+    "part_isMuon",
+]
+
+# Actual ROOT branches needed to construct the model features above.
+RAW_PARTICLE_FEATURES = [
+    "part_px",
+    "part_py",
+    "part_pz",
+    "part_energy",
+    "part_pt",
     "part_deta",
     "part_dphi",
     "part_d0val",
@@ -156,6 +176,13 @@ DEFAULT_PARTICLE_FEATURES = [
     "part_isElectron",
     "part_isMuon",
 ]
+
+DERIVED_PARTICLE_FEATURES = {
+    "log_pt_fraction",
+    "d0_sig",
+    "dz_sig",
+}
+
 
 # Jet-level features are not model inputs. They are loaded only for event
 # quality cuts and to convert absolute particle pt into a per-jet pt fraction.
@@ -240,14 +267,25 @@ def discover_jetclass_files(
 
 
 
-# New JetClass dense tensor dataset and loading functions
 class JetClassIterableDataset(IterableDataset):
     """
-    Stream JetClass ROOT shards lazily.
+    Stream JetClass ROOT shards lazily with class-stratified shard mixing.
 
-    Each worker owns a disjoint subset of ROOT files. A worker loads one shard,
-    preprocesses it in memory, yields events, then releases that shard before
-    moving to the next one. The full split is never materialized in RAM.
+    Training behavior:
+        - Files are grouped by label.
+        - Each label is independently sharded across all DDP ranks and workers.
+        - Each label maintains its own active shard pool.
+        - Events are yielded according to a shuffled balanced label cycle.
+        - When one shard is exhausted, it is replaced only by another shard
+          from the same label.
+
+    This avoids long class-composition blocks caused by using a single shared
+    active shard pool containing class-pure ROOT files.
+
+    Evaluation behavior:
+        - If shuffle_files=False, files and events are read deterministically.
+        - Labels are still interleaved to avoid exhausting one class before
+          moving to the next.
     """
 
     def __init__(
@@ -265,7 +303,11 @@ class JetClassIterableDataset(IterableDataset):
         world_size: int = 1,
     ):
         super().__init__()
+
         validate_requested_labels(labels_to_load)
+
+        if len(labels_to_load) == 0:
+            raise ValueError("labels_to_load must contain at least one label.")
 
         self.split_dir = split_dir
         self.labels_to_load = list(labels_to_load)
@@ -273,12 +315,17 @@ class JetClassIterableDataset(IterableDataset):
         self.max_num_particles = int(max_num_particles)
         self.max_events = max_events
         self.shuffle_files = bool(shuffle_files)
-        self.shuffle_active_shards = max(1, int(shuffle_active_shards))
+        self.shuffle_active_shards = max(
+            len(self.labels_to_load),
+            int(shuffle_active_shards),
+        )
+        self.infinite = bool(infinite)
         self.seed = int(seed)
         self.rank = int(rank)
-        self.infinite = bool(infinite)
         self.world_size = int(world_size)
 
+        # Keep this for compatibility / diagnostics, although __iter__ rebuilds
+        # the per-label file lists explicitly.
         self.filepaths = discover_jetclass_files(
             split_dir,
             self.labels_to_load,
@@ -302,15 +349,11 @@ class JetClassIterableDataset(IterableDataset):
             self.world_size * local_num_workers
         )
 
-        # Build one globally interleaved file list before sharding.
-        #
-        # Example:
-        #   QCD_0, Hbb_0, Hcc_0,
-        #   QCD_1, Hbb_1, Hcc_1,
-        #   ...
-        #
-        # Sharding happens only after this interleaving step.
-        label_groups: List[List[str]] = []
+        # -------------------------------------------------------------
+        # Build and shard file lists independently for every label.
+        # -------------------------------------------------------------
+
+        worker_files_by_label: Dict[str, List[str]] = {}
 
         for label in self.labels_to_load:
             prefix = LABEL_TO_FILE_PREFIX[label]
@@ -324,52 +367,61 @@ class JetClassIterableDataset(IterableDataset):
                 )
             )
 
-            label_groups.append(label_files)
+            if len(label_files) == 0:
+                raise RuntimeError(
+                    f"No ROOT shards found for label {label!r} "
+                    f"in {self.split_dir!r}."
+                )
 
-        all_files: List[str] = []
+            worker_label_files = label_files[
+                global_worker_id::global_num_workers
+            ]
 
-        max_group_len = max(
-            (
-                len(group)
-                for group in label_groups
-            ),
-            default=0,
-        )
+            if len(worker_label_files) == 0:
+                raise RuntimeError(
+                    "This rank/worker received no ROOT shards for one label. "
+                    f"label={label!r}, "
+                    f"global_worker_id={global_worker_id}, "
+                    f"global_num_workers={global_num_workers}, "
+                    f"num_label_files={len(label_files)}. "
+                    "Reduce the total number of workers or provide more shards."
+                )
 
-        for i in range(max_group_len):
-            for group in label_groups:
-                if i < len(group):
-                    all_files.append(group[i])
+            worker_files_by_label[label] = worker_label_files
 
-        # Shard the interleaved stream across all DDP ranks and DataLoader workers
-        worker_base_files = all_files[
-            global_worker_id::global_num_workers
-        ]
-
-        if not worker_base_files:
-            raise RuntimeError(
-                "This rank/worker received no ROOT shards. "
-                f"global_worker_id={global_worker_id}, "
-                f"global_num_workers={global_num_workers}, "
-                f"total_files={len(all_files)}."
-            )
-
-        worker_quota = None
+        # Split max_events approximately evenly across all workers.
+        worker_quota: Optional[int] = None
 
         if self.max_events is not None:
-            base = (
-                self.max_events
-                // global_num_workers
-            )
-            remainder = (
-                self.max_events
-                % global_num_workers
-            )
+            base = self.max_events // global_num_workers
+            remainder = self.max_events % global_num_workers
 
             worker_quota = (
                 base
                 + int(global_worker_id < remainder)
             )
+
+        # Divide active-shard budget across labels.
+        #
+        # Example:
+        #   3 labels, shuffle_active_shards=3 -> 1 shard per label
+        #   3 labels, shuffle_active_shards=6 -> 2 shards per label
+        num_labels = len(self.labels_to_load)
+
+        base_active_per_label = (
+            self.shuffle_active_shards // num_labels
+        )
+        active_remainder = (
+            self.shuffle_active_shards % num_labels
+        )
+
+        active_budget_by_label = {
+            label: (
+                base_active_per_label
+                + int(label_idx < active_remainder)
+            )
+            for label_idx, label in enumerate(self.labels_to_load)
+        }
 
         pass_index = 0
 
@@ -380,42 +432,103 @@ class JetClassIterableDataset(IterableDataset):
                 + 104729 * pass_index
             )
 
-            worker_files = list(worker_base_files) # copy the list of shards for shuffling
+            files_by_label: Dict[str, List[str]] = {
+                label: list(files)
+                for label, files in worker_files_by_label.items()
+            }
 
             if self.shuffle_files:
-                rng.shuffle(worker_files)
+                for label in self.labels_to_load:
+                    rng.shuffle(files_by_label[label])
 
             yielded = 0
 
-            if not self.shuffle_files:
-                # Deterministic finite evaluation pass.
-                for filepath in worker_files:
-                    x_particles, y = (
-                        load_and_preprocess_jetclass_file(
-                            filepath=filepath,
-                            particle_features=self.particle_features,
-                            max_num_particles=self.max_num_particles,
-                        )
-                    )
+            # =========================================================
+            # Deterministic finite evaluation
+            # =========================================================
 
-                    for event_x, event_y in zip(x_particles, y):
-                        if worker_quota is not None and yielded >= worker_quota:
+            if not self.shuffle_files:
+                loaded_by_label: Dict[str, List[Tuple[torch.Tensor, torch.Tensor]]] = {}
+
+                for label in self.labels_to_load:
+                    label_events: List[Tuple[torch.Tensor, torch.Tensor]] = []
+
+                    for filepath in files_by_label[label]:
+                        x_particles, y = (
+                            load_and_preprocess_jetclass_file(
+                                filepath=filepath,
+                                particle_features=self.particle_features,
+                                max_num_particles=self.max_num_particles,
+                            )
+                        )
+
+                        label_events.extend(
+                            (
+                                torch.from_numpy(event_x.copy()),
+                                torch.from_numpy(event_y.copy()),
+                            )
+                            for event_x, event_y in zip(x_particles, y)
+                        )
+
+                    loaded_by_label[label] = label_events
+
+                cursors = {
+                    label: 0
+                    for label in self.labels_to_load
+                }
+
+                # Deterministic round-robin over labels.
+                while True:
+                    made_progress = False
+
+                    for label in self.labels_to_load:
+                        cursor = cursors[label]
+                        events = loaded_by_label[label]
+
+                        if cursor >= len(events):
+                            continue
+
+                        if (
+                            worker_quota is not None
+                            and yielded >= worker_quota
+                        ):
                             break
 
-                        yield torch.from_numpy(event_x), torch.from_numpy(event_y)
+                        yield events[cursor]
 
+                        cursors[label] += 1
                         yielded += 1
+                        made_progress = True
 
-                    if worker_quota is not None and yielded >= worker_quota:
-                        break # quit also the outside for-loop
+                    if (
+                        worker_quota is not None
+                        and yielded >= worker_quota
+                    ):
+                        break
+
+                    if not made_progress:
+                        break
+
+            # =========================================================
+            # Class-balanced shuffled training stream
+            # =========================================================
 
             else:
-                file_iter = iter(worker_files)
-                active = []
+                file_iters_by_label = {
+                    label: iter(files_by_label[label])
+                    for label in self.labels_to_load
+                }
 
-                def load_next_shard():
+                active_by_label: Dict[str, List[Dict[str, object]]] = {
+                    label: []
+                    for label in self.labels_to_load
+                }
+
+                def load_next_shard(label: str):
                     try:
-                        filepath = next(file_iter)
+                        filepath = next(
+                            file_iters_by_label[label]
+                        )
                     except StopIteration:
                         return None
 
@@ -424,10 +537,14 @@ class JetClassIterableDataset(IterableDataset):
                             filepath=filepath,
                             particle_features=self.particle_features,
                             max_num_particles=self.max_num_particles,
+                            eps=1e-8,
                         )
                     )
 
-                    order = np.arange(len(x_particles), dtype=np.int64,)
+                    order = np.arange(
+                        len(x_particles),
+                        dtype=np.int64,
+                    )
 
                     np.random.default_rng(
                         rng.randrange(2**32)
@@ -437,94 +554,143 @@ class JetClassIterableDataset(IterableDataset):
                         "x": x_particles,
                         "y": y,
                         "order": order,
-                        "cursor": 0, # has yielded to which jet?
+                        "cursor": 0,
+                        "filepath": filepath,
                     }
 
-                for _ in range(
-                    min(
-                        self.shuffle_active_shards,
-                        len(worker_files),
-                    )
-                ):
-                    shard = load_next_shard()
+                # Initialize one independent active pool per label.
+                for label in self.labels_to_load:
+                    budget = active_budget_by_label[label]
 
-                    if shard is not None:
-                        active.append(shard)
+                    for _ in range(
+                        min(
+                            budget,
+                            len(files_by_label[label]),
+                        )
+                    ):
+                        shard = load_next_shard(label)
 
-                while active:
-                    if worker_quota is not None and yielded >= worker_quota:
+                        if shard is not None:
+                            active_by_label[label].append(shard)
+
+                # Labels that currently still have available active shards.
+                available_labels = [
+                    label
+                    for label in self.labels_to_load
+                    if len(active_by_label[label]) > 0
+                ]
+
+                while available_labels:
+                    if (
+                        worker_quota is not None
+                        and yielded >= worker_quota
+                    ):
                         break
 
-                    shard_idx = rng.randrange(len(active)) # randomly pick a shard from active shards
-                    shard = active[shard_idx]
+                    # Balanced cycle:
+                    # every cycle contains each currently available label once,
+                    # but the ordering of labels inside the cycle is random.
+                    label_cycle = list(available_labels)
+                    rng.shuffle(label_cycle)
 
-                    event_idx = int(
-                        shard["order"][
-                            shard["cursor"]
-                        ]
-                    )
+                    for label in label_cycle:
+                        if (
+                            worker_quota is not None
+                            and yielded >= worker_quota
+                        ):
+                            break
 
-                    shard["cursor"] += 1
+                        active_label_shards = active_by_label[label]
 
-                    yield ( # randomly select an event from the shard
-                        torch.from_numpy(shard["x"][event_idx]),
-                        torch.from_numpy(shard["y"][event_idx]),
-                    )
+                        if len(active_label_shards) == 0:
+                            continue
 
-                    yielded += 1
-                    
-                    # if run out of events in this shard, replace with a new shard
-                    if shard["cursor"] >= len(shard["order"]): 
-                        replacement = load_next_shard()
+                        shard_idx = rng.randrange(
+                            len(active_label_shards)
+                        )
+                        shard = active_label_shards[shard_idx]
 
-                        if replacement is None:
-                            active.pop(shard_idx)
-                        else:
-                            active[shard_idx] = replacement
+                        cursor = int(shard["cursor"])
+                        order = shard["order"]
+
+                        event_idx = int(order[cursor])
+                        shard["cursor"] = cursor + 1
+
+                        x_particles = shard["x"]
+                        y = shard["y"]
+
+                        yield (
+                            torch.from_numpy(
+                                x_particles[event_idx].copy()
+                            ),
+                            torch.from_numpy(
+                                y[event_idx].copy()
+                            ),
+                        )
+
+                        yielded += 1
+
+                        # Replace exhausted shard only with a new shard
+                        # from the same label.
+                        if shard["cursor"] >= len(order):
+                            active_label_shards.pop(shard_idx)
+                            del shard
+                            del x_particles
+                            del y
+                            del order
+                            
+                            replacement = load_next_shard(label)
+
+                            if replacement is not None:
+                                active_label_shards.append(replacement)
+
+                    available_labels = [
+                        label
+                        for label in self.labels_to_load
+                        if len(active_by_label[label]) > 0
+                    ]
 
             if not self.infinite:
                 break
 
             if yielded == 0:
                 raise RuntimeError(
-                    "Infinite JetClass stream completed "
-                    "a pass without yielding any events on "
-                    f"global_worker_id={global_worker_id}."
+                    "Infinite JetClass stream completed a pass "
+                    "without yielding any events. "
+                    f"global_worker_id={global_worker_id}, "
+                    f"global_num_workers={global_num_workers}."
                 )
 
             pass_index += 1
-
+            
+            
 def load_and_preprocess_jetclass_file(
     filepath: str,
     particle_features: Sequence[str],
     max_num_particles: int,
+    eps: float = 1e-8,
 ) -> Tuple[np.ndarray, np.ndarray]:
+    """Load one ROOT shard and construct the requested model feature tensor.
+
+    The returned tensor contains untouched px/py/pz/energy, pt fraction,
+    log(pt fraction), relative angular coordinates, clipped impact-parameter
+    significances, charge, and identity indicators. Absolute constituent eta/phi and the four raw impact-parameter value/error
+    branches are never returned.
     """
-    Load and preprocess one ROOT shard.
 
-    This function is deliberately shard-local: the caller can stream a dataset
-    without ever concatenating a full JetClass split in CPU memory.
-    """
+    requested = list(particle_features)
+    supported = set(DEFAULT_PARTICLE_FEATURES)
+    unknown = sorted(set(requested) - supported)
+    if unknown:
+        raise ValueError(
+            f"Unsupported model particle features: {unknown}. "
+            f"Supported features are {DEFAULT_PARTICLE_FEATURES}."
+        )
 
-    # Quality cuts may require features that are not model inputs. Load the
-    # union temporarily, then project back to the requested model feature order.
-    required_particle_features = [
-        "part_px",
-        "part_py",
-        "part_pz",
-        "part_energy",
-        "part_pt",
-        "part_eta",
-    ]
-    loaded_particle_features = list(particle_features)
-    for feature in required_particle_features:
-        if feature not in loaded_particle_features:
-            loaded_particle_features.append(feature)
-
+    loaded_particle_features = list(RAW_PARTICLE_FEATURES)
     feature_index = {
         name: i for i, name in enumerate(loaded_particle_features)
     }
-    requested_indices = [feature_index[name] for name in particle_features]
 
     x_particles, x_jets, y = read_file(
         filepath,
@@ -534,7 +700,6 @@ def load_and_preprocess_jetclass_file(
         labels=JETCLASS_LABELS,
     )
 
-    # read_file returns (B, F, N); the model convention is (B, N, F).
     x_particles = np.transpose(x_particles, (0, 2, 1)).astype(
         np.float32,
         copy=False,
@@ -556,35 +721,80 @@ def load_and_preprocess_jetclass_file(
     y = y[valid_jets]
     jet_pt = jet_pt[valid_jets]
 
-    part_pt = x_particles[:, :, feature_index["part_pt"]]
-    part_eta = x_particles[:, :, feature_index["part_eta"]]
-    part_energy = x_particles[:, :, feature_index["part_energy"]]
-    part_deta = x_particles[:, :, feature_index["part_deta"]]
-    part_dphi = x_particles[:, :, feature_index["part_dphi"]]
+    part_pt = x_particles[..., feature_index["part_pt"]]
+    part_energy = x_particles[..., feature_index["part_energy"]]
+    part_deta = x_particles[..., feature_index["part_deta"]]
+    part_dphi = x_particles[..., feature_index["part_dphi"]]
 
-    # Invalid constituents become padding rows. This preprocessing happens only
-    # for the current shard, so cleaned arrays can be released after iteration.
     valid_particles = (
         (part_pt > 0)
         & (part_energy > 0)
-        & (part_eta >= -2.5)
-        & (part_eta <= 2.5)
-        & (np.sqrt(np.square(part_deta) + np.square(part_dphi)) < 0.8) # DeltaR cut
+        & (np.sqrt(np.square(part_deta) + np.square(part_dphi)) < 0.8)
     )
+
+    # Raw invalid rows are zeroed before derived quantities are exported.
     x_particles[~valid_particles] = 0.0
 
-    # Convert absolute constituent pt to a dimensionless per-jet fraction.
     safe_jet_pt = np.where(jet_pt > 0, jet_pt, 1.0).astype(np.float32)
-    x_particles[:, :, feature_index["part_pt"]] /= safe_jet_pt[:, None]
+    pt_fraction = (
+        x_particles[..., feature_index["part_pt"]]
+        / safe_jet_pt[:, None]
+    ).astype(np.float32, copy=False)
+    pt_fraction[~valid_particles] = 0.0
 
-    # Drop temporary cut-only features before yielding events to the DataLoader.
-    x_particles = np.ascontiguousarray(
-        x_particles[:, :, requested_indices],
-        dtype=np.float32,
+    log_pt_fraction = np.zeros_like(pt_fraction, dtype=np.float32)
+    log_pt_fraction[valid_particles] = np.log(
+        np.clip(pt_fraction[valid_particles], eps, None)
     )
-    y = np.ascontiguousarray(y, dtype=np.float32)
 
-    return x_particles, y
+    d0val = x_particles[..., feature_index["part_d0val"]]
+    d0err = x_particles[..., feature_index["part_d0err"]]
+    dzval = x_particles[..., feature_index["part_dzval"]]
+    dzerr = x_particles[..., feature_index["part_dzerr"]]
+
+    d0_sig = np.zeros_like(pt_fraction, dtype=np.float32)
+    dz_sig = np.zeros_like(pt_fraction, dtype=np.float32)
+    d0_sig[valid_particles] = np.clip(
+        d0val[valid_particles] / np.clip(d0err[valid_particles], eps, None),
+        -20.0,
+        20.0,
+    )
+    dz_sig[valid_particles] = np.clip(
+        dzval[valid_particles] / np.clip(dzerr[valid_particles], eps, None),
+        -20.0,
+        20.0,
+    )
+
+    feature_arrays: Dict[str, np.ndarray] = {
+        name: x_particles[..., index]
+        for name, index in feature_index.items()
+        if name not in {
+            "part_pt",
+            "part_d0val",
+            "part_d0err",
+            "part_dzval",
+            "part_dzerr",
+        }
+    }
+    feature_arrays.update(
+        {
+            "part_pt": pt_fraction,
+            "log_pt_fraction": log_pt_fraction,
+            "d0_sig": d0_sig,
+            "dz_sig": dz_sig,
+        }
+    )
+
+    output = np.stack(
+        [feature_arrays[name] for name in requested],
+        axis=-1,
+    ).astype(np.float32, copy=False)
+    output[~valid_particles] = 0.0
+
+    return (
+        np.ascontiguousarray(output, dtype=np.float32),
+        np.ascontiguousarray(y, dtype=np.float32),
+    )
 
 
 def collate_jetclass_tensors(
@@ -653,18 +863,24 @@ class TrainLeJEPAParticleTransformer:
     Shared driver for LeJEPA ParticleTransformer SSL pretraining.
 
     Supported models:
-        triplet:
-            LeJEPA + SIGReg + corrupted-negative triplet loss
+        lejepa:
+            LeJEPA invariant loss + SIGReg.
 
-        mahalanobis:
-            LeJEPA + SIGReg + corrupted-negative Mahalanobis objective
-            with EMA normal-distribution statistics
+        triplet:
+            LeJEPA + SIGReg + corrupted-negative triplet loss.
+
+        semi-sup:
+            LeJEPA + SIGReg + background classification.
+
+        semi-sup-triplet:
+            LeJEPA + SIGReg + corrupted-negative triplet loss
+            + background classification.
     """
     
     def _prepare_labels_for_model(self, y: torch.Tensor) -> torch.Tensor:
         """Project 10-class JetClass one-hot labels to the selected backgrounds."""
 
-        if self.model_name != "semi-sup":
+        if self.model_name not in {"semi-sup", "semi-sup-triplet"}:
             return y
 
         indices = [
@@ -747,6 +963,17 @@ class TrainLeJEPAParticleTransformer:
                 "triplet_neg_distance",
             ]
         
+        elif self.model_name == "semi-sup-triplet":
+            self.ssl_metric_keys = [
+                "total_loss",
+                "invariant_loss",
+                "sigreg_loss",
+                "triplet_loss",
+                "triplet_pos_distance",
+                "triplet_neg_distance",
+                "classification_loss",
+            ]
+
         elif self.model_name == "lejepa":
             self.ssl_metric_keys = [
                 "total_loss",
@@ -779,6 +1006,23 @@ class TrainLeJEPAParticleTransformer:
             for label in self.signal_labels
         )
         self.particle_feature_names = parse_csv_list(self.args.particle_features)
+
+        if self.particle_feature_names[:4] != [
+            "part_px", "part_py", "part_pz", "part_energy"
+        ]:
+            raise ValueError(
+                "The first four particle features must be "
+                "part_px,part_py,part_pz,part_energy so the backbone can reserve "
+                "them exclusively for pairwise-bias construction."
+            )
+        required_model_features = set(DEFAULT_PARTICLE_FEATURES)
+        if set(self.particle_feature_names) != required_model_features:
+            missing = sorted(required_model_features - set(self.particle_feature_names))
+            extra = sorted(set(self.particle_feature_names) - required_model_features)
+            raise ValueError(
+                f"particle_features must contain the complete new JetClass feature set. "
+                f"missing={missing}, extra={extra}."
+            )
 
         validate_requested_labels(self.background_labels)
         validate_requested_labels(self.signal_labels)
@@ -1054,6 +1298,17 @@ class TrainLeJEPAParticleTransformer:
                 "d-": f"{metrics['triplet_neg_distance']:.4g}",
             }
         
+        if self.model_name == "semi-sup-triplet":
+            return {
+                "total": f"{metrics['total_loss']:.4g}",
+                "inv": f"{metrics['invariant_loss']:.4g}",
+                "sig": f"{metrics['sigreg_loss']:.4g}",
+                "tri": f"{metrics['triplet_loss']:.4g}",
+                "d+": f"{metrics['triplet_pos_distance']:.4g}",
+                "d-": f"{metrics['triplet_neg_distance']:.4g}",
+                "cls": f"{metrics['classification_loss']:.4g}",
+            }
+
         if self.model_name == "lejepa":
             return {
                 "total": f"{metrics['total_loss']:.4g}",
@@ -1152,6 +1407,7 @@ class TrainLeJEPAParticleTransformer:
     def build_model(self) -> None:
         model_config = ParticleTransformerConfig(
             input_dim=len(self.particle_feature_names),
+            input_feature_names=tuple(self.particle_feature_names),
             embed_dim=self.args.embed_dim,
             num_heads=self.args.num_heads,
             num_layers=self.args.num_layers,
@@ -1182,9 +1438,8 @@ class TrainLeJEPAParticleTransformer:
             py_index=self.particle_feature_names.index("part_py"),
             pz_index=self.particle_feature_names.index("part_pz"),
             energy_index=self.particle_feature_names.index("part_energy"),
-            eta_index=self.particle_feature_names.index("part_eta"),
-            phi_index=self.particle_feature_names.index("part_phi"),
             pt_index=self.particle_feature_names.index("part_pt"),
+            log_pt_fraction_index=self.particle_feature_names.index("log_pt_fraction"),
             eps=self.args.eps,
             pt_drop_power=self.args.pt_drop_power,
             zero_dropped_features=not self.args.keep_dropped_features,
@@ -1197,24 +1452,27 @@ class TrainLeJEPAParticleTransformer:
             num_slices=self.args.num_slices,
         )
         negative_augmentation_config = None
-        if self.model_name == "triplet":
+        triplet_loss_config = None
+
+        if self.model_name in {"triplet", "semi-sup-triplet"}:
             negative_augmentation_config = CorruptedNegativeAugmentationConfig(
                 num_negative_views=self.args.num_negative_views,
 
                 batch_mix_prob=self.args.batch_mix_prob,
                 pt_resample_prob=self.args.pt_resample_prob,
-                node_eta_phi_rotation_prob=self.args.node_eta_phi_rotation_prob,
-                eta_phi_shuffle_prob=self.args.eta_phi_shuffle_prob,
+                node_deta_dphi_rotation_prob=self.args.node_deta_dphi_rotation_prob,
+                deta_dphi_shuffle_prob=self.args.deta_dphi_shuffle_prob,
                 identity_shuffle_prob=self.args.identity_shuffle_prob,
 
                 min_nodes=self.args.min_nodes,
                 eps=self.args.eps,
 
-                eta_index=self.particle_feature_names.index("part_eta"),
-                phi_index=self.particle_feature_names.index("part_phi"),
+                deta_index=self.particle_feature_names.index("part_deta"),
+                dphi_index=self.particle_feature_names.index("part_dphi"),
                 pt_index=self.particle_feature_names.index("part_pt"),
-                d0_index=self.particle_feature_names.index("part_d0val"),
-                dz_index=self.particle_feature_names.index("part_dzval"),
+                log_pt_fraction_index=self.particle_feature_names.index("log_pt_fraction"),
+                d0_sig_index=self.particle_feature_names.index("d0_sig"),
+                dz_sig_index=self.particle_feature_names.index("dz_sig"),
                 charge_index=self.particle_feature_names.index("part_charge"),
                 identity_start_index=self.particle_feature_names.index(
                     "part_isChargedHadron"
@@ -1228,7 +1486,7 @@ class TrainLeJEPAParticleTransformer:
                 batch_mix_anchor_frac_max=self.args.batch_mix_anchor_frac_max,
                 renormalize_pt_sum=self.args.renormalize_negative_pt_sum,
             )
-                
+
             triplet_loss_config = TripletLossConfig(
                 triplet_weight=self.args.triplet_weight,
                 triplet_margin=self.args.triplet_margin,
@@ -1237,6 +1495,7 @@ class TrainLeJEPAParticleTransformer:
                 ),
             )
 
+        if self.model_name == "triplet":
             core_model = (
                 LeJEPATripletParticleTransformerRepresentation(
                     model_config=model_config,
@@ -1249,7 +1508,7 @@ class TrainLeJEPAParticleTransformer:
                 )
                 .to(DEVICE)
             )
-        
+
         elif self.model_name == "lejepa":
             core_model = (
                 LeJEPAParticleTransformerRepresentation(
@@ -1259,7 +1518,7 @@ class TrainLeJEPAParticleTransformer:
                 )
                 .to(DEVICE)
             )
-        
+
         elif self.model_name == "semi-sup":
             semi_supervised_loss_config = SemiSupervisedLossConfig(
                 classification_weight=self.args.classification_weight,
@@ -1270,6 +1529,25 @@ class TrainLeJEPAParticleTransformer:
                     model_config=model_config,
                     augmentation_config=augmentation_config,
                     loss_config=loss_config,
+                    semi_supervised_config=semi_supervised_loss_config,
+                )
+                .to(DEVICE)
+            )
+
+        elif self.model_name == "semi-sup-triplet":
+            semi_supervised_loss_config = SemiSupervisedLossConfig(
+                classification_weight=self.args.classification_weight,
+                num_classes=len(self.background_labels),
+            )
+            core_model = (
+                LeJEPASemiSupervisedTripletParticleTransformerRepresentation(
+                    model_config=model_config,
+                    augmentation_config=augmentation_config,
+                    negative_augmentation_config=(
+                        negative_augmentation_config
+                    ),
+                    loss_config=loss_config,
+                    triplet_loss_config=triplet_loss_config,
                     semi_supervised_config=semi_supervised_loss_config,
                 )
                 .to(DEVICE)
@@ -1501,6 +1779,9 @@ class TrainLeJEPAParticleTransformer:
             "triplet": "LeJEPA + Triplet SSL",
             "lejepa": "LeJEPA SSL",
             "semi-sup": "LeJEPA + Semi-Supervised Classification",
+            "semi-sup-triplet": (
+                "LeJEPA + Triplet + Semi-Supervised Classification"
+            ),
         }[self.model_name]
         fig.suptitle(f"{model_title} Training Progress")
         fig.tight_layout()
@@ -2206,6 +2487,7 @@ class TrainLeJEPAParticleTransformer:
             "ffn_mult": self.args.ffn_mult,
             "dropout": self.args.dropout,
             "num_trainable_parameters": int(self.num_params),
+            "pairwise_hidden_dim": self.args.pairwise_hidden_dim, 
 
             # Optimization.
             "epochs": self.args.epochs,
@@ -2262,16 +2544,16 @@ class TrainLeJEPAParticleTransformer:
         }
         
         # Add info about negative augmentation only if the model uses it.
-        if self.model_name in ["triplet"]:
+        if self.model_name in {"triplet", "semi-sup-triplet"}:
             summary.update(
                 {
                     # Negative augmentation.
                     "num_negative_views": self.args.num_negative_views,
                     "batch_mix_prob": self.args.batch_mix_prob,
                     "pt_resample_prob": self.args.pt_resample_prob,
-                    "node_eta_phi_rotation_prob":
-                        self.args.node_eta_phi_rotation_prob,
-                    "eta_phi_shuffle_prob": self.args.eta_phi_shuffle_prob,
+                    "node_deta_dphi_rotation_prob":
+                        self.args.node_deta_dphi_rotation_prob,
+                    "deta_dphi_shuffle_prob": self.args.deta_dphi_shuffle_prob,
                     "identity_shuffle_prob": self.args.identity_shuffle_prob,
                     "corrupt_node_frac": self.args.corrupt_node_frac,
                     "batch_mix_anchor_frac_min": self.args.batch_mix_anchor_frac_min,
@@ -2281,7 +2563,7 @@ class TrainLeJEPAParticleTransformer:
                 }
             )
         # Add model-specific hyperparameters to the summary.
-        if self.model_name == "triplet":
+        if self.model_name in {"triplet", "semi-sup-triplet"}:
             summary.update(
                 {
                     "triplet_weight": (
@@ -2296,7 +2578,7 @@ class TrainLeJEPAParticleTransformer:
                 }
             )
         
-        if self.model_name == "semi-sup":
+        if self.model_name in {"semi-sup", "semi-sup-triplet"}:
             summary.update(
                 {
                     "classification_weight":
@@ -2687,6 +2969,7 @@ if __name__ == "__main__":
             "triplet",
             "lejepa",
             "semi-sup",
+            "semi-sup-triplet",
         ],
         default="semi-sup",
         help=(
@@ -2695,7 +2978,8 @@ if __name__ == "__main__":
             "triplet loss. "
             "'lejepa' uses LeJEPA + SIGReg only, without any corrupted-negative loss. "
             "'semi-sup' uses semi-supervised learning with LeJEPA + SIGReg. "
-            "Default: semi-sup."
+            "'semi-sup-triplet' adds corrupted-negative triplet loss to the "
+            "semi-supervised objective. Default: semi-sup."
         ),
     )
     # Anomaly score function.
@@ -2755,7 +3039,7 @@ if __name__ == "__main__":
         default=",".join(DEFAULT_PARTICLE_FEATURES),
         help=(
             "Comma-separated particle features passed to JetClass read_file; "
-            "default is the full supported particle-feature set."
+            "default is the derived 16-feature JetClass set; absolute eta/phi and raw impact-parameter branches are excluded."
         ),
     )
     parser.add_argument(
@@ -2935,8 +3219,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sigreg-weight",
         type=float,
-        default=0.02,
-        help="Weight for SIGReg loss, matching LeJEPA lambda by default. Default: 0.02.",
+        default=0.05,
+        help="Weight for SIGReg loss, matching LeJEPA lambda by default. Default: 0.05.",
     )
     parser.add_argument(
         "--epps-pulley-num-points",
@@ -2994,16 +3278,16 @@ if __name__ == "__main__":
         help="Probability of sampling pt_resample for a negative view. Default: 0.25.",
     )
     parser.add_argument(
-        "--node-eta-phi-rotation-prob",
+        "--node-deta-dphi-rotation-prob",
         type=float,
         default=0.20,
-        help="Probability of sampling independent node-level eta-phi rotation. Default: 0.20.",
+        help="Probability of sampling independent node-level deta-dphi rotation. Default: 0.20.",
     )
     parser.add_argument(
-        "--eta-phi-shuffle-prob",
+        "--deta-dphi-shuffle-prob",
         type=float,
         default=0.05,
-        help="Probability of sampling eta_phi_shuffle for a negative view. Default: 0.05.",
+        help="Probability of sampling deta_dphi_shuffle for a negative view. Default: 0.05.",
     )
     parser.add_argument(
         "--identity-shuffle-prob",
@@ -3033,7 +3317,7 @@ if __name__ == "__main__":
         "--renormalize-negative-pt-sum",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Renormalize corrupted negative pt sums to the original event pt sum. Default: True.",
+        help="Renormalize corrupted negative sample's pt sums to the original event pt sum. Default: True.",
     )
     
     # Optimization.

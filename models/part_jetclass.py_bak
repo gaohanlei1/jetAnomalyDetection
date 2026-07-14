@@ -78,9 +78,13 @@ class ParticleTransformerConfig:
 
         x: (B, N, F)
 
-    where each node has features ordered as:
+    The exact particle-feature order is configured by the training script.
+    The current JetClass default is:
 
-        "eta,phi,pt,d0/d0Err,dz/dzErr,charge,mass,log_pt,pdgId_-211,pdgId_-13,pdgId_-11,pdgId_11,pdgId_13,pdgId_22,pdgId_130,pdgId_211"
+        part_px, part_py, part_pz, part_energy, part_pt,
+        part_eta, part_phi, part_deta, part_dphi,
+        part_d0val, part_d0err, part_dzval, part_dzerr,
+        part_charge, and five particle-identity indicators.
 
     The model produces a representation vector instead of class logits.
     """
@@ -833,6 +837,11 @@ class MinimalParticleTransformer(nn.Module):
         Returns:
             cls: Tensor of shape (B, embed_dim).
         """
+        
+        ###########
+        ########### Temporarily disable part_eta and part_phi features!!!!
+        ###########
+        x[:, :, [5, 6]] = 0.0
 
         if x.ndim != 3:
             raise ValueError(f"Expected x to have shape (B, N, F), got {tuple(x.shape)}.")
@@ -1117,6 +1126,8 @@ class CorruptedNegativeAugmentationConfig:
 
     eta_index: int = 5
     phi_index: int = 6
+    deta_index: int = 7
+    dphi_index: int = 8
     pt_index: int = 4
     d0_index: int = 9
     dz_index: int = 11
@@ -1366,30 +1377,30 @@ class CorruptedNegativeAugmentation(nn.Module):
 
     Implemented corruption modes:
         identity_shuffle:
-            Within each event, shuffle the identity block jointly:
-                charge, mass, pdgId one-hot.
+            Within each event, jointly shuffle charge and the five particle
+            identity indicators.
 
         pt_resample:
-            Within each event, resample pt values with replacement from that
-            event's valid pt/log_pt set, keeping pt and scaled log_pt bound
-            together. Then renormalize the pt sum to the original event pt sum
-            and match the original event-level log_pt mean/std.
+            Within each event, resample part_pt values with replacement from
+            valid nodes, then optionally renormalize the valid-node pt sum to
+            the original event's pt sum.
 
         node_eta_phi_rotation:
-            Treat each valid node's eta-phi pair as a 2D Cartesian vector,
-            convert it to polar form, and independently rotate every valid node
-            by its own random angle sampled uniformly from [0, 2pi). The radial
-            distance sqrt(eta^2 + phi^2) is preserved for each node.
+            Treat each valid node's (part_deta, part_dphi) as a 2D vector around
+            the fixed jet center. Independently rotate every valid node, then
+            reconstruct part_eta and wrapped part_phi from the rotated offsets.
 
         eta_phi_shuffle:
-            Within each event, shuffle the eta-phi pair jointly across nodes.
+            Within each event, jointly shuffle the four-coordinate block
+            (part_eta, part_phi, part_deta, part_dphi) across valid nodes.
 
         batch_mix:
-            Build a fake jet by concatenating valid nodes from the anchor event
-            and another donor event in the same batch. If the fake jet exceeds
-            the current padded sequence length N, extra nodes are dropped.
-            The resulting pt sum is renormalized to the original anchor event's
-            pt sum, and log_pt is matched to the original anchor event's mean/std.
+            Build a fake jet by concatenating valid nodes from an anchor event
+            and a donor event. All retained nodes are expressed around the
+            anchor event's jet center: part_deta/part_dphi are preserved, while
+            part_eta/part_phi are reconstructed using that single center.
+            The resulting pt sum can be renormalized to the original anchor
+            event's pt sum.
     """
 
     def __init__(self, config: CorruptedNegativeAugmentationConfig):
@@ -1518,6 +1529,106 @@ class CorruptedNegativeAugmentation(nn.Module):
 
     def _valid_mask(self, padding_mask: torch.Tensor) -> torch.Tensor:
         return ~padding_mask.bool()
+
+    @staticmethod
+    def _wrap_phi(phi: torch.Tensor) -> torch.Tensor:
+        """Wrap azimuthal angles to [-pi, pi)."""
+
+        return (phi + math.pi) % (2.0 * math.pi) - math.pi
+
+    def _infer_jet_center(
+        self,
+        x: torch.Tensor,
+        valid_mask: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Infer one fixed jet center per event from the first valid particle.
+
+        JetClass provides:
+            part_deta = part_eta - jet_eta
+            part_dphi = wrap(part_phi - jet_phi)
+
+        Therefore:
+            jet_eta = part_eta - part_deta
+            jet_phi = wrap(part_phi - part_dphi)
+
+        Returns:
+            jet_eta: (B, 1)
+            jet_phi: (B, 1)
+        """
+
+        if x.ndim != 3 or valid_mask.shape != x.shape[:2]:
+            raise ValueError(
+                "Expected x shape (B, N, F) and valid_mask shape (B, N), "
+                f"got {tuple(x.shape)} and {tuple(valid_mask.shape)}."
+            )
+
+        first_valid_idx = valid_mask.to(torch.int64).argmax(dim=1)
+        has_valid = valid_mask.any(dim=1, keepdim=True)
+        batch_idx = torch.arange(x.size(0), device=x.device)
+
+        first_eta = x[
+            batch_idx,
+            first_valid_idx,
+            self.config.eta_index,
+        ].float().unsqueeze(1)
+        first_phi = x[
+            batch_idx,
+            first_valid_idx,
+            self.config.phi_index,
+        ].float().unsqueeze(1)
+        first_deta = x[
+            batch_idx,
+            first_valid_idx,
+            self.config.deta_index,
+        ].float().unsqueeze(1)
+        first_dphi = x[
+            batch_idx,
+            first_valid_idx,
+            self.config.dphi_index,
+        ].float().unsqueeze(1)
+
+        jet_eta = first_eta - first_deta
+        jet_phi = self._wrap_phi(first_phi - first_dphi)
+
+        jet_eta = torch.where(has_valid, jet_eta, torch.zeros_like(jet_eta))
+        jet_phi = torch.where(has_valid, jet_phi, torch.zeros_like(jet_phi))
+
+        return jet_eta, jet_phi
+
+    def _reconstruct_absolute_eta_phi(
+        self,
+        view_x: torch.Tensor,
+        target_mask: torch.Tensor,
+        jet_eta: torch.Tensor,
+        jet_phi: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Reconstruct absolute eta/phi from stored deta/dphi and one jet center.
+
+        Only positions selected by target_mask are modified.
+        """
+
+        view_x = view_x.clone()
+
+        deta = view_x[..., self.config.deta_index].float()
+        dphi = view_x[..., self.config.dphi_index].float()
+
+        reconstructed_eta = jet_eta + deta
+        reconstructed_phi = self._wrap_phi(jet_phi + dphi)
+
+        view_x[..., self.config.eta_index] = torch.where(
+            target_mask,
+            reconstructed_eta.to(dtype=view_x.dtype),
+            view_x[..., self.config.eta_index],
+        )
+        view_x[..., self.config.phi_index] = torch.where(
+            target_mask,
+            reconstructed_phi.to(dtype=view_x.dtype),
+            view_x[..., self.config.phi_index],
+        )
+
+        return view_x
 
     def _valid_order(self, valid_mask: torch.Tensor) -> torch.Tensor:
         """
@@ -1685,8 +1796,13 @@ class CorruptedNegativeAugmentation(nn.Module):
         )
 
         block_idx = torch.tensor(
-            [self.config.charge_index, self.config.mass_index]
-            + list(range(self.config.pdg_start_index, self.config.pdg_end_index)),
+            [self.config.charge_index]
+            + list(
+                range(
+                    self.config.identity_start_index,
+                    self.config.identity_end_index,
+                )
+            ),
             device=x.device,
             dtype=torch.long,
         )
@@ -1723,7 +1839,7 @@ class CorruptedNegativeAugmentation(nn.Module):
             index=source_idx.unsqueeze(-1).expand(-1, -1, x.size(-1)),
         )
 
-        # Resample only pt. JetClass inputs do not contain a separate log_pt feature.
+        # Resample only part_pt.
         sampled_pt = torch.where(
             target_mask,
             source_x[..., self.config.pt_index],
@@ -1745,6 +1861,14 @@ class CorruptedNegativeAugmentation(nn.Module):
         x: torch.Tensor,
         padding_mask: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Jointly shuffle eta, phi, deta, and dphi across valid same-event nodes.
+
+        Keeping the four entries together preserves their internal jet-center
+        relation for each copied node while breaking their association with the
+        node's remaining features.
+        """
+
         view_x = x.clone()
         view_mask = padding_mask.clone()
 
@@ -1759,7 +1883,12 @@ class CorruptedNegativeAugmentation(nn.Module):
         )
 
         block_idx = torch.tensor(
-            [self.config.eta_index, self.config.phi_index],
+            [
+                self.config.eta_index,
+                self.config.phi_index,
+                self.config.deta_index,
+                self.config.dphi_index,
+            ],
             device=x.device,
             dtype=torch.long,
         )
@@ -1855,9 +1984,25 @@ class CorruptedNegativeAugmentation(nn.Module):
         view_mask = torch.where(fallback.view(batch_size, 1), padding_mask, mixed_mask)
 
         view_valid_mask = ~view_mask
+        active_mixed_mask = view_valid_mask & (~fallback).unsqueeze(1)
+
+        # A mixed event must have one coherent jet center. Infer the center from
+        # the anchor event and reconstruct absolute eta/phi for every retained
+        # anchor or donor node from its stored deta/dphi.
+        anchor_jet_eta, anchor_jet_phi = self._infer_jet_center(
+            x,
+            valid_mask,
+        )
+        view_x = self._reconstruct_absolute_eta_phi(
+            view_x=view_x,
+            target_mask=active_mixed_mask,
+            jet_eta=anchor_jet_eta,
+            jet_phi=anchor_jet_phi,
+        )
+
         view_x = self._renormalize_pt(
             view_x=view_x,
-            valid_mask=view_valid_mask & (~fallback).unsqueeze(1),
+            valid_mask=active_mixed_mask,
             target_pt_sum=original_pt_sum.clamp(min=self.config.eps),
         )
 
@@ -1869,52 +2014,51 @@ class CorruptedNegativeAugmentation(nn.Module):
         padding_mask: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Independently rotate every valid node in the eta-phi plane.
+        Independently rotate every valid node around its event's fixed jet center.
 
-        Each node is treated as a 2D Cartesian vector:
-
-            eta = r cos(alpha)
-            phi = r sin(alpha)
-
-        and receives its own independent random angle theta ~ Uniform(0, 2pi):
-
-            alpha' = alpha + theta
-
-        This preserves each node's radius sqrt(eta^2 + phi^2), while changing
-        its angular position independently of every other node in the event.
-        Padded nodes are left unchanged.
+        The 2D vector being rotated is (part_deta, part_dphi), not the absolute
+        (part_eta, part_phi). After rotation, absolute eta and wrapped phi are
+        reconstructed from the same event-level jet center.
         """
 
         view_x = x.clone()
         view_mask = padding_mask.clone()
 
         valid_mask = self._valid_mask(padding_mask)
+        jet_eta, jet_phi = self._infer_jet_center(x, valid_mask)
 
-        eta = x[..., self.config.eta_index].float()
-        phi = x[..., self.config.phi_index].float()
+        deta = x[..., self.config.deta_index].float()
+        dphi = x[..., self.config.dphi_index].float()
 
-        radius = torch.sqrt(eta.square() + phi.square())
-        angle = torch.atan2(phi, eta)
+        radius = torch.sqrt(deta.square() + dphi.square())
+        angle = torch.atan2(dphi, deta)
 
         theta = torch.rand(
-            eta.shape,
+            deta.shape,
             device=x.device,
             dtype=torch.float32,
         ) * (2.0 * math.pi)
 
         rotated_angle = angle + theta
-        rotated_eta = radius * torch.cos(rotated_angle)
-        rotated_phi = radius * torch.sin(rotated_angle)
+        rotated_deta = radius * torch.cos(rotated_angle)
+        rotated_dphi = radius * torch.sin(rotated_angle)
 
-        view_x[..., self.config.eta_index] = torch.where(
+        view_x[..., self.config.deta_index] = torch.where(
             valid_mask,
-            rotated_eta.to(dtype=x.dtype),
-            x[..., self.config.eta_index],
+            rotated_deta.to(dtype=x.dtype),
+            x[..., self.config.deta_index],
         )
-        view_x[..., self.config.phi_index] = torch.where(
+        view_x[..., self.config.dphi_index] = torch.where(
             valid_mask,
-            rotated_phi.to(dtype=x.dtype),
-            x[..., self.config.phi_index],
+            rotated_dphi.to(dtype=x.dtype),
+            x[..., self.config.dphi_index],
+        )
+
+        view_x = self._reconstruct_absolute_eta_phi(
+            view_x=view_x,
+            target_mask=valid_mask,
+            jet_eta=jet_eta,
+            jet_phi=jet_phi,
         )
 
         return view_x, view_mask
@@ -2719,3 +2863,252 @@ class LeJEPASemiSupervisedParticleTransformerRepresentation(
             "z_views": z_views,
             "view_types": view_types,
         }
+
+# ------------------------------------------------------------
+# LeJEPA + SIGReg + triplet + classification objective
+# ------------------------------------------------------------
+
+class LeJEPASIGRegTripletClassificationLoss(nn.Module):
+    """
+    Combine LeJEPA invariant loss, SIGReg, corrupted-negative triplet loss,
+    and auxiliary categorical background classification.
+    """
+
+    def __init__(
+        self,
+        lejepa_config: LeJEPALossConfig,
+        triplet_config: TripletLossConfig,
+        semi_supervised_config: SemiSupervisedLossConfig,
+    ):
+        super().__init__()
+        self.triplet_loss = LeJEPASIGRegTripletLoss(
+            lejepa_config=lejepa_config,
+            triplet_config=triplet_config,
+        )
+        self.semi_supervised_config = semi_supervised_config
+
+    def forward(
+        self,
+        z_views: torch.Tensor,
+        z_negatives: torch.Tensor,
+        classification_logits: torch.Tensor,
+        y: torch.Tensor,
+        num_global_views: int,
+    ) -> Dict[str, torch.Tensor]:
+        base_loss = self.triplet_loss(
+            z_views=z_views,
+            z_negatives=z_negatives,
+            num_global_views=num_global_views,
+        )
+
+        if classification_logits.ndim != 2:
+            raise ValueError(
+                "Expected classification_logits shape (B, C), got "
+                f"{tuple(classification_logits.shape)}."
+            )
+        if y.ndim != 2:
+            raise ValueError(
+                f"Expected one-hot y shape (B, C), got {tuple(y.shape)}."
+            )
+        if classification_logits.shape != y.shape:
+            raise ValueError(
+                "classification_logits and y must have the same shape, got "
+                f"{tuple(classification_logits.shape)} and {tuple(y.shape)}."
+            )
+
+        target_class = y.argmax(dim=-1).long()
+        classification_loss = F.cross_entropy(
+            classification_logits.float(),
+            target_class,
+        )
+
+        total_loss = (
+            base_loss["total_loss"]
+            + self.semi_supervised_config.classification_weight
+            * classification_loss
+        )
+
+        return {
+            **base_loss,
+            "classification_loss": classification_loss,
+            "total_loss": total_loss,
+        }
+
+
+class LeJEPASemiSupervisedTripletParticleTransformerRepresentation(
+    LeJEPATripletParticleTransformerRepresentation
+):
+    """
+    ParticleTransformer trained jointly with four objectives:
+
+        1. LeJEPA invariant loss on positive global/local views;
+        2. SIGReg on all positive-view representations;
+        3. triplet loss against corrupted negative views;
+        4. categorical classification of the selected background classes.
+
+    The classification head reads the mean pre-projection CLS state of the
+    global positive views. The triplet and LeJEPA losses use the shared
+    representation head output, matching the existing semi-supervised and
+    triplet model conventions.
+    """
+
+    def __init__(
+        self,
+        model_config: ParticleTransformerConfig,
+        augmentation_config: Optional[MultiViewAugmentationConfig] = None,
+        negative_augmentation_config: Optional[
+            CorruptedNegativeAugmentationConfig
+        ] = None,
+        loss_config: Optional[LeJEPALossConfig] = None,
+        triplet_loss_config: Optional[TripletLossConfig] = None,
+        semi_supervised_config: Optional[SemiSupervisedLossConfig] = None,
+    ):
+        if semi_supervised_config is None:
+            semi_supervised_config = SemiSupervisedLossConfig()
+
+        super().__init__(
+            model_config=model_config,
+            augmentation_config=augmentation_config,
+            negative_augmentation_config=negative_augmentation_config,
+            loss_config=loss_config,
+            triplet_loss_config=triplet_loss_config,
+        )
+
+        # The parent constructor has already resolved optional configs.
+        resolved_loss_config = (
+            loss_config if loss_config is not None else LeJEPALossConfig()
+        )
+        resolved_triplet_config = (
+            triplet_loss_config
+            if triplet_loss_config is not None
+            else TripletLossConfig()
+        )
+
+        self.semi_supervised_config = semi_supervised_config
+        self.classification_head = CategoricalClassificationHead(
+            embed_dim=model_config.embed_dim,
+            num_classes=semi_supervised_config.num_classes,
+            dropout=model_config.dropout,
+        )
+        self.loss = LeJEPASIGRegTripletClassificationLoss(
+            lejepa_config=resolved_loss_config,
+            triplet_config=resolved_triplet_config,
+            semi_supervised_config=semi_supervised_config,
+        )
+
+    def forward_pretrain(
+        self,
+        x_particles: torch.Tensor,
+        y: torch.Tensor,
+        padding_mask: Optional[torch.Tensor] = None,
+        return_views: bool = False,
+    ) -> Dict[str, torch.Tensor]:
+        expected_shape = (
+            x_particles.size(0),
+            self.semi_supervised_config.num_classes,
+        )
+        if tuple(y.shape) != expected_shape:
+            raise ValueError(
+                f"Expected one-hot y shape {expected_shape}, got {tuple(y.shape)}."
+            )
+
+        with record_function("positive_augmentation"):
+            views, view_padding_masks, view_types = self.augmentation(
+                x=x_particles,
+                padding_mask=padding_mask,
+                return_types=return_views,
+            )
+
+        with record_function("negative_augmentation"):
+            (
+                negative_views,
+                negative_padding_masks,
+                negative_types,
+            ) = self.negative_augmentation(
+                x=x_particles,
+                padding_mask=padding_mask,
+                return_types=return_views,
+            )
+
+        num_views = len(views)
+        num_negative_views = len(negative_views)
+        batch_size = x_particles.size(0)
+        num_global_views = self.augmentation.config.num_global_views
+
+        with record_function("batch_concat"):
+            batched_views = torch.cat(views, dim=0)
+            batched_view_masks = torch.cat(view_padding_masks, dim=0)
+            batched_negatives = torch.cat(negative_views, dim=0)
+            batched_negative_masks = torch.cat(
+                negative_padding_masks,
+                dim=0,
+            )
+
+            all_inputs = torch.cat(
+                [batched_views, batched_negatives],
+                dim=0,
+            )
+            all_masks = torch.cat(
+                [batched_view_masks, batched_negative_masks],
+                dim=0,
+            )
+
+        with record_function("backbone_forward"):
+            all_cls = MinimalParticleTransformer.forward(
+                self,
+                all_inputs,
+                padding_mask=all_masks,
+            )
+
+        with record_function("classification_forward"):
+            positive_cls_flat = all_cls[: num_views * batch_size]
+            positive_cls = positive_cls_flat.view(
+                num_views,
+                batch_size,
+                -1,
+            )
+            global_cls_anchor = positive_cls[:num_global_views].mean(dim=0)
+            classification_logits = self.classification_head(
+                global_cls_anchor
+            )
+
+        with record_function("representation_projection"):
+            all_z = self.representation_head(all_cls)
+
+        with record_function("reshape_representations"):
+            z_views_flat = all_z[: num_views * batch_size]
+            z_negatives_flat = all_z[num_views * batch_size :]
+
+            z_views = z_views_flat.view(num_views, batch_size, -1)
+            z_negatives = z_negatives_flat.view(
+                num_negative_views,
+                batch_size,
+                -1,
+            )
+
+        with record_function("joint_ssl_loss"):
+            loss_dict = self.loss(
+                z_views=z_views,
+                z_negatives=z_negatives,
+                classification_logits=classification_logits,
+                y=y,
+                num_global_views=num_global_views,
+            )
+
+        output: Dict[str, torch.Tensor] = {
+            **loss_dict,
+            "classification_logits": classification_logits,
+            "z_views": z_views,
+            "z_negatives": z_negatives,
+        }
+
+        if return_views:
+            output["views"] = views
+            output["view_padding_masks"] = view_padding_masks
+            output["view_types"] = view_types
+            output["negative_views"] = negative_views
+            output["negative_padding_masks"] = negative_padding_masks
+            output["negative_types"] = negative_types
+
+        return output
+

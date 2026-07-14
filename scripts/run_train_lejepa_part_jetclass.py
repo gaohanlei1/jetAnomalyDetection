@@ -143,8 +143,26 @@ DEFAULT_PARTICLE_FEATURES = [
     "part_pz",
     "part_energy",
     "part_pt",
-    "part_eta",
-    "part_phi",
+    "log_pt_fraction",
+    "part_deta",
+    "part_dphi",
+    "d0_sig",
+    "dz_sig",
+    "part_charge",
+    "part_isChargedHadron",
+    "part_isNeutralHadron",
+    "part_isPhoton",
+    "part_isElectron",
+    "part_isMuon",
+]
+
+# Actual ROOT branches needed to construct the model features above.
+RAW_PARTICLE_FEATURES = [
+    "part_px",
+    "part_py",
+    "part_pz",
+    "part_energy",
+    "part_pt",
     "part_deta",
     "part_dphi",
     "part_d0val",
@@ -158,6 +176,13 @@ DEFAULT_PARTICLE_FEATURES = [
     "part_isElectron",
     "part_isMuon",
 ]
+
+DERIVED_PARTICLE_FEATURES = {
+    "log_pt_fraction",
+    "d0_sig",
+    "dz_sig",
+}
+
 
 # Jet-level features are not model inputs. They are loaded only for event
 # quality cuts and to convert absolute particle pt into a per-jet pt fraction.
@@ -439,8 +464,8 @@ class JetClassIterableDataset(IterableDataset):
 
                         label_events.extend(
                             (
-                                torch.from_numpy(event_x),
-                                torch.from_numpy(event_y),
+                                torch.from_numpy(event_x.copy()),
+                                torch.from_numpy(event_y.copy()),
                             )
                             for event_x, event_y in zip(x_particles, y)
                         )
@@ -512,6 +537,7 @@ class JetClassIterableDataset(IterableDataset):
                             filepath=filepath,
                             particle_features=self.particle_features,
                             max_num_particles=self.max_num_particles,
+                            eps=1e-8,
                         )
                     )
 
@@ -595,10 +621,10 @@ class JetClassIterableDataset(IterableDataset):
 
                         yield (
                             torch.from_numpy(
-                                x_particles[event_idx]
+                                x_particles[event_idx].copy()
                             ),
                             torch.from_numpy(
-                                y[event_idx]
+                                y[event_idx].copy()
                             ),
                         )
 
@@ -607,16 +633,16 @@ class JetClassIterableDataset(IterableDataset):
                         # Replace exhausted shard only with a new shard
                         # from the same label.
                         if shard["cursor"] >= len(order):
+                            active_label_shards.pop(shard_idx)
+                            del shard
+                            del x_particles
+                            del y
+                            del order
+                            
                             replacement = load_next_shard(label)
 
-                            if replacement is None:
-                                active_label_shards.pop(
-                                    shard_idx
-                                )
-                            else:
-                                active_label_shards[
-                                    shard_idx
-                                ] = replacement
+                            if replacement is not None:
+                                active_label_shards.append(replacement)
 
                     available_labels = [
                         label
@@ -642,33 +668,29 @@ def load_and_preprocess_jetclass_file(
     filepath: str,
     particle_features: Sequence[str],
     max_num_particles: int,
+    eps: float = 1e-8,
 ) -> Tuple[np.ndarray, np.ndarray]:
+    """Load one ROOT shard and construct the requested model feature tensor.
+
+    The returned tensor contains untouched px/py/pz/energy, pt fraction,
+    log(pt fraction), relative angular coordinates, clipped impact-parameter
+    significances, charge, and identity indicators. Absolute constituent eta/phi and the four raw impact-parameter value/error
+    branches are never returned.
     """
-    Load and preprocess one ROOT shard.
 
-    This function is deliberately shard-local: the caller can stream a dataset
-    without ever concatenating a full JetClass split in CPU memory.
-    """
+    requested = list(particle_features)
+    supported = set(DEFAULT_PARTICLE_FEATURES)
+    unknown = sorted(set(requested) - supported)
+    if unknown:
+        raise ValueError(
+            f"Unsupported model particle features: {unknown}. "
+            f"Supported features are {DEFAULT_PARTICLE_FEATURES}."
+        )
 
-    # Quality cuts may require features that are not model inputs. Load the
-    # union temporarily, then project back to the requested model feature order.
-    required_particle_features = [
-        "part_px",
-        "part_py",
-        "part_pz",
-        "part_energy",
-        "part_pt",
-        "part_eta",
-    ]
-    loaded_particle_features = list(particle_features)
-    for feature in required_particle_features:
-        if feature not in loaded_particle_features:
-            loaded_particle_features.append(feature)
-
+    loaded_particle_features = list(RAW_PARTICLE_FEATURES)
     feature_index = {
         name: i for i, name in enumerate(loaded_particle_features)
     }
-    requested_indices = [feature_index[name] for name in particle_features]
 
     x_particles, x_jets, y = read_file(
         filepath,
@@ -678,7 +700,6 @@ def load_and_preprocess_jetclass_file(
         labels=JETCLASS_LABELS,
     )
 
-    # read_file returns (B, F, N); the model convention is (B, N, F).
     x_particles = np.transpose(x_particles, (0, 2, 1)).astype(
         np.float32,
         copy=False,
@@ -700,35 +721,80 @@ def load_and_preprocess_jetclass_file(
     y = y[valid_jets]
     jet_pt = jet_pt[valid_jets]
 
-    part_pt = x_particles[:, :, feature_index["part_pt"]]
-    part_eta = x_particles[:, :, feature_index["part_eta"]]
-    part_energy = x_particles[:, :, feature_index["part_energy"]]
-    part_deta = x_particles[:, :, feature_index["part_deta"]]
-    part_dphi = x_particles[:, :, feature_index["part_dphi"]]
+    part_pt = x_particles[..., feature_index["part_pt"]]
+    part_energy = x_particles[..., feature_index["part_energy"]]
+    part_deta = x_particles[..., feature_index["part_deta"]]
+    part_dphi = x_particles[..., feature_index["part_dphi"]]
 
-    # Invalid constituents become padding rows. This preprocessing happens only
-    # for the current shard, so cleaned arrays can be released after iteration.
     valid_particles = (
         (part_pt > 0)
         & (part_energy > 0)
-        & (part_eta >= -2.5)
-        & (part_eta <= 2.5)
-        & (np.sqrt(np.square(part_deta) + np.square(part_dphi)) < 0.8) # DeltaR cut
+        & (np.sqrt(np.square(part_deta) + np.square(part_dphi)) < 0.8)
     )
+
+    # Raw invalid rows are zeroed before derived quantities are exported.
     x_particles[~valid_particles] = 0.0
 
-    # Convert absolute constituent pt to a dimensionless per-jet fraction.
     safe_jet_pt = np.where(jet_pt > 0, jet_pt, 1.0).astype(np.float32)
-    x_particles[:, :, feature_index["part_pt"]] /= safe_jet_pt[:, None]
+    pt_fraction = (
+        x_particles[..., feature_index["part_pt"]]
+        / safe_jet_pt[:, None]
+    ).astype(np.float32, copy=False)
+    pt_fraction[~valid_particles] = 0.0
 
-    # Drop temporary cut-only features before yielding events to the DataLoader.
-    x_particles = np.ascontiguousarray(
-        x_particles[:, :, requested_indices],
-        dtype=np.float32,
+    log_pt_fraction = np.zeros_like(pt_fraction, dtype=np.float32)
+    log_pt_fraction[valid_particles] = np.log(
+        np.clip(pt_fraction[valid_particles], eps, None)
     )
-    y = np.ascontiguousarray(y, dtype=np.float32)
 
-    return x_particles, y
+    d0val = x_particles[..., feature_index["part_d0val"]]
+    d0err = x_particles[..., feature_index["part_d0err"]]
+    dzval = x_particles[..., feature_index["part_dzval"]]
+    dzerr = x_particles[..., feature_index["part_dzerr"]]
+
+    d0_sig = np.zeros_like(pt_fraction, dtype=np.float32)
+    dz_sig = np.zeros_like(pt_fraction, dtype=np.float32)
+    d0_sig[valid_particles] = np.clip(
+        d0val[valid_particles] / np.clip(d0err[valid_particles], eps, None),
+        -20.0,
+        20.0,
+    )
+    dz_sig[valid_particles] = np.clip(
+        dzval[valid_particles] / np.clip(dzerr[valid_particles], eps, None),
+        -20.0,
+        20.0,
+    )
+
+    feature_arrays: Dict[str, np.ndarray] = {
+        name: x_particles[..., index]
+        for name, index in feature_index.items()
+        if name not in {
+            "part_pt",
+            "part_d0val",
+            "part_d0err",
+            "part_dzval",
+            "part_dzerr",
+        }
+    }
+    feature_arrays.update(
+        {
+            "part_pt": pt_fraction,
+            "log_pt_fraction": log_pt_fraction,
+            "d0_sig": d0_sig,
+            "dz_sig": dz_sig,
+        }
+    )
+
+    output = np.stack(
+        [feature_arrays[name] for name in requested],
+        axis=-1,
+    ).astype(np.float32, copy=False)
+    output[~valid_particles] = 0.0
+
+    return (
+        np.ascontiguousarray(output, dtype=np.float32),
+        np.ascontiguousarray(y, dtype=np.float32),
+    )
 
 
 def collate_jetclass_tensors(
@@ -940,6 +1006,23 @@ class TrainLeJEPAParticleTransformer:
             for label in self.signal_labels
         )
         self.particle_feature_names = parse_csv_list(self.args.particle_features)
+
+        if self.particle_feature_names[:4] != [
+            "part_px", "part_py", "part_pz", "part_energy"
+        ]:
+            raise ValueError(
+                "The first four particle features must be "
+                "part_px,part_py,part_pz,part_energy so the backbone can reserve "
+                "them exclusively for pairwise-bias construction."
+            )
+        required_model_features = set(DEFAULT_PARTICLE_FEATURES)
+        if set(self.particle_feature_names) != required_model_features:
+            missing = sorted(required_model_features - set(self.particle_feature_names))
+            extra = sorted(set(self.particle_feature_names) - required_model_features)
+            raise ValueError(
+                f"particle_features must contain the complete new JetClass feature set. "
+                f"missing={missing}, extra={extra}."
+            )
 
         validate_requested_labels(self.background_labels)
         validate_requested_labels(self.signal_labels)
@@ -1324,6 +1407,7 @@ class TrainLeJEPAParticleTransformer:
     def build_model(self) -> None:
         model_config = ParticleTransformerConfig(
             input_dim=len(self.particle_feature_names),
+            input_feature_names=tuple(self.particle_feature_names),
             embed_dim=self.args.embed_dim,
             num_heads=self.args.num_heads,
             num_layers=self.args.num_layers,
@@ -1354,9 +1438,8 @@ class TrainLeJEPAParticleTransformer:
             py_index=self.particle_feature_names.index("part_py"),
             pz_index=self.particle_feature_names.index("part_pz"),
             energy_index=self.particle_feature_names.index("part_energy"),
-            eta_index=self.particle_feature_names.index("part_eta"),
-            phi_index=self.particle_feature_names.index("part_phi"),
             pt_index=self.particle_feature_names.index("part_pt"),
+            log_pt_fraction_index=self.particle_feature_names.index("log_pt_fraction"),
             eps=self.args.eps,
             pt_drop_power=self.args.pt_drop_power,
             zero_dropped_features=not self.args.keep_dropped_features,
@@ -1377,20 +1460,19 @@ class TrainLeJEPAParticleTransformer:
 
                 batch_mix_prob=self.args.batch_mix_prob,
                 pt_resample_prob=self.args.pt_resample_prob,
-                node_eta_phi_rotation_prob=self.args.node_eta_phi_rotation_prob,
-                eta_phi_shuffle_prob=self.args.eta_phi_shuffle_prob,
+                node_deta_dphi_rotation_prob=self.args.node_deta_dphi_rotation_prob,
+                deta_dphi_shuffle_prob=self.args.deta_dphi_shuffle_prob,
                 identity_shuffle_prob=self.args.identity_shuffle_prob,
 
                 min_nodes=self.args.min_nodes,
                 eps=self.args.eps,
 
-                eta_index=self.particle_feature_names.index("part_eta"),
-                phi_index=self.particle_feature_names.index("part_phi"),
                 deta_index=self.particle_feature_names.index("part_deta"),
                 dphi_index=self.particle_feature_names.index("part_dphi"),
                 pt_index=self.particle_feature_names.index("part_pt"),
-                d0_index=self.particle_feature_names.index("part_d0val"),
-                dz_index=self.particle_feature_names.index("part_dzval"),
+                log_pt_fraction_index=self.particle_feature_names.index("log_pt_fraction"),
+                d0_sig_index=self.particle_feature_names.index("d0_sig"),
+                dz_sig_index=self.particle_feature_names.index("dz_sig"),
                 charge_index=self.particle_feature_names.index("part_charge"),
                 identity_start_index=self.particle_feature_names.index(
                     "part_isChargedHadron"
@@ -1707,18 +1789,26 @@ class TrainLeJEPAParticleTransformer:
         plt.close(fig)
 
     @torch.no_grad()
-    def collect_representations(self, loader: DataLoader) -> torch.Tensor:
+    def collect_representations(
+        self,
+        loader: DataLoader,
+        return_labels: bool = False,
+    ):
         """
         Compute full-jet representations without augmentation/crop/drop.
+
+        When ``return_labels=True``, also return the original JetClass one-hot
+        labels gathered in exactly the same event order as the latent tensor.
         """
 
         self.model.eval()
         latents: List[torch.Tensor] = []
+        labels: List[torch.Tensor] = []
         dtype = precision_to_dtype(self.args.precision)
         use_autocast = autocast_enabled_for_precision(self.args.precision)
 
         loader_iter = iter(loader)
-        
+
         for batch_idx in tqdm(
             range(self.args.eval_steps),
             desc="Collecting representations",
@@ -1740,26 +1830,32 @@ class TrainLeJEPAParticleTransformer:
                 )
 
             latents.append(z.detach().float().cpu())
+            if return_labels:
+                labels.append(batch["y"].detach().cpu())
 
-        latents = torch.cat(
-            latents,
-            dim=0,
-        )
-
-        return self._all_gather_event_tensor(
+        latents = torch.cat(latents, dim=0)
+        latents = self._all_gather_event_tensor(
             latents,
             event_dim=0,
         )
-    
+
+        if not return_labels:
+            return latents
+
+        labels_tensor = torch.cat(labels, dim=0)
+        labels_tensor = self._all_gather_event_tensor(
+            labels_tensor,
+            event_dim=0,
+        )
+        return latents, labels_tensor
+
     @torch.no_grad()
     def collect_view_representations(
         self,
         dataloader,
-        which_view: Literal["view", "negative", "all"] = "view"
-    ) -> Tuple[
-        Optional[torch.Tensor],
-        Optional[torch.Tensor],
-    ]:
+        which_view: Literal["view", "negative", "all"] = "view",
+        return_labels: bool = False,
+    ):
         """
         Collect augmented view representations for a full dataset.
 
@@ -1797,6 +1893,7 @@ class TrainLeJEPAParticleTransformer:
 
         collected_z_views = []
         collected_z_negatives = []
+        collected_labels = []
 
         with torch.no_grad():
             for batch_idx, batch in enumerate(
@@ -1811,7 +1908,10 @@ class TrainLeJEPAParticleTransformer:
                 if batch_idx >= self.args.eval_steps:
                     break
                 x_particles = batch["x_particles"].to(DEVICE, non_blocking=True)
-                y = batch["y"].to(DEVICE, non_blocking=True)
+                raw_y = batch["y"]
+                if return_labels:
+                    collected_labels.append(raw_y.detach().cpu())
+                y = raw_y.to(DEVICE, non_blocking=True)
                 y = self._prepare_labels_for_model(y)
                 padding_mask = batch["padding_mask"].to(DEVICE, non_blocking=True)
 
@@ -1871,12 +1971,24 @@ class TrainLeJEPAParticleTransformer:
                 event_dim=1,
             )
 
+        gathered_labels = None
+        if return_labels:
+            gathered_labels = torch.cat(collected_labels, dim=0)
+            gathered_labels = self._all_gather_event_tensor(
+                gathered_labels,
+                event_dim=0,
+            )
+
         if which_view == "view":
-            return z_views, None
+            result = (z_views, None)
         elif which_view == "negative":
-            return None, z_negatives
+            result = (None, z_negatives)
         else:  # which_view == "all"
-            return z_views, z_negatives
+            result = (z_views, z_negatives)
+
+        if return_labels:
+            return (*result, gathered_labels)
+        return result
 
     def fit_mahalanobis_background(
         self,
@@ -2070,12 +2182,14 @@ class TrainLeJEPAParticleTransformer:
             background_train_loader
         )
 
-        bg_val_latents = self.collect_representations(
-            background_val_loader
+        bg_val_latents, bg_val_labels = self.collect_representations(
+            background_val_loader,
+            return_labels=True,
         )
 
-        signal_latents = self.collect_representations(
-            signal_loader
+        signal_latents, signal_labels = self.collect_representations(
+            signal_loader,
+            return_labels=True,
         )
 
         # If plot_latent is True, plot the mean of global views for background validation and signal events.
@@ -2084,8 +2198,10 @@ class TrainLeJEPAParticleTransformer:
             self.plot_latent_space_for_epoch(
                 bg_val_latents.numpy(),
                 signal_latents.numpy(),
+                bg_val_labels=bg_val_labels.numpy(),
+                signal_labels=signal_labels.numpy(),
                 epoch=epoch,
-            ) 
+            )
             
         mean, precision = self.fit_mahalanobis_background(bg_train_latents.numpy())
 
@@ -2135,16 +2251,18 @@ class TrainLeJEPAParticleTransformer:
                 which_view="view",
             )
         )
-        bg_val_latents, _ = (
+        bg_val_latents, _, bg_val_labels = (
             self.collect_view_representations(
                 background_val_loader,
                 which_view="view",
+                return_labels=True,
             )
         )
-        signal_latents, _ = (
+        signal_latents, _, signal_labels = (
             self.collect_view_representations(
                 signal_loader,
                 which_view="view",
+                return_labels=True,
             )
         )
 
@@ -2169,6 +2287,8 @@ class TrainLeJEPAParticleTransformer:
             self.plot_latent_space_for_epoch(
                 bg_val_global_latents.numpy(),
                 signal_global_latents.numpy(),
+                bg_val_labels=bg_val_labels.numpy(),
+                signal_labels=signal_labels.numpy(),
                 epoch=epoch,
             )
 
@@ -2329,41 +2449,115 @@ class TrainLeJEPAParticleTransformer:
         self,
         bg_val_latents: np.ndarray,
         signal_latents: np.ndarray,
+        bg_val_labels: np.ndarray,
+        signal_labels: np.ndarray,
         epoch: int,
     ) -> None:
         """
-        Plot background validation and signal full-jet representations from
-        already-collected latents.
+        Plot validation representations grouped by the original JetClass type.
+
+        Background and signal events are reduced to 2D together, then split
+        again by their one-hot JetClass labels. This preserves one common PCA/
+        reduction basis while making the composition of the background sample
+        visible.
         """
 
         bg_plot_latents = bg_val_latents
         sg_plot_latents = signal_latents
+        bg_plot_labels = bg_val_labels
+        sg_plot_labels = signal_labels
+
+        rng = np.random.default_rng(self.args.seed + int(epoch))
 
         if self.args.max_latent_plot_points is not None:
-            max_points = self.args.max_latent_plot_points
-            if len(bg_plot_latents) > max_points:
-                bg_indices = np.random.choice(len(bg_plot_latents), max_points, replace=False)
-                bg_plot_latents = bg_plot_latents[bg_indices]
-            if len(sg_plot_latents) > max_points:
-                sg_indices = np.random.choice(len(sg_plot_latents), max_points, replace=False)
-                sg_plot_latents = sg_plot_latents[sg_indices]
+            max_points = int(self.args.max_latent_plot_points)
 
-        bg_2d, sg_2d, x_label, y_label = reduce_to_2d(bg_plot_latents, sg_plot_latents)
+            if len(bg_plot_latents) > max_points:
+                bg_indices = rng.choice(
+                    len(bg_plot_latents),
+                    max_points,
+                    replace=False,
+                )
+                bg_plot_latents = bg_plot_latents[bg_indices]
+                bg_plot_labels = bg_plot_labels[bg_indices]
+
+            if len(sg_plot_latents) > max_points:
+                sg_indices = rng.choice(
+                    len(sg_plot_latents),
+                    max_points,
+                    replace=False,
+                )
+                sg_plot_latents = sg_plot_latents[sg_indices]
+                sg_plot_labels = sg_plot_labels[sg_indices]
+
+        bg_2d, sg_2d, x_label, y_label = reduce_to_2d(
+            bg_plot_latents,
+            sg_plot_latents,
+        )
+
+        def label_indices(y: np.ndarray) -> np.ndarray:
+            if y.ndim == 1:
+                return y.astype(np.int64, copy=False)
+            return np.argmax(y, axis=1).astype(np.int64, copy=False)
+
+        bg_class_indices = label_indices(bg_plot_labels)
+        sg_class_indices = label_indices(sg_plot_labels)
+
+        fig, ax = plt.subplots(figsize=(8, 7))
+
+        plotted_any = False
+
+        for class_index, full_label in enumerate(JETCLASS_LABELS):
+            short_label = full_label.removeprefix("label_")
+
+            bg_mask = bg_class_indices == class_index
+            if np.any(bg_mask):
+                ax.scatter(
+                    bg_2d[bg_mask, 0],
+                    bg_2d[bg_mask, 1],
+                    s=10,
+                    alpha=0.45,
+                    marker="o",
+                    label=f"{short_label} (Background)",
+                )
+                plotted_any = True
+
+            sg_mask = sg_class_indices == class_index
+            if np.any(sg_mask):
+                ax.scatter(
+                    sg_2d[sg_mask, 0],
+                    sg_2d[sg_mask, 1],
+                    s=18,
+                    alpha=0.65,
+                    marker="x",
+                    label=f"{short_label} (Signal)",
+                )
+                plotted_any = True
+
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+        ax.set_title(
+            "JetClass validation latent space by jet type\n"
+            f"Epoch {epoch}"
+        )
+        ax.grid(alpha=0.2)
+
+        if plotted_any:
+            ax.legend(
+                loc="best",
+                fontsize=8,
+                frameon=True,
+                markerscale=1.3,
+            )
+
+        fig.tight_layout()
 
         output_path = os.path.join(
             self.latent_plot_dir,
             f"latent_epoch_{epoch:04d}.png",
         )
-
-        plot_latent_space(
-            bg_2d,
-            sg_2d,
-            background_label=(f"{self.background_display_name} (Val)"),
-            signal_label=self.signal_display_name,
-            output_path=output_path,
-            x_label=x_label,
-            y_label=y_label,
-        )
+        fig.savefig(output_path, dpi=200, bbox_inches="tight")
+        plt.close(fig)
 
     def train(self) -> None:
         os.makedirs(self.output_dir, exist_ok=True)
@@ -2469,9 +2663,9 @@ class TrainLeJEPAParticleTransformer:
                     "num_negative_views": self.args.num_negative_views,
                     "batch_mix_prob": self.args.batch_mix_prob,
                     "pt_resample_prob": self.args.pt_resample_prob,
-                    "node_eta_phi_rotation_prob":
-                        self.args.node_eta_phi_rotation_prob,
-                    "eta_phi_shuffle_prob": self.args.eta_phi_shuffle_prob,
+                    "node_deta_dphi_rotation_prob":
+                        self.args.node_deta_dphi_rotation_prob,
+                    "deta_dphi_shuffle_prob": self.args.deta_dphi_shuffle_prob,
                     "identity_shuffle_prob": self.args.identity_shuffle_prob,
                     "corrupt_node_frac": self.args.corrupt_node_frac,
                     "batch_mix_anchor_frac_min": self.args.batch_mix_anchor_frac_min,
@@ -2957,7 +3151,7 @@ if __name__ == "__main__":
         default=",".join(DEFAULT_PARTICLE_FEATURES),
         help=(
             "Comma-separated particle features passed to JetClass read_file; "
-            "default is the full supported particle-feature set."
+            "default is the derived 16-feature JetClass set; absolute eta/phi and raw impact-parameter branches are excluded."
         ),
     )
     parser.add_argument(
@@ -3196,16 +3390,16 @@ if __name__ == "__main__":
         help="Probability of sampling pt_resample for a negative view. Default: 0.25.",
     )
     parser.add_argument(
-        "--node-eta-phi-rotation-prob",
+        "--node-deta-dphi-rotation-prob",
         type=float,
         default=0.20,
-        help="Probability of sampling independent node-level eta-phi rotation. Default: 0.20.",
+        help="Probability of sampling independent node-level deta-dphi rotation. Default: 0.20.",
     )
     parser.add_argument(
-        "--eta-phi-shuffle-prob",
+        "--deta-dphi-shuffle-prob",
         type=float,
         default=0.05,
-        help="Probability of sampling eta_phi_shuffle for a negative view. Default: 0.05.",
+        help="Probability of sampling deta_dphi_shuffle for a negative view. Default: 0.05.",
     )
     parser.add_argument(
         "--identity-shuffle-prob",

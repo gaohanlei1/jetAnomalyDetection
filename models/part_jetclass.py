@@ -1,5 +1,5 @@
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, List, Tuple, Dict
 import lejepa
 
@@ -71,22 +71,13 @@ print(output["z_views"].shape)
 
 @dataclass
 class ParticleTransformerConfig:
-    """
-    Configuration object for the minimal particle transformer.
+    """Configuration for the JetClass ParticleTransformer backbone.
 
-    This model assumes the input tensor has shape:
-
-        x: (B, N, F)
-
-    The exact particle-feature order is configured by the training script.
-    The current JetClass default is:
-
-        part_px, part_py, part_pz, part_energy, part_pt,
-        part_eta, part_phi, part_deta, part_dphi,
-        part_d0val, part_d0err, part_dzval, part_dzerr,
-        part_charge, and five particle-identity indicators.
-
-    The model produces a representation vector instead of class logits.
+    ``input_feature_names`` describes the complete tensor entering the model.
+    The first four-vector features remain untouched for pairwise-bias
+    construction, but are excluded from the learned node embedding. Selected
+    derived node features are standardized over all valid particles in the
+    current batch inside :meth:`ParticleTransformerBackbone.forward`.
     """
 
     input_dim: int = 16
@@ -105,8 +96,84 @@ class ParticleTransformerConfig:
 
     compute_dtype: torch.dtype = torch.bfloat16
     use_internal_autocast: bool = False
-
     eps: float = 1e-8
+
+    input_feature_names: Tuple[str, ...] = (
+        "part_px",
+        "part_py",
+        "part_pz",
+        "part_energy",
+        "part_pt",
+        "log_pt_fraction",
+        "part_deta",
+        "part_dphi",
+        "d0_sig",
+        "dz_sig",
+        "part_charge",
+        "part_isChargedHadron",
+        "part_isNeutralHadron",
+        "part_isPhoton",
+        "part_isElectron",
+        "part_isMuon",
+    )
+    four_vector_feature_names: Tuple[str, ...] = (
+        "part_px",
+        "part_py",
+        "part_pz",
+        "part_energy",
+    )
+    standardized_feature_names: Tuple[str, ...] = (
+        "log_pt_fraction",
+        "d0_sig",
+        "dz_sig",
+    )
+
+    feature_indices: Dict[str, int] = field(init=False, repr=False)
+    node_feature_indices: Tuple[int, ...] = field(init=False)
+    standardized_node_feature_indices: Tuple[int, ...] = field(init=False)
+    px_index: int = field(init=False)
+    py_index: int = field(init=False)
+    pz_index: int = field(init=False)
+    energy_index: int = field(init=False)
+    pt_index: int = field(init=False)
+    log_pt_fraction_index: int = field(init=False)
+    node_input_dim: int = field(init=False)
+
+    def __post_init__(self) -> None:
+        names = tuple(self.input_feature_names)
+        if len(names) != len(set(names)):
+            raise ValueError(f"input_feature_names contains duplicates: {names}")
+        if self.input_dim != len(names):
+            raise ValueError(
+                f"input_dim={self.input_dim} does not match "
+                f"len(input_feature_names)={len(names)}."
+            )
+
+        required = set(self.four_vector_feature_names) | {
+            "part_pt",
+            "log_pt_fraction",
+        } | set(self.standardized_feature_names)
+        missing = sorted(required - set(names))
+        if missing:
+            raise ValueError(f"Missing required model input features: {missing}")
+
+        self.feature_indices = {name: i for i, name in enumerate(names)}
+        self.px_index = self.feature_indices["part_px"]
+        self.py_index = self.feature_indices["part_py"]
+        self.pz_index = self.feature_indices["part_pz"]
+        self.energy_index = self.feature_indices["part_energy"]
+        self.pt_index = self.feature_indices["part_pt"]
+        self.log_pt_fraction_index = self.feature_indices["log_pt_fraction"]
+
+        excluded = set(self.four_vector_feature_names)
+        self.node_feature_indices = tuple(
+            i for i, name in enumerate(names) if name not in excluded
+        )
+        node_names = [names[i] for i in self.node_feature_indices]
+        self.standardized_node_feature_indices = tuple(
+            node_names.index(name) for name in self.standardized_feature_names
+        )
+        self.node_input_dim = len(self.node_feature_indices)
 
 
 # ------------------------------------------------------------
@@ -271,9 +338,12 @@ def pairwise_physics_features(
             f"MultiViewAugmentationConfig, so it cannot be called without a feature_config."
             f"Consider implementing further functionality if you want to train models without MultiView Augmentation."
         )
-    eta = x[..., feature_config.eta_index]
-    phi = x[..., feature_config.phi_index]
-    pt = x[..., feature_config.pt_index].clamp(min=eps)
+    px_node = x[..., feature_config.px_index]
+    py_node = x[..., feature_config.py_index]
+    pz_node = x[..., feature_config.pz_index]
+    pt = torch.sqrt(px_node.square() + py_node.square()).clamp(min=eps)
+    eta = torch.asinh(pz_node / pt)
+    phi = torch.atan2(py_node, px_node)
 
     eta_i = eta.unsqueeze(2)
     eta_j = eta.unsqueeze(1)
@@ -794,7 +864,7 @@ class MinimalParticleTransformer(nn.Module):
         self.config = config
 
         self.node_embedding = NodeEmbedding(
-            input_dim=config.input_dim,
+            input_dim=config.node_input_dim,
             embed_dim=config.embed_dim,
             dropout=config.dropout,
         )
@@ -809,6 +879,28 @@ class MinimalParticleTransformer(nn.Module):
             )
         else:
             self.pairwise_bias = None
+
+        if self.pairwise_bias is not None:
+            self.pairwise_bias.feature_config = config
+
+        node_index_tensor = torch.tensor(
+            config.node_feature_indices,
+            dtype=torch.long,
+        )
+        standardized_index_tensor = torch.tensor(
+            config.standardized_node_feature_indices,
+            dtype=torch.long,
+        )
+        self.register_buffer(
+            "_node_feature_indices",
+            node_index_tensor,
+            persistent=False,
+        )
+        self.register_buffer(
+            "_standardized_node_feature_indices",
+            standardized_index_tensor,
+            persistent=False,
+        )
 
         self.encoder = ParticleTransformerEncoder(
             embed_dim=config.embed_dim,
@@ -826,38 +918,70 @@ class MinimalParticleTransformer(nn.Module):
             num_class_layers=config.num_class_layers,
         )
 
+    def _prepare_node_features(
+        self,
+        x: torch.Tensor,
+        padding_mask: Optional[torch.Tensor],
+    ) -> torch.Tensor:
+        """Drop raw four-vectors and batch-standardize selected node features."""
+
+        node_x = torch.index_select(
+            x,
+            dim=-1,
+            index=self._node_feature_indices,
+        ).clone()
+
+        if padding_mask is None:
+            valid_mask = torch.ones(
+                x.shape[:2],
+                dtype=torch.bool,
+                device=x.device,
+            )
+        else:
+            valid_mask = ~padding_mask
+
+        if self._standardized_node_feature_indices.numel() > 0:
+            selected = torch.index_select(
+                node_x.float(),
+                dim=-1,
+                index=self._standardized_node_feature_indices,
+            )
+            valid_values = selected[valid_mask]
+
+            if valid_values.numel() > 0:
+                mean = valid_values.mean(dim=0, keepdim=True)
+                std = valid_values.std(dim=0, unbiased=False, keepdim=True)
+                standardized = (selected - mean.view(1, 1, -1)) / std.clamp(
+                    min=self.config.eps
+                ).view(1, 1, -1)
+                selected = torch.where(
+                    valid_mask.unsqueeze(-1),
+                    standardized,
+                    torch.zeros_like(standardized),
+                )
+                node_x[..., self._standardized_node_feature_indices] = selected.to(
+                    dtype=node_x.dtype
+                )
+
+        if padding_mask is not None:
+            node_x = node_x.masked_fill(padding_mask.unsqueeze(-1), 0.0)
+
+        return node_x
+
     def forward(
         self,
         x: torch.Tensor,
         padding_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        """
-        Encode node features into a CLS token before the output head.
-
-        Returns:
-            cls: Tensor of shape (B, embed_dim).
-        """
-        
-        ###########
-        ########### Temporarily disable part_eta and part_phi features!!!!
-        ###########
-        x[:, :, [5, 6]] = 0.0
+        """Encode a full JetClass feature tensor into a CLS representation."""
 
         if x.ndim != 3:
             raise ValueError(f"Expected x to have shape (B, N, F), got {tuple(x.shape)}.")
-
         if x.size(-1) != self.config.input_dim:
             raise ValueError(
                 f"Expected input_dim={self.config.input_dim}, "
                 f"but got x.size(-1)={x.size(-1)}."
             )
-
-        # SSL wrappers own the authoritative feature-index configuration through
-        # their MultiViewAugmentation instance. Reuse that same config for
-        # pairwise physics features so custom CLI feature order stays consistent.
-        if self.pairwise_bias is not None and hasattr(self, "augmentation"):
-            self.feature_config = self.augmentation.config
-            self.pairwise_bias.feature_config = self.augmentation.config
 
         if padding_mask is not None:
             if padding_mask.shape != x.shape[:2]:
@@ -866,6 +990,14 @@ class MinimalParticleTransformer(nn.Module):
                     f"got {tuple(padding_mask.shape)}."
                 )
             padding_mask = padding_mask.bool()
+
+        # Pairwise bias always sees the untouched raw four-vector entries.
+        attn_bias = None
+        if self.pairwise_bias is not None:
+            attn_bias = self.pairwise_bias(x, padding_mask=padding_mask)
+
+        # The learned node embedding never receives px, py, pz, or energy.
+        node_x = self._prepare_node_features(x, padding_mask)
 
         use_autocast = (
             self.config.use_internal_autocast
@@ -878,28 +1010,16 @@ class MinimalParticleTransformer(nn.Module):
             dtype=self.config.compute_dtype,
             enabled=use_autocast,
         ):
-            h = self.node_embedding(x)
-
+            h = self.node_embedding(node_x)
             if padding_mask is not None:
                 h = h.masked_fill(padding_mask.unsqueeze(-1), 0.0)
-
-            attn_bias = None
-            if self.pairwise_bias is not None:
-                attn_bias = self.pairwise_bias(
-                    x,
-                    padding_mask=padding_mask,
-                )
 
             h = self.encoder(
                 h,
                 attn_bias=attn_bias,
                 padding_mask=padding_mask,
             )
-
-            cls = self.cls_pooling(
-                h,
-                padding_mask=padding_mask,
-            )
+            cls = self.cls_pooling(h, padding_mask=padding_mask)
 
         return cls
 
@@ -1050,9 +1170,8 @@ class MultiViewAugmentationConfig:
     py_index: int = 1
     pz_index: int = 2
     energy_index: int = 3
-    eta_index: int = 5
-    phi_index: int = 6
     pt_index: int = 4
+    log_pt_fraction_index: int = 5
     eps: float = 1e-8
 
     # Controls how strongly low-pt nodes are preferred for dropping.
@@ -1073,81 +1192,37 @@ class MultiViewAugmentationConfig:
 
 @dataclass
 class CorruptedNegativeAugmentationConfig:
-    """
-    Configuration for generating corrupted negative views for triplet training.
+    """Configuration for corrupted negative views.
 
-    These views are intentionally not guaranteed to be physically valid jets.
-    The goal is to keep individual feature values mostly realistic while
-    breaking event-level or node-feature joint structure.
-
-    Feature convention is configured explicitly by index so the augmentation
-    can follow the JetClass particle-feature list selected by the training
-    script. The default indices correspond to:
-
-        0: part_px
-        1: part_py
-        2: part_pz
-        3: part_energy
-        4: part_pt
-        5: part_eta
-        6: part_phi
-        7: part_deta
-        8: part_dphi
-        9: part_d0val
-       10: part_d0err
-       11: part_dzval
-       12: part_dzerr
-       13: part_charge
-       14: part_isChargedHadron
-       15: part_isNeutralHadron
-       16: part_isPhoton
-       17: part_isElectron
-       18: part_isMuon
-
-    Default corruption sampling probabilities:
-        45% batch_mix
-        25% pt_resample
-        20% node_eta_phi_rotation
-         5% eta_phi_shuffle
-         5% identity_shuffle
+    Absolute constituent coordinates are intentionally absent. Angular
+    corruptions operate only on the jet-relative ``part_deta`` and
+    ``part_dphi`` entries. Whenever a corruption changes ``part_pt``, the
+    derived ``log_pt_fraction`` entry is recomputed automatically.
     """
 
     num_negative_views: int = 4
-    # Each generated negative view independently samples one corruption mode
-    # according to these probabilities. The probabilities must sum to 1.
     batch_mix_prob: float = 0.45
     pt_resample_prob: float = 0.25
-    node_eta_phi_rotation_prob: float = 0.20
-    eta_phi_shuffle_prob: float = 0.05
+    node_deta_dphi_rotation_prob: float = 0.20
+    deta_dphi_shuffle_prob: float = 0.05
     identity_shuffle_prob: float = 0.05
 
     min_nodes: int = 4
     eps: float = 1e-8
 
-    eta_index: int = 5
-    phi_index: int = 6
-    deta_index: int = 7
-    dphi_index: int = 8
+    deta_index: int = 6
+    dphi_index: int = 7
     pt_index: int = 4
-    d0_index: int = 9
-    dz_index: int = 11
-    charge_index: int = 13
-    identity_start_index: int = 14
-    identity_end_index: int = 19
+    log_pt_fraction_index: int = 5
+    d0_sig_index: int = 8
+    dz_sig_index: int = 9
+    charge_index: int = 10
+    identity_start_index: int = 11
+    identity_end_index: int = 16
 
-    # Fraction of valid nodes whose selected feature block is corrupted for
-    # within-event shuffles. 1.0 means every valid node receives a shuffled
-    # block from another node in the same event.
     corrupt_node_frac: float = 1.0
-
-    # In the batch-mix corruption, keep this fraction of nodes from the anchor
-    # event and fill the remaining available slots with nodes from a donor
-    # event in the same batch.
     batch_mix_anchor_frac_min: float = 0.1
     batch_mix_anchor_frac_max: float = 0.9
-
-    # After pt-changing corruptions, renormalize the valid-node pt sum to match
-    # the original event's valid-node pt sum. This does not assume the sum is 1.
     renormalize_pt_sum: bool = True
 
 
@@ -1385,22 +1460,18 @@ class CorruptedNegativeAugmentation(nn.Module):
             valid nodes, then optionally renormalize the valid-node pt sum to
             the original event's pt sum.
 
-        node_eta_phi_rotation:
-            Treat each valid node's (part_deta, part_dphi) as a 2D vector around
-            the fixed jet center. Independently rotate every valid node, then
-            reconstruct part_eta and wrapped part_phi from the rotated offsets.
+        node_deta_dphi_rotation:
+            Treat each valid node's (part_deta, part_dphi) as a 2D vector and
+            independently rotate it while preserving its radial distance.
 
-        eta_phi_shuffle:
-            Within each event, jointly shuffle the four-coordinate block
-            (part_eta, part_phi, part_deta, part_dphi) across valid nodes.
+        deta_dphi_shuffle:
+            Within each event, jointly shuffle the (part_deta, part_dphi) block
+            across valid nodes.
 
         batch_mix:
             Build a fake jet by concatenating valid nodes from an anchor event
-            and a donor event. All retained nodes are expressed around the
-            anchor event's jet center: part_deta/part_dphi are preserved, while
-            part_eta/part_phi are reconstructed using that single center.
-            The resulting pt sum can be renormalized to the original anchor
-            event's pt sum.
+            and a donor event. Relative coordinates are copied with each node,
+            and the resulting pt sum can be renormalized to the anchor event.
     """
 
     def __init__(self, config: CorruptedNegativeAugmentationConfig):
@@ -1410,8 +1481,8 @@ class CorruptedNegativeAugmentation(nn.Module):
         self._mode_names = (
             "batch_mix",
             "pt_resample",
-            "node_eta_phi_rotation",
-            "eta_phi_shuffle",
+            "node_deta_dphi_rotation",
+            "deta_dphi_shuffle",
             "identity_shuffle",
         )
 
@@ -1419,8 +1490,8 @@ class CorruptedNegativeAugmentation(nn.Module):
             [
                 config.batch_mix_prob,
                 config.pt_resample_prob,
-                config.node_eta_phi_rotation_prob,
-                config.eta_phi_shuffle_prob,
+                config.node_deta_dphi_rotation_prob,
+                config.deta_dphi_shuffle_prob,
                 config.identity_shuffle_prob,
             ],
             dtype=torch.float32,
@@ -1508,10 +1579,10 @@ class CorruptedNegativeAugmentation(nn.Module):
                         candidate_x, candidate_mask = self._identity_shuffle(selected_x, selected_mask)
                     elif mode == "pt_resample":
                         candidate_x, candidate_mask = self._pt_resample(selected_x, selected_mask)
-                    elif mode == "node_eta_phi_rotation":
-                        candidate_x, candidate_mask = self._node_eta_phi_rotation(selected_x, selected_mask)
-                    elif mode == "eta_phi_shuffle":
-                        candidate_x, candidate_mask = self._eta_phi_shuffle(selected_x, selected_mask)
+                    elif mode == "node_deta_dphi_rotation":
+                        candidate_x, candidate_mask = self._node_deta_dphi_rotation(selected_x, selected_mask)
+                    elif mode == "deta_dphi_shuffle":
+                        candidate_x, candidate_mask = self._deta_dphi_shuffle(selected_x, selected_mask)
                     else:
                         raise RuntimeError(f"Unexpected negative corruption mode: {mode}")
 
@@ -1529,106 +1600,6 @@ class CorruptedNegativeAugmentation(nn.Module):
 
     def _valid_mask(self, padding_mask: torch.Tensor) -> torch.Tensor:
         return ~padding_mask.bool()
-
-    @staticmethod
-    def _wrap_phi(phi: torch.Tensor) -> torch.Tensor:
-        """Wrap azimuthal angles to [-pi, pi)."""
-
-        return (phi + math.pi) % (2.0 * math.pi) - math.pi
-
-    def _infer_jet_center(
-        self,
-        x: torch.Tensor,
-        valid_mask: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Infer one fixed jet center per event from the first valid particle.
-
-        JetClass provides:
-            part_deta = part_eta - jet_eta
-            part_dphi = wrap(part_phi - jet_phi)
-
-        Therefore:
-            jet_eta = part_eta - part_deta
-            jet_phi = wrap(part_phi - part_dphi)
-
-        Returns:
-            jet_eta: (B, 1)
-            jet_phi: (B, 1)
-        """
-
-        if x.ndim != 3 or valid_mask.shape != x.shape[:2]:
-            raise ValueError(
-                "Expected x shape (B, N, F) and valid_mask shape (B, N), "
-                f"got {tuple(x.shape)} and {tuple(valid_mask.shape)}."
-            )
-
-        first_valid_idx = valid_mask.to(torch.int64).argmax(dim=1)
-        has_valid = valid_mask.any(dim=1, keepdim=True)
-        batch_idx = torch.arange(x.size(0), device=x.device)
-
-        first_eta = x[
-            batch_idx,
-            first_valid_idx,
-            self.config.eta_index,
-        ].float().unsqueeze(1)
-        first_phi = x[
-            batch_idx,
-            first_valid_idx,
-            self.config.phi_index,
-        ].float().unsqueeze(1)
-        first_deta = x[
-            batch_idx,
-            first_valid_idx,
-            self.config.deta_index,
-        ].float().unsqueeze(1)
-        first_dphi = x[
-            batch_idx,
-            first_valid_idx,
-            self.config.dphi_index,
-        ].float().unsqueeze(1)
-
-        jet_eta = first_eta - first_deta
-        jet_phi = self._wrap_phi(first_phi - first_dphi)
-
-        jet_eta = torch.where(has_valid, jet_eta, torch.zeros_like(jet_eta))
-        jet_phi = torch.where(has_valid, jet_phi, torch.zeros_like(jet_phi))
-
-        return jet_eta, jet_phi
-
-    def _reconstruct_absolute_eta_phi(
-        self,
-        view_x: torch.Tensor,
-        target_mask: torch.Tensor,
-        jet_eta: torch.Tensor,
-        jet_phi: torch.Tensor,
-    ) -> torch.Tensor:
-        """
-        Reconstruct absolute eta/phi from stored deta/dphi and one jet center.
-
-        Only positions selected by target_mask are modified.
-        """
-
-        view_x = view_x.clone()
-
-        deta = view_x[..., self.config.deta_index].float()
-        dphi = view_x[..., self.config.dphi_index].float()
-
-        reconstructed_eta = jet_eta + deta
-        reconstructed_phi = self._wrap_phi(jet_phi + dphi)
-
-        view_x[..., self.config.eta_index] = torch.where(
-            target_mask,
-            reconstructed_eta.to(dtype=view_x.dtype),
-            view_x[..., self.config.eta_index],
-        )
-        view_x[..., self.config.phi_index] = torch.where(
-            target_mask,
-            reconstructed_phi.to(dtype=view_x.dtype),
-            view_x[..., self.config.phi_index],
-        )
-
-        return view_x
 
     def _valid_order(self, valid_mask: torch.Tensor) -> torch.Tensor:
         """
@@ -1750,6 +1721,23 @@ class CorruptedNegativeAugmentation(nn.Module):
 
         return mean, std
 
+    def _sync_log_pt_fraction(
+        self,
+        view_x: torch.Tensor,
+        valid_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        """Recompute log(pt fraction) after a pt-changing corruption."""
+
+        view_x = view_x.clone()
+        pt = view_x[..., self.config.pt_index].clamp(min=self.config.eps)
+        log_pt = torch.log(pt)
+        view_x[..., self.config.log_pt_fraction_index] = torch.where(
+            valid_mask,
+            log_pt.to(dtype=view_x.dtype),
+            torch.zeros_like(view_x[..., self.config.log_pt_fraction_index]),
+        )
+        return view_x
+
     def _renormalize_pt(
         self,
         view_x: torch.Tensor,
@@ -1759,7 +1747,7 @@ class CorruptedNegativeAugmentation(nn.Module):
         """Match each event's valid-node pt sum to the requested target sum."""
 
         if not self.config.renormalize_pt_sum:
-            return view_x
+            return self._sync_log_pt_fraction(view_x, valid_mask)
 
         view_x = view_x.clone()
         valid_mask = valid_mask.bool()
@@ -1775,7 +1763,7 @@ class CorruptedNegativeAugmentation(nn.Module):
             view_x[..., self.config.pt_index],
         )
 
-        return view_x
+        return self._sync_log_pt_fraction(view_x, valid_mask)
 
     def _identity_shuffle(
         self,
@@ -1856,17 +1844,13 @@ class CorruptedNegativeAugmentation(nn.Module):
 
         return view_x, view_mask
 
-    def _eta_phi_shuffle(
+    def _deta_dphi_shuffle(
         self,
         x: torch.Tensor,
         padding_mask: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Jointly shuffle eta, phi, deta, and dphi across valid same-event nodes.
-
-        Keeping the four entries together preserves their internal jet-center
-        relation for each copied node while breaking their association with the
-        node's remaining features.
+        Jointly shuffle deta and dphi across valid same-event nodes.
         """
 
         view_x = x.clone()
@@ -1884,8 +1868,6 @@ class CorruptedNegativeAugmentation(nn.Module):
 
         block_idx = torch.tensor(
             [
-                self.config.eta_index,
-                self.config.phi_index,
                 self.config.deta_index,
                 self.config.dphi_index,
             ],
@@ -1986,19 +1968,6 @@ class CorruptedNegativeAugmentation(nn.Module):
         view_valid_mask = ~view_mask
         active_mixed_mask = view_valid_mask & (~fallback).unsqueeze(1)
 
-        # A mixed event must have one coherent jet center. Infer the center from
-        # the anchor event and reconstruct absolute eta/phi for every retained
-        # anchor or donor node from its stored deta/dphi.
-        anchor_jet_eta, anchor_jet_phi = self._infer_jet_center(
-            x,
-            valid_mask,
-        )
-        view_x = self._reconstruct_absolute_eta_phi(
-            view_x=view_x,
-            target_mask=active_mixed_mask,
-            jet_eta=anchor_jet_eta,
-            jet_phi=anchor_jet_phi,
-        )
 
         view_x = self._renormalize_pt(
             view_x=view_x,
@@ -2008,24 +1977,22 @@ class CorruptedNegativeAugmentation(nn.Module):
 
         return view_x, view_mask
     
-    def _node_eta_phi_rotation(
+    def _node_deta_dphi_rotation(
         self,
         x: torch.Tensor,
         padding_mask: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Independently rotate every valid node around its event's fixed jet center.
+        Independently rotate every valid node in the relative deta-dphi plane.
 
-        The 2D vector being rotated is (part_deta, part_dphi), not the absolute
-        (part_eta, part_phi). After rotation, absolute eta and wrapped phi are
-        reconstructed from the same event-level jet center.
+        The radius sqrt(deta^2 + dphi^2) is preserved while the polar angle is
+        resampled independently for each valid node.
         """
 
         view_x = x.clone()
         view_mask = padding_mask.clone()
 
         valid_mask = self._valid_mask(padding_mask)
-        jet_eta, jet_phi = self._infer_jet_center(x, valid_mask)
 
         deta = x[..., self.config.deta_index].float()
         dphi = x[..., self.config.dphi_index].float()
@@ -2054,12 +2021,6 @@ class CorruptedNegativeAugmentation(nn.Module):
             x[..., self.config.dphi_index],
         )
 
-        view_x = self._reconstruct_absolute_eta_phi(
-            view_x=view_x,
-            target_mask=valid_mask,
-            jet_eta=jet_eta,
-            jet_phi=jet_phi,
-        )
 
         return view_x, view_mask
 

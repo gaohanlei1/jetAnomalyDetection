@@ -39,66 +39,22 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 # torchrun --standalone --nproc-per-node=2 \
 
 
-python -u \
-    scripts/run_train_lejepa_part_jetclass.py \
-    --dataset-root "/HEP/export/home/lwang223/JetClass/JetClass/Pythia" \
-    --model semi-sup-triplet \
-    --background-labels "label_QCD,label_Hbb,label_Hcc,label_Hgg" \
-    --signal-labels "label_Wqq" \
-    --embed-dim 32 \
-    --representation-dim 32 \
-    --dropout 0.01 \
-    --num-layers 4 \
-    --num-heads 8 \
-    --batch-size 128 \
-    --steps-per-epoch 1000 \
-    --val-steps 100 \
-    --eval-steps 100 \
-    --epochs 80 \
-    --learning-rate 1e-3 \
-    --weight-decay 5e-2 \
-    --precision bf16 \
-    --num-global-views 2 \
-    --num-local-views 4 \
-    --num-negative-views 4 \
-    --batch-mix-prob 0.4 \
-    --pt-resample-prob 0.25 \
-    --node-eta-phi-rotation-prob 0.1 \
-    --eta-phi-shuffle-prob 0.1 \
-    --identity-shuffle-prob 0.15 \
-    --global-drop-pt-frac-min 0.0 \
-    --global-drop-pt-frac-max 0.3 \
-    --local-drop-pt-frac-min 0.3 \
-    --local-drop-pt-frac-max 0.75 \
-    --batch-mix-anchor-frac-min 0.4 \
-    --batch-mix-anchor-frac-max 0.6 \
-    --anomaly-score mahalanobis \
-    --pairwise-hidden-dim 32 \
-    --triplet-weight 0.1 \
-    --triplet-margin 0.5 \
-    --classification-weight 0.05 \
-    --num-workers 4 \
-    --prefetch-factor 2 \
-    --shuffle-active-shards 3 \
-    --output-dir "plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-wjet"
-
-
 # python -u \
 #     scripts/run_train_lejepa_part_jetclass.py \
 #     --dataset-root "/HEP/export/home/lwang223/JetClass/JetClass/Pythia" \
 #     --model semi-sup-triplet \
-#     --background-labels "label_QCD,label_Wqq,label_Hcc,label_Hgg" \
-#     --signal-labels "label_Hbb" \
+#     --background-labels "label_QCD,label_Hbb,label_Hcc,label_Hgg" \
+#     --signal-labels "label_Wqq" \
 #     --embed-dim 32 \
 #     --representation-dim 32 \
 #     --dropout 0.01 \
 #     --num-layers 4 \
 #     --num-heads 8 \
 #     --batch-size 128 \
-#     --steps-per-epoch 1000 \
+#     --steps-per-epoch 2000 \
 #     --val-steps 100 \
 #     --eval-steps 100 \
-#     --epochs 80 \
+#     --epochs 40 \
 #     --learning-rate 1e-3 \
 #     --weight-decay 5e-2 \
 #     --precision bf16 \
@@ -107,8 +63,8 @@ python -u \
 #     --num-negative-views 4 \
 #     --batch-mix-prob 0.4 \
 #     --pt-resample-prob 0.25 \
-#     --node-eta-phi-rotation-prob 0.1 \
-#     --eta-phi-shuffle-prob 0.1 \
+#     --node-deta-dphi-rotation-prob 0.1 \
+#     --deta-dphi-shuffle-prob 0.1 \
 #     --identity-shuffle-prob 0.15 \
 #     --global-drop-pt-frac-min 0.0 \
 #     --global-drop-pt-frac-max 0.3 \
@@ -119,9 +75,53 @@ python -u \
 #     --anomaly-score mahalanobis \
 #     --pairwise-hidden-dim 32 \
 #     --triplet-weight 0.1 \
-#     --triplet-margin 0.5 \
-#     --classification-weight 0.05 \
+#     --triplet-margin 0.2 \
+#     --classification-weight 0.1 \
 #     --num-workers 4 \
 #     --prefetch-factor 2 \
 #     --shuffle-active-shards 3 \
-#     --output-dir "plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb"
+#     --output-dir "plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-wjet-long"
+
+
+python -u \
+    scripts/run_train_lejepa_part_jetclass.py \
+    --dataset-root "/HEP/export/home/lwang223/JetClass/JetClass/Pythia" \
+    --model semi-sup-triplet \
+    --background-labels "label_QCD,label_Wqq,label_Hcc,label_Hgg" \
+    --signal-labels "label_Hbb" \
+    --embed-dim 32 \
+    --representation-dim 32 \
+    --dropout 0.01 \
+    --num-layers 4 \
+    --num-heads 8 \
+    --batch-size 128 \
+    --steps-per-epoch 2000 \
+    --val-steps 100 \
+    --eval-steps 100 \
+    --epochs 40 \
+    --learning-rate 1e-3 \
+    --weight-decay 5e-2 \
+    --precision bf16 \
+    --num-global-views 2 \
+    --num-local-views 4 \
+    --num-negative-views 4 \
+    --batch-mix-prob 0.4 \
+    --pt-resample-prob 0.25 \
+    --node-deta-dphi-rotation-prob 0.1 \
+    --deta-dphi-shuffle-prob 0.1 \
+    --identity-shuffle-prob 0.15 \
+    --global-drop-pt-frac-min 0.0 \
+    --global-drop-pt-frac-max 0.3 \
+    --local-drop-pt-frac-min 0.3 \
+    --local-drop-pt-frac-max 0.75 \
+    --batch-mix-anchor-frac-min 0.4 \
+    --batch-mix-anchor-frac-max 0.6 \
+    --anomaly-score mahalanobis \
+    --pairwise-hidden-dim 32 \
+    --triplet-weight 0.1 \
+    --triplet-margin 0.2 \
+    --classification-weight 0.1 \
+    --num-workers 4 \
+    --prefetch-factor 2 \
+    --shuffle-active-shards 3 \
+    --output-dir "plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb-long"

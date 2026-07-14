@@ -1,11 +1,11 @@
 {
   "epoch": 2,
-  "auc_bgtrain_vs_signal": 0.5324776184082032,
-  "auc_bgval_vs_signal": 0.5263842407226562,
-  "background_train_score_mean": 31.128065920101324,
-  "background_val_score_mean": 31.268422771004804,
-  "signal_score_mean": 31.70637507242832,
-  "background_train_score_median": 28.8593400151178,
-  "background_val_score_median": 28.967185351518403,
-  "signal_score_median": 29.654016503705698
+  "auc_bgtrain_vs_signal": 0.5559576049804686,
+  "auc_bgval_vs_signal": 0.5545902221679687,
+  "background_train_score_mean": 31.498911931804898,
+  "background_val_score_mean": 31.545914830447273,
+  "signal_score_mean": 33.89297221296914,
+  "background_train_score_median": 28.300192947362667,
+  "background_val_score_median": 28.386646380318915,
+  "signal_score_median": 30.49254710994756
 }
