@@ -38,8 +38,8 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 # python -u \
 # torchrun --standalone --nproc-per-node=2 \
 
-python -u scripts/diagnose_lejepa_latents.py \
-        plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-wjet-long
+# python -u scripts/diagnose_lejepa_latents.py \
+#         plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-wjet-long
 
 python -u scripts/diagnose_lejepa_latents.py \
         plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb-long
