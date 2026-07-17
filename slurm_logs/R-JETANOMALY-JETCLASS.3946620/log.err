@@ -1,1 +1,0 @@
-Train Epoch 1/80:   0%|          | 0/1000 [00:00<?, ?it/s][2026-07-13T12:56:23.279] error: *** JOB 3946620 ON gpu3003 CANCELLED AT 2026-07-13T12:56:23 DUE to SIGNAL Terminated ***

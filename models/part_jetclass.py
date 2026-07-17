@@ -901,6 +901,20 @@ class MinimalParticleTransformer(nn.Module):
             standardized_index_tensor,
             persistent=False,
         )
+        ### Buffers for batch-normalizing node features
+        ### Needed for consistent behavior between training and evaluation
+        self.register_buffer(
+            "_feature_running_mean",
+            torch.zeros(len(standardized_index_tensor), dtype=torch.float32),
+        )
+        self.register_buffer(
+            "_feature_running_var",
+            torch.zeros(len(standardized_index_tensor), dtype=torch.float32),
+        )
+        self.register_buffer(
+            "_feature_num_batches_tracked",
+            torch.zeros(0, dtype=torch.long),
+        )
 
         self.encoder = ParticleTransformerEncoder(
             embed_dim=config.embed_dim,
@@ -923,13 +937,25 @@ class MinimalParticleTransformer(nn.Module):
         x: torch.Tensor,
         padding_mask: Optional[torch.Tensor],
     ) -> torch.Tensor:
-        """Drop raw four-vectors and batch-standardize selected node features."""
+        """
+        Drop raw four-vectors and standardize selected node features.
+
+        During training:
+            - Compute statistics over all valid nodes in the current global DDP batch.
+            - Normalize with the current batch statistics.
+            - Update running mean and variance.
+
+        During evaluation:
+            - Normalize with frozen running statistics.
+            - Evaluation batch composition therefore does not affect the output.
+        """
 
         node_x = torch.index_select(
             x,
             dim=-1,
             index=self._node_feature_indices,
         ).clone()
+        # node_x: (B, N, num_selected_features)
 
         if padding_mask is None:
             valid_mask = torch.ones(
@@ -939,32 +965,122 @@ class MinimalParticleTransformer(nn.Module):
             )
         else:
             valid_mask = ~padding_mask
+        # valid_mask: (B, N)
 
-        if self._standardized_node_feature_indices.numel() > 0:
+        standardized_indices = self._standardized_node_feature_indices
+
+        if standardized_indices.numel() > 0:
             selected = torch.index_select(
                 node_x.float(),
                 dim=-1,
-                index=self._standardized_node_feature_indices,
+                index=standardized_indices,
             )
-            valid_values = selected[valid_mask]
+            # selected: (B, N, num_standardized_features)
 
-            if valid_values.numel() > 0:
-                mean = valid_values.mean(dim=0, keepdim=True)
-                std = valid_values.std(dim=0, unbiased=False, keepdim=True)
-                standardized = (selected - mean.view(1, 1, -1)) / std.clamp(
-                    min=self.config.eps
-                ).view(1, 1, -1)
-                selected = torch.where(
-                    valid_mask.unsqueeze(-1),
-                    standardized,
-                    torch.zeros_like(standardized),
-                )
-                node_x[..., self._standardized_node_feature_indices] = selected.to(
-                    dtype=node_x.dtype
-                )
+            if self.training:
+                valid_values = selected[valid_mask]
+                # valid_values:
+                # (num_valid_nodes_on_this_rank, num_standardized_features)
+
+                num_features = selected.shape[-1]
+
+                if valid_values.numel() > 0:
+                    local_sum = valid_values.sum(dim=0)
+                    local_squared_sum = valid_values.square().sum(dim=0)
+                    local_count = torch.tensor(
+                        valid_values.shape[0],
+                        dtype=torch.float32,
+                        device=selected.device,
+                    )
+                else:
+                    local_sum = torch.zeros(
+                        num_features,
+                        dtype=torch.float32,
+                        device=selected.device,
+                    )
+                    local_squared_sum = torch.zeros_like(local_sum)
+                    local_count = torch.zeros(
+                        (),
+                        dtype=torch.float32,
+                        device=selected.device,
+                    )
+
+                # Synchronize statistics across DDP ranks.
+                if (
+                    torch.distributed.is_available()
+                    and torch.distributed.is_initialized()
+                ):
+                    torch.distributed.all_reduce(
+                        local_sum,
+                        op=torch.distributed.ReduceOp.SUM,
+                    )
+                    torch.distributed.all_reduce(
+                        local_squared_sum,
+                        op=torch.distributed.ReduceOp.SUM,
+                    )
+                    torch.distributed.all_reduce(
+                        local_count,
+                        op=torch.distributed.ReduceOp.SUM,
+                    )
+
+                if local_count.item() > 0:
+                    batch_mean = local_sum / local_count
+                    batch_var = (
+                        local_squared_sum / local_count
+                        - batch_mean.square()
+                    ).clamp_min(0.0)
+
+                    mean = batch_mean
+                    var = batch_var
+
+                    # Updating running buffers must not enter autograd.
+                    with torch.no_grad():
+                        momentum = self.feature_norm_momentum
+
+                        self._feature_running_mean.mul_(
+                            1.0 - momentum
+                        ).add_(
+                            momentum * batch_mean.detach()
+                        )
+
+                        self._feature_running_var.mul_(
+                            1.0 - momentum
+                        ).add_(
+                            momentum * batch_var.detach()
+                        )
+
+                        self._feature_num_batches_tracked.add_(1)
+                else:
+                    # Extremely defensive fallback: no valid node on any rank.
+                    mean = self._feature_running_mean
+                    var = self._feature_running_var
+
+            else: # Eval mode
+                # Fixed statistics in eval mode.
+                mean = self._feature_running_mean
+                var = self._feature_running_var
+
+            std = torch.sqrt(var).clamp_min(self.config.eps)
+
+            standardized = (
+                selected - mean.view(1, 1, -1)
+            ) / std.view(1, 1, -1)
+
+            selected = torch.where(
+                valid_mask.unsqueeze(-1),
+                standardized,
+                torch.zeros_like(standardized),
+            )
+
+            node_x[..., standardized_indices] = selected.to(
+                dtype=node_x.dtype
+            )
 
         if padding_mask is not None:
-            node_x = node_x.masked_fill(padding_mask.unsqueeze(-1), 0.0)
+            node_x = node_x.masked_fill(
+                padding_mask.unsqueeze(-1),
+                0.0,
+            )
 
         return node_x
 

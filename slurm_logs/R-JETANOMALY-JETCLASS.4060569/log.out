@@ -1,0 +1,87 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 4060569
+##  Job Name : JETANOMALY-JETCLASS
+##  Nodelist : gpu2708
+##      CPUs : 1
+##  Mem/Node : 96000 MB
+## Directory : /oscar/home/lwang223/jetAnomalyDetection
+##   Job Started : Fri Jul 17 06:31:28 AM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Fri Jul 17 06:31:28 AM EDT 2026
+Job ID: 4060569
+Node: gpu2708
+==========================================
+
+GPU Information (from host):
+Fri Jul 17 06:31:28 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:61:00.0 Off |                    0 |
+| N/A   25C    P8             32W /  350W |      77MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          157414      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch version: 2.6.0+cu124
+Loading /oscar/home/lwang223/jetAnomalyDetection/plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-wjet-longlongmult/best_model.pth on cuda:0
+Sampling 100 x 256 events from each split
+Full-jet density latent space: representation
+Background labels: QCD+Hbb+Hcc+Hgg+H4q+Hqql+Zqq+Tbqq+Tbl
+Signal labels: Wqq
+Full-jet latent collection will interleave background and signal events inside every forward pass, then regroup representations by their original labels. This gives all Mahalanobis and per-class comparisons a shared batch-standardization context.
+
+[1/8] Unaugmented full-jet Mahalanobis diagnostic
+Regrouped interleaved full latents: train background=23000, validation background=23000, signal=2600
+AUC fit=0.524449, held-out=0.521583, validation=0.520753
+
+[2/8] Full-jet latent norm diagnostic
+Full latent norm mean/median: train bg=5.334773/5.311374, val bg=5.334270/5.308042, signal=5.418820/5.407132
+
+[3/8] Augmented local-global diagnostics
+Raw MSE AUC train=0.516671, validation=0.517504
+Cosine AUC train=0.517365, validation=0.518368
+Normalized-MSE AUC train=0.517365, validation=0.518368
+Global-anchor norm mean/median: train bg=5.361238/5.334957, val bg=5.359305/5.334352, Wqq=5.395910/5.391606
+
+[4/9] Triplet positive-vs-corrupted-negative response diagnostic
+Triplet margin score: AUC train=0.478411, validation=0.475365
+Triplet hinge violation: AUC train=0.510217, validation=0.511019
+
+[5/9] Per-class centroid and Mahalanobis diagnostic
+QCD: centroid shift=0.159521, AUC held-out=0.769286, validation=0.748648
+Hbb: centroid shift=0.0930124, AUC held-out=0.911602, validation=0.912800
+Hcc: centroid shift=0.178282, AUC held-out=0.716295, validation=0.713403
+Hgg: centroid shift=0.131223, AUC held-out=0.757083, validation=0.771161
+H4q: centroid shift=0.133666, AUC held-out=0.715313, validation=0.707638
+Hqql: centroid shift=0.122305, AUC held-out=0.951717, validation=0.950659
+Zqq: centroid shift=0.175712, AUC held-out=0.443265, validation=0.439367
+Tbqq: centroid shift=0.149129, AUC held-out=0.885505, validation=0.893892
+Tbl: centroid shift=0.136951, AUC held-out=0.998884, validation=0.998191
+
+[6/9] Multi-Gaussian nearest-component Mahalanobis diagnostic
+Multi-Gaussian K=6: AUC fit=0.509951, held-out=0.498502, validation=0.500991
+
+[7/9] Standardized latent-space kNN diagnostic
+kNN k=30: AUC fit=0.506977, held-out=0.507362, validation=0.509048
+
+[8/9] Class-conditional Gaussian-mixture likelihood diagnostic
+Class-conditional mixture NLL: AUC fit=0.556351, held-out=0.542143, validation=0.544473
+
+[9/9] Two-sided local-global consistency diagnostic
+Two-sided local-global: AUC fit=0.509775, held-out=0.511204, validation=0.516003
+
+Saved diagnostics to /oscar/home/lwang223/jetAnomalyDetection/plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-wjet-longlongmult/latent_diagnostics

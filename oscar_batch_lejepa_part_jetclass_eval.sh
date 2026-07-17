@@ -3,9 +3,9 @@
 # SBATCH --nodelist=gpu3003      # the L40S GPU!! 3001-3005, 3101-3102, 2708 are L40S
 #SBATCH -p gpu --gres=gpu:1     # number of gpus per node
 #SBATCH --ntasks-per-node=1     # total number of tasks across all nodes
-#SBATCH --cpus-per-task=6       # cpu-cores per task (>1 if multi-threaded tasks)
+#SBATCH --cpus-per-task=8       # cpu-cores per task (>1 if multi-threaded tasks)
 #SBATCH -t 14:00:00             # total run time limit (HH:MM:SS)
-#SBATCH --mem=48000MB           # CPU RAM
+#SBATCH --mem=96000MB           # CPU RAM
 #SBATCH --constraint=l40s
 #SBATCH --job-name='JETANOMALY-JETCLASS'
 #SBATCH --output=slurm_logs/R-%x.%j/log.out
@@ -42,4 +42,5 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #         plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-wjet-long
 
 python -u scripts/diagnose_lejepa_latents.py \
-        plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb-long
+        plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-wjet-longlongmult \
+        --num-workers 5
