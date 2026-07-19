@@ -1081,7 +1081,39 @@ def main() -> None:
         "normalization uses frozen statistics."
     )
     model = build_model(summary, device)
-    model.load_state_dict(read_state_dict(checkpoint_path, device), strict=True)
+
+    state_dict = read_state_dict(checkpoint_path, device)
+    load_result = model.load_state_dict(state_dict, strict=False)
+    feature_stats_keys = { # old models don't have frozen running stats for eval
+        "_feature_running_mean",
+        "_feature_running_var",
+        "_feature_num_batches_tracked",
+    }
+    missing_feature_stats = not feature_stats_keys.issubset(state_dict.keys())
+    unexpected_missing = [
+        key
+        for key in load_result.missing_keys 
+        if key not in feature_stats_keys
+    ]
+    if unexpected_missing:
+        raise RuntimeError(
+            "Checkpoint is missing unexpected model params: "
+            f"{unexpected_missing}"
+        )
+    if load_result.unexpected_keys:
+        raise RuntimeError(
+            "Checkpoint contains unexpected model params: "
+            f"{load_result.unexpected_keys}"
+        )
+    if missing_feature_stats:
+        model._use_frozen_feature_stats_in_eval = False 
+        print(
+            "Legacy checkpoint detected: feature running stats are absent. "
+            "Evaluation will use per-batch feature stats."
+        )
+    else:
+        model._use_frozen_feature_stats_in_eval = True
+    
     model.eval()
 
     common = {

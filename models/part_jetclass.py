@@ -915,6 +915,7 @@ class MinimalParticleTransformer(nn.Module):
             "_feature_num_batches_tracked",
             torch.zeros(0, dtype=torch.long),
         )
+        self._use_frozen_feature_stats_in_eval = True # for compatibility with old models without frozen stats
 
         self.encoder = ParticleTransformerEncoder(
             embed_dim=config.embed_dim,
@@ -931,6 +932,7 @@ class MinimalParticleTransformer(nn.Module):
             dropout=config.class_dropout,
             num_class_layers=config.num_class_layers,
         )
+
 
     def _prepare_node_features(
         self,
@@ -976,8 +978,13 @@ class MinimalParticleTransformer(nn.Module):
                 index=standardized_indices,
             )
             # selected: (B, N, num_standardized_features)
+            use_frozen_stats = (
+                not self.training
+                and self._use_frozen_feature_stats_in_eval
+                and self._feature_num_batches_tracked.item() > 0
+            )
 
-            if self.training:
+            if not use_frozen_stats: # calculate batch stats online
                 valid_values = selected[valid_mask]
                 # valid_values:
                 # (num_valid_nodes_on_this_rank, num_standardized_features)
@@ -1034,22 +1041,23 @@ class MinimalParticleTransformer(nn.Module):
                     var = batch_var
 
                     # Updating running buffers must not enter autograd.
-                    with torch.no_grad():
-                        momentum = self.feature_norm_momentum
+                    if self.training: # if in eval model, don't need to update
+                        with torch.no_grad():
+                            momentum = self.feature_norm_momentum
 
-                        self._feature_running_mean.mul_(
-                            1.0 - momentum
-                        ).add_(
-                            momentum * batch_mean.detach()
-                        )
+                            self._feature_running_mean.mul_(
+                                1.0 - momentum
+                            ).add_(
+                                momentum * batch_mean.detach()
+                            )
 
-                        self._feature_running_var.mul_(
-                            1.0 - momentum
-                        ).add_(
-                            momentum * batch_var.detach()
-                        )
+                            self._feature_running_var.mul_(
+                                1.0 - momentum
+                            ).add_(
+                                momentum * batch_var.detach()
+                            )
 
-                        self._feature_num_batches_tracked.add_(1)
+                            self._feature_num_batches_tracked.add_(1)
                 else:
                     # Extremely defensive fallback: no valid node on any rank.
                     mean = self._feature_running_mean
