@@ -8,10 +8,10 @@ loads best_model.pth, and runs:
 1. Unaugmented full-jet Mahalanobis diagnostics with a stratified
    train-fit / train-held-out split.
 2. Augmented multi-view local-global consistency diagnostics.
-3. Separate QCD/Hbb/Hcc centroid and class-specific Mahalanobis diagnostics.
+3. Separate background-class centroid and class-specific Mahalanobis diagnostics.
 4. Multi-Gaussian nearest-component Mahalanobis diagnostics.
 5. Standardized latent-space k-nearest-neighbor distance diagnostics.
-6. Class-conditional QCD/Hbb/Hcc Gaussian-mixture likelihood diagnostics.
+6. Class-conditional background Gaussian-mixture likelihood diagnostics.
 7. Two-sided local-global consistency diagnostics.
 8. Full-jet/view latent norms plus cosine and unit-normalized local-global diagnostics.
 
@@ -432,6 +432,13 @@ def collect_full_latents(
     description: str,
     latent_space: str = "representation",
 ) -> Tuple[np.ndarray, np.ndarray]:
+    """Collect unaugmented latents from one loader.
+
+    This helper remains for diagnostics that intentionally use a single source.
+    The main Mahalanobis/per-class path uses
+    ``collect_interleaved_full_latents`` below so that background and signal
+    events share exactly the same forward-pass normalization context.
+    """
     model.eval()
     zs, ys = [], []
     iterator = iter(loader)
@@ -448,6 +455,118 @@ def collect_full_latents(
             )
         zs.append(z.detach().float().cpu())
         ys.append(batch["y"].float())
+    return torch.cat(zs).numpy(), torch.cat(ys).numpy()
+
+
+@torch.no_grad()
+def collect_interleaved_full_latents(
+    model: torch.nn.Module,
+    background_loader: DataLoader,
+    signal_loader: DataLoader,
+    steps: int,
+    device: torch.device,
+    precision: str,
+    description: str,
+    background_labels: Sequence[str],
+    signal_labels: Sequence[str],
+    combined_batch_size: int,
+    seed: int,
+    latent_space: str = "representation",
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Forward background and signal events together, then return labels.
+
+    The model batch-standardizes selected particle features inside ``forward``.
+    Consequently, separately forwarding a mixed-background batch and a
+    signal-only batch produces representations under different normalization
+    contexts. This collector fixes that diagnostic mismatch by constructing one
+    combined batch, randomly interleaving its events, forwarding it once, and
+    retaining the original one-hot labels for regrouping afterward.
+
+    The combined batch budget is split in proportion to the number of requested
+    background and signal jet classes. Because both source datasets already
+    emit class-balanced streams, this gives approximately equal representation
+    to every configured jet type inside each forward pass.
+    """
+    if combined_batch_size < 2:
+        raise ValueError("combined_batch_size must be at least 2.")
+    if not background_labels or not signal_labels:
+        raise ValueError("Both background_labels and signal_labels are required.")
+
+    num_background_classes = len(background_labels)
+    num_signal_classes = len(signal_labels)
+    num_classes = num_background_classes + num_signal_classes
+
+    num_background = int(
+        round(combined_batch_size * num_background_classes / num_classes)
+    )
+    num_background = min(max(num_background, 1), combined_batch_size - 1)
+    num_signal = combined_batch_size - num_background
+
+    model.eval()
+    background_iterator = iter(background_loader)
+    signal_iterator = iter(signal_loader)
+    permutation_generator = torch.Generator(device="cpu")
+    permutation_generator.manual_seed(int(seed))
+
+    zs: List[torch.Tensor] = []
+    ys: List[torch.Tensor] = []
+
+    for _ in tqdm(range(steps), desc=description):
+        background_batch = next(background_iterator)
+        signal_batch = next(signal_iterator)
+
+        background_available = int(background_batch["x_particles"].shape[0])
+        signal_available = int(signal_batch["x_particles"].shape[0])
+        if background_available < num_background or signal_available < num_signal:
+            raise RuntimeError(
+                "A source loader batch is too small for the requested mixed "
+                "forward composition: "
+                f"need background={num_background}, signal={num_signal}; "
+                f"received background={background_available}, "
+                f"signal={signal_available}."
+            )
+
+        x = torch.cat(
+            [
+                background_batch["x_particles"][:num_background],
+                signal_batch["x_particles"][:num_signal],
+            ],
+            dim=0,
+        )
+        padding_mask = torch.cat(
+            [
+                background_batch["padding_mask"][:num_background],
+                signal_batch["padding_mask"][:num_signal],
+            ],
+            dim=0,
+        )
+        y = torch.cat(
+            [
+                background_batch["y"][:num_background],
+                signal_batch["y"][:num_signal],
+            ],
+            dim=0,
+        ).float()
+
+        permutation = torch.randperm(
+            x.shape[0],
+            generator=permutation_generator,
+        )
+        x = x[permutation].to(device, non_blocking=True)
+        padding_mask = padding_mask[permutation].to(device, non_blocking=True)
+        y = y[permutation]
+
+        with autocast_context(device, precision):
+            z = encode_single_view(
+                model,
+                x,
+                padding_mask=padding_mask,
+                latent_space=latent_space,
+            )
+
+        zs.append(z.detach().float().cpu())
+        ys.append(y.cpu())
+
     return torch.cat(zs).numpy(), torch.cat(ys).numpy()
 
 
@@ -690,6 +809,15 @@ def label_ids(y: np.ndarray) -> np.ndarray:
 
 def class_mask(y: np.ndarray, label: str) -> np.ndarray:
     return label_ids(y) == JETCLASS_LABELS.index(label)
+
+
+def labels_mask(y: np.ndarray, labels: Sequence[str]) -> np.ndarray:
+    ids = label_ids(y)
+    requested_ids = np.asarray(
+        [JETCLASS_LABELS.index(label) for label in labels],
+        dtype=np.int64,
+    )
+    return np.isin(ids, requested_ids)
 
 
 def stratified_split(
@@ -998,7 +1126,7 @@ def fit_class_conditional_gaussian_mixture(
     Fit one Gaussian per known background class and empirical class priors.
 
     This is a supervised density model only with respect to the known
-    background subclasses; Wjet is never used during fitting.
+    background subclasses; The configured signal sample is never used during fitting.
     """
 
     ids = label_ids(train_y)
@@ -1152,6 +1280,103 @@ def score_stats(x: np.ndarray) -> Dict[str, float]:
         "q95": float(np.quantile(x, 0.95)),
     }
 
+def plot_pair_latent_space(
+    background: np.ndarray,
+    signal: np.ndarray,
+    background_label: str,
+    signal_label: str,
+    path: Path,
+    seed: int,
+    max_points: int | None = None,
+) -> None:
+    """Plot one background class against the configured signal in one PCA basis."""
+
+    background = np.asarray(background, dtype=np.float64)
+    signal = np.asarray(signal, dtype=np.float64)
+
+    if background.ndim != 2 or signal.ndim != 2:
+        raise ValueError(
+            "Expected background and signal latents with shape (N, D), got "
+            f"{background.shape} and {signal.shape}."
+        )
+    if background.shape[1] != signal.shape[1]:
+        raise ValueError(
+            "Background and signal latent dimensions differ: "
+            f"{background.shape[1]} vs {signal.shape[1]}."
+        )
+    if len(background) == 0 or len(signal) == 0:
+        raise ValueError(
+            "Cannot plot an empty pairwise latent sample: "
+            f"background={len(background)}, signal={len(signal)}."
+        )
+
+    rng = np.random.default_rng(seed)
+    background_plot = background
+    signal_plot = signal
+
+    if max_points is not None:
+        max_points = int(max_points)
+        if max_points < 1:
+            raise ValueError("max_points must be positive when provided.")
+
+        if len(background_plot) > max_points:
+            indices = rng.choice(len(background_plot), max_points, replace=False)
+            background_plot = background_plot[indices]
+
+        if len(signal_plot) > max_points:
+            indices = rng.choice(len(signal_plot), max_points, replace=False)
+            signal_plot = signal_plot[indices]
+
+    combined = np.concatenate([background_plot, signal_plot], axis=0)
+    combined = combined - combined.mean(axis=0, keepdims=True)
+
+    _, singular_values, vh = np.linalg.svd(combined, full_matrices=False)
+    components = vh[:2].T
+    reduced = combined @ components
+
+    num_background = len(background_plot)
+    background_2d = reduced[:num_background]
+    signal_2d = reduced[num_background:]
+
+    total_variance = np.square(singular_values).sum()
+    explained_variance_ratio = (
+        np.square(singular_values[:2]) / total_variance
+        if total_variance > 0.0
+        else np.zeros(2, dtype=np.float64)
+    )
+
+    fig, ax = plt.subplots(figsize=(8, 7))
+    ax.scatter(
+        background_2d[:, 0],
+        background_2d[:, 1],
+        s=10,
+        alpha=0.45,
+        marker="o",
+        label=f"{background_label} (Background)",
+    )
+    ax.scatter(
+        signal_2d[:, 0],
+        signal_2d[:, 1],
+        s=18,
+        alpha=0.65,
+        marker="x",
+        label=f"{signal_label} (Signal)",
+    )
+
+    ax.set_xlabel(f"PC1 ({100.0 * explained_variance_ratio[0]:.1f}% variance)")
+    ax.set_ylabel(f"PC2 ({100.0 * explained_variance_ratio[1]:.1f}% variance)")
+    ax.set_title(f"Pairwise validation latent space: {background_label} vs {signal_label}")
+    ax.grid(alpha=0.2)
+    ax.legend(
+        loc="best",
+        fontsize=8,
+        frameon=True,
+        markerscale=1.3,
+    )
+
+    fig.tight_layout()
+    fig.savefig(path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
 
 def plot_one_roc(
     background: np.ndarray,
@@ -1163,7 +1388,7 @@ def plot_one_roc(
         background,
         signal,
         background_label=background_label,
-        signal_label="Wjet",
+        signal_label="signal",
         savepath=str(path),
         examples=False,
         loss_fn=None,
@@ -1176,8 +1401,8 @@ def plot_score_distribution(
     title: str,
     xlabel: str,
     path: Path,
-    background_label: str = "QCD+Hbb+Hcc (validation)",
-    signal_label: str = "Wjet",
+    background_label: str = "Background (validation)",
+    signal_label: str = "signal",
 ) -> None:
     """Plot two score distributions with robust common histogram limits."""
 
@@ -1315,6 +1540,12 @@ def main() -> None:
     backgrounds = list(summary["background_labels"])
     signals = list(summary["signal_labels"])
     features = list(summary["particle_features"])
+
+    def display_label(label: str) -> str:
+        return label.removeprefix("label_")
+
+    background_display_name = "+".join(display_label(x) for x in backgrounds)
+    signal_display_name = "+".join(display_label(x) for x in signals)
     steps = int(args.eval_steps or summary.get("eval_steps", 50))
     batch_size = int(
         args.batch_size
@@ -1335,6 +1566,14 @@ def main() -> None:
     print(f"Loading {checkpoint_path} on {device}")
     print(f"Sampling {steps} x {batch_size} events from each split")
     print(f"Full-jet density latent space: {args.full_latent_space}")
+    print(f"Background labels: {background_display_name}")
+    print(f"Signal labels: {signal_display_name}")
+    print(
+        "Full-jet latent collection will interleave background and signal events "
+        "inside every forward pass, then regroup representations by their "
+        "original labels. This gives all Mahalanobis and per-class comparisons "
+        "a shared batch-standardization context."
+    )
     model = build_model(summary, device)
     model.load_state_dict(read_state_dict(checkpoint_path, device), strict=True)
     model.eval()
@@ -1349,32 +1588,85 @@ def main() -> None:
     }
 
     print("\n[1/8] Unaugmented full-jet Mahalanobis diagnostic")
-    train_z, train_y = collect_full_latents(
-        model,
-        make_loader(train_dir, backgrounds, seed=seed + 101, **common),
-        steps,
-        device,
-        precision,
-        "Full latent: background train",
+
+    train_mixed_z, train_mixed_y = collect_interleaved_full_latents(
+        model=model,
+        background_loader=make_loader(
+            train_dir, backgrounds, seed=seed + 101, **common
+        ),
+        signal_loader=make_loader(
+            test_dir, signals, seed=seed + 301, **common
+        ),
+        steps=steps,
+        device=device,
+        precision=precision,
+        description="Full latent: interleaved train background + signal",
+        background_labels=backgrounds,
+        signal_labels=signals,
+        combined_batch_size=batch_size,
+        seed=seed + 401,
         latent_space=args.full_latent_space,
     )
-    val_z, val_y = collect_full_latents(
-        model,
-        make_loader(val_dir, backgrounds, seed=seed + 202, **common),
-        steps,
-        device,
-        precision,
-        "Full latent: background validation",
+    train_background_mask = labels_mask(train_mixed_y, backgrounds)
+    train_z = train_mixed_z[train_background_mask]
+    train_y = train_mixed_y[train_background_mask]
+
+    validation_mixed_z, validation_mixed_y = collect_interleaved_full_latents(
+        model=model,
+        background_loader=make_loader(
+            val_dir, backgrounds, seed=seed + 202, **common
+        ),
+        signal_loader=make_loader(
+            test_dir, signals, seed=seed + 302, **common
+        ),
+        steps=steps,
+        device=device,
+        precision=precision,
+        description="Full latent: interleaved validation background + signal",
+        background_labels=backgrounds,
+        signal_labels=signals,
+        combined_batch_size=batch_size,
+        seed=seed + 402,
         latent_space=args.full_latent_space,
     )
-    signal_z, _ = collect_full_latents(
-        model,
-        make_loader(test_dir, signals, seed=seed + 303, **common),
-        steps,
-        device,
-        precision,
-        "Full latent: Wjet",
-        latent_space=args.full_latent_space,
+    validation_background_mask = labels_mask(validation_mixed_y, backgrounds)
+    validation_signal_mask = labels_mask(validation_mixed_y, signals)
+    val_z = validation_mixed_z[validation_background_mask]
+    val_y = validation_mixed_y[validation_background_mask]
+    signal_z = validation_mixed_z[validation_signal_mask]
+    signal_y = validation_mixed_y[validation_signal_mask]
+    
+    # Plot pair-wise latent space for each background class against the signal
+    for background_index, background in enumerate(backgrounds):
+        background_name = display_label(background)
+        background_pair_z = validation_mixed_z[
+            labels_mask(validation_mixed_y, [background])
+        ]
+        plot_pair_latent_space(
+            background=background_pair_z,
+            signal=signal_z,
+            background_label=background_name,
+            signal_label=signal_display_name,
+            path=(
+                output_dir
+                / f"00_pairwise_latent_{background_name.lower()}_vs_"
+                f"{signal_display_name.lower()}.png"
+            ),
+            seed=seed + 450 + background_index,
+            max_points=int(summary.get("max_latent_plot_points", 5000)),
+        )
+
+    if len(train_z) == 0 or len(val_z) == 0 or len(signal_z) == 0:
+        raise RuntimeError(
+            "Interleaved latent collection produced an empty regrouped sample: "
+            f"train_background={len(train_z)}, "
+            f"validation_background={len(val_z)}, signal={len(signal_z)}."
+        )
+
+    print(
+        "Regrouped interleaved full latents: "
+        f"train background={len(train_z)}, "
+        f"validation background={len(val_z)}, signal={len(signal_z)}"
     )
 
     fit_idx, heldout_idx = stratified_split(
@@ -1387,26 +1679,26 @@ def main() -> None:
     signal_score = mahalanobis_scores(signal_z, mean, precision_matrix)
 
     combined = {
-        "auc_fit_subset_vs_wjet": auc(fit_score, signal_score),
-        "auc_heldout_train_vs_wjet": auc(heldout_score, signal_score),
-        "auc_validation_vs_wjet": auc(val_score, signal_score),
+        "auc_fit_subset_vs_signal": auc(fit_score, signal_score),
+        "auc_heldout_train_vs_signal": auc(heldout_score, signal_score),
+        "auc_validation_vs_signal": auc(val_score, signal_score),
         "fit_background_scores": score_stats(fit_score),
         "heldout_train_background_scores": score_stats(heldout_score),
         "validation_background_scores": score_stats(val_score),
-        "wjet_scores": score_stats(signal_score),
+        "signal_scores": score_stats(signal_score),
         "covariance": cov_diag,
     }
     plot_one_roc(
         heldout_score,
         signal_score,
-        "QCD+Hbb+Hcc (held-out train)",
-        output_dir / "01_mahalanobis_heldout_train_vs_wjet.png",
+        f"{background_display_name} (held-out train)",
+        output_dir / "01_mahalanobis_heldout_train_vs_signal.png",
     )
     plot_one_roc(
         val_score,
         signal_score,
-        "QCD+Hbb+Hcc (validation)",
-        output_dir / "01_mahalanobis_validation_vs_wjet.png",
+        f"{background_display_name} (validation)",
+        output_dir / "01_mahalanobis_validation_vs_signal.png",
     )
     plot_comparison(
         [
@@ -1417,9 +1709,9 @@ def main() -> None:
         output_dir / "01_mahalanobis_comparison.png",
     )
     print(
-        f"AUC fit={combined['auc_fit_subset_vs_wjet']:.6f}, "
-        f"held-out={combined['auc_heldout_train_vs_wjet']:.6f}, "
-        f"validation={combined['auc_validation_vs_wjet']:.6f}"
+        f"AUC fit={combined['auc_fit_subset_vs_signal']:.6f}, "
+        f"held-out={combined['auc_heldout_train_vs_signal']:.6f}, "
+        f"validation={combined['auc_validation_vs_signal']:.6f}"
     )
 
     print("\n[2/8] Full-jet latent norm diagnostic")
@@ -1429,7 +1721,7 @@ def main() -> None:
     latent_norms = {
         "background_train": score_stats(train_full_norm),
         "background_validation": score_stats(val_full_norm),
-        "wjet": score_stats(signal_full_norm),
+        "signal": score_stats(signal_full_norm),
     }
     plot_score_distribution(
         val_full_norm,
@@ -1442,7 +1734,7 @@ def main() -> None:
         "Full latent norm mean/median: "
         f"train bg={train_full_norm.mean():.6f}/{np.median(train_full_norm):.6f}, "
         f"val bg={val_full_norm.mean():.6f}/{np.median(val_full_norm):.6f}, "
-        f"Wjet={signal_full_norm.mean():.6f}/{np.median(signal_full_norm):.6f}"
+        f"signal={signal_full_norm.mean():.6f}/{np.median(signal_full_norm):.6f}"
     )
 
     print("\n[3/8] Augmented local-global diagnostics")
@@ -1477,7 +1769,7 @@ def main() -> None:
         model_name,
         backgrounds,
         num_global_views,
-        "Local-global: Wjet",
+        f"Local-global: {signal_display_name}",
     )
 
     train_lg = train_lg_metrics["mse"]
@@ -1492,30 +1784,30 @@ def main() -> None:
 
     local_global = {
         "definition": "mean local-to-global-anchor MSE in raw latent coordinates",
-        "auc_train_vs_wjet": auc(train_lg, signal_lg),
-        "auc_validation_vs_wjet": auc(val_lg, signal_lg),
+        "auc_train_vs_signal": auc(train_lg, signal_lg),
+        "auc_validation_vs_signal": auc(val_lg, signal_lg),
         "train_background_scores": score_stats(train_lg),
         "validation_background_scores": score_stats(val_lg),
-        "wjet_scores": score_stats(signal_lg),
+        "signal_scores": score_stats(signal_lg),
     }
     local_global_cosine = {
         "definition": "mean 1-cosine-similarity from local views to the global anchor",
-        "auc_train_vs_wjet": auc(train_lg_cos, signal_lg_cos),
-        "auc_validation_vs_wjet": auc(val_lg_cos, signal_lg_cos),
+        "auc_train_vs_signal": auc(train_lg_cos, signal_lg_cos),
+        "auc_validation_vs_signal": auc(val_lg_cos, signal_lg_cos),
         "train_background_scores": score_stats(train_lg_cos),
         "validation_background_scores": score_stats(val_lg_cos),
-        "wjet_scores": score_stats(signal_lg_cos),
+        "signal_scores": score_stats(signal_lg_cos),
     }
     local_global_normalized_mse = {
         "definition": (
             "mean MSE after L2-normalizing local views and the global anchor; "
             "equal to 2*cosine_distance/latent_dim up to floating-point error"
         ),
-        "auc_train_vs_wjet": auc(train_lg_nmse, signal_lg_nmse),
-        "auc_validation_vs_wjet": auc(val_lg_nmse, signal_lg_nmse),
+        "auc_train_vs_signal": auc(train_lg_nmse, signal_lg_nmse),
+        "auc_validation_vs_signal": auc(val_lg_nmse, signal_lg_nmse),
         "train_background_scores": score_stats(train_lg_nmse),
         "validation_background_scores": score_stats(val_lg_nmse),
-        "wjet_scores": score_stats(signal_lg_nmse),
+        "signal_scores": score_stats(signal_lg_nmse),
     }
 
     augmented_latent_norms = {
@@ -1537,7 +1829,7 @@ def main() -> None:
                 "mean_all_view_norm",
             )
         },
-        "wjet": {
+        "signal": {
             key: score_stats(signal_lg_metrics[key])
             for key in (
                 "global_anchor_norm",
@@ -1551,14 +1843,14 @@ def main() -> None:
     plot_one_roc(
         train_lg,
         signal_lg,
-        "QCD+Hbb+Hcc (train)",
-        output_dir / "03_local_global_mse_train_vs_wjet.png",
+        f"{background_display_name} (train)",
+        output_dir / "03_local_global_mse_train_vs_signal.png",
     )
     plot_one_roc(
         val_lg,
         signal_lg,
-        "QCD+Hbb+Hcc (validation)",
-        output_dir / "03_local_global_mse_validation_vs_wjet.png",
+        f"{background_display_name} (validation)",
+        output_dir / "03_local_global_mse_validation_vs_signal.png",
     )
     plot_comparison(
         [("Train", train_lg, signal_lg), ("Validation", val_lg, signal_lg)],
@@ -1576,8 +1868,8 @@ def main() -> None:
     plot_one_roc(
         val_lg_cos,
         signal_lg_cos,
-        "QCD+Hbb+Hcc (validation, cosine distance)",
-        output_dir / "09_local_global_cosine_validation_vs_wjet.png",
+        f"{background_display_name} (validation, cosine distance)",
+        output_dir / "09_local_global_cosine_validation_vs_signal.png",
     )
     plot_score_distribution(
         val_lg_cos,
@@ -1590,8 +1882,8 @@ def main() -> None:
     plot_one_roc(
         val_lg_nmse,
         signal_lg_nmse,
-        "QCD+Hbb+Hcc (validation, unit-normalized MSE)",
-        output_dir / "10_local_global_normalized_mse_validation_vs_wjet.png",
+        f"{background_display_name} (validation, unit-normalized MSE)",
+        output_dir / "10_local_global_normalized_mse_validation_vs_signal.png",
     )
     plot_score_distribution(
         val_lg_nmse,
@@ -1610,17 +1902,17 @@ def main() -> None:
     )
 
     print(
-        f"Raw MSE AUC train={local_global['auc_train_vs_wjet']:.6f}, "
-        f"validation={local_global['auc_validation_vs_wjet']:.6f}"
+        f"Raw MSE AUC train={local_global['auc_train_vs_signal']:.6f}, "
+        f"validation={local_global['auc_validation_vs_signal']:.6f}"
     )
     print(
-        f"Cosine AUC train={local_global_cosine['auc_train_vs_wjet']:.6f}, "
-        f"validation={local_global_cosine['auc_validation_vs_wjet']:.6f}"
+        f"Cosine AUC train={local_global_cosine['auc_train_vs_signal']:.6f}, "
+        f"validation={local_global_cosine['auc_validation_vs_signal']:.6f}"
     )
     print(
         "Normalized-MSE AUC "
-        f"train={local_global_normalized_mse['auc_train_vs_wjet']:.6f}, "
-        f"validation={local_global_normalized_mse['auc_validation_vs_wjet']:.6f}"
+        f"train={local_global_normalized_mse['auc_train_vs_signal']:.6f}, "
+        f"validation={local_global_normalized_mse['auc_validation_vs_signal']:.6f}"
     )
     print(
         "Global-anchor norm mean/median: "
@@ -1628,7 +1920,7 @@ def main() -> None:
         f"{np.median(train_lg_metrics['global_anchor_norm']):.6f}, "
         f"val bg={val_lg_metrics['global_anchor_norm'].mean():.6f}/"
         f"{np.median(val_lg_metrics['global_anchor_norm']):.6f}, "
-        f"Wjet={signal_lg_metrics['global_anchor_norm'].mean():.6f}/"
+        f"{signal_display_name}={signal_lg_metrics['global_anchor_norm'].mean():.6f}/"
         f"{np.median(signal_lg_metrics['global_anchor_norm']):.6f}"
     )
 
@@ -1686,13 +1978,13 @@ def main() -> None:
             triplet_margin,
             triplet_use_global_positives,
             triplet_normalize,
-            "Triplet response: Wjet",
+            f"Triplet response: {signal_display_name}",
         )
 
         triplet_metric_arrays = {
             "train": train_triplet_metrics,
             "validation": val_triplet_metrics,
-            "wjet": signal_triplet_metrics,
+            "signal": signal_triplet_metrics,
         }
 
         triplet_response = {
@@ -1734,11 +2026,11 @@ def main() -> None:
 
             triplet_response["metrics"][key] = {
                 "score_used_for_auc": score_description,
-                "auc_train_vs_wjet": auc(train_score_for_auc, signal_score_for_auc),
-                "auc_validation_vs_wjet": auc(val_score_for_auc, signal_score_for_auc),
+                "auc_train_vs_signal": auc(train_score_for_auc, signal_score_for_auc),
+                "auc_validation_vs_signal": auc(val_score_for_auc, signal_score_for_auc),
                 "train_background_scores": score_stats(train_values),
                 "validation_background_scores": score_stats(val_values),
-                "wjet_scores": score_stats(signal_values),
+                "signal_scores": score_stats(signal_values),
             }
 
         triplet_margin_train = train_triplet_metrics["triplet_margin_score"]
@@ -1751,8 +2043,8 @@ def main() -> None:
         plot_one_roc(
             triplet_margin_val,
             triplet_margin_signal,
-            "QCD+Hbb+Hcc (validation, triplet margin score)",
-            output_dir / "11_triplet_margin_score_validation_vs_wjet.png",
+            f"{background_display_name} (validation, triplet margin score)",
+            output_dir / "11_triplet_margin_score_validation_vs_signal.png",
         )
         plot_score_distribution(
             triplet_margin_val,
@@ -1764,8 +2056,8 @@ def main() -> None:
         plot_one_roc(
             triplet_hinge_val,
             triplet_hinge_signal,
-            "QCD+Hbb+Hcc (validation, triplet hinge violation)",
-            output_dir / "12_triplet_hinge_violation_validation_vs_wjet.png",
+            f"{background_display_name} (validation, triplet hinge violation)",
+            output_dir / "12_triplet_hinge_violation_validation_vs_signal.png",
         )
         plot_score_distribution(
             triplet_hinge_val,
@@ -1777,13 +2069,13 @@ def main() -> None:
 
         print(
             "Triplet margin score: "
-            f"AUC train={triplet_response['metrics']['triplet_margin_score']['auc_train_vs_wjet']:.6f}, "
-            f"validation={triplet_response['metrics']['triplet_margin_score']['auc_validation_vs_wjet']:.6f}"
+            f"AUC train={triplet_response['metrics']['triplet_margin_score']['auc_train_vs_signal']:.6f}, "
+            f"validation={triplet_response['metrics']['triplet_margin_score']['auc_validation_vs_signal']:.6f}"
         )
         print(
             "Triplet hinge violation: "
-            f"AUC train={triplet_response['metrics']['triplet_hinge_violation']['auc_train_vs_wjet']:.6f}, "
-            f"validation={triplet_response['metrics']['triplet_hinge_violation']['auc_validation_vs_wjet']:.6f}"
+            f"AUC train={triplet_response['metrics']['triplet_hinge_violation']['auc_train_vs_signal']:.6f}, "
+            f"validation={triplet_response['metrics']['triplet_hinge_violation']['auc_validation_vs_signal']:.6f}"
         )
 
     print("\n[5/9] Per-class centroid and Mahalanobis diagnostic")
@@ -1816,17 +2108,17 @@ def main() -> None:
         result = centroid_info(train_z[train_mask], val_z[val_mask])
         result.update(
             {
-                "auc_fit_subset_vs_wjet": auc(class_fit_score, class_signal_score),
-                "auc_heldout_train_vs_wjet": auc(
+                "auc_fit_subset_vs_signal": auc(class_fit_score, class_signal_score),
+                "auc_heldout_train_vs_signal": auc(
                     class_heldout_score, class_signal_score
                 ),
-                "auc_validation_vs_wjet": auc(class_val_score, class_signal_score),
+                "auc_validation_vs_signal": auc(class_val_score, class_signal_score),
                 "fit_background_scores": score_stats(class_fit_score),
                 "heldout_train_background_scores": score_stats(
                     class_heldout_score
                 ),
                 "validation_background_scores": score_stats(class_val_score),
-                "wjet_scores": score_stats(class_signal_score),
+                "signal_scores": score_stats(class_signal_score),
                 "covariance": class_cov_diag,
             }
         )
@@ -1836,21 +2128,21 @@ def main() -> None:
             class_heldout_score,
             class_signal_score,
             f"{name} (held-out train)",
-            output_dir / f"03_{name.lower()}_heldout_train_vs_wjet.png",
+            output_dir / f"03_{name.lower()}_heldout_train_vs_signal.png",
         )
         plot_one_roc(
             class_val_score,
             class_signal_score,
             f"{name} (validation)",
-            output_dir / f"03_{name.lower()}_validation_vs_wjet.png",
+            output_dir / f"03_{name.lower()}_validation_vs_signal.png",
         )
         validation_curves.append(
             (f"{name} validation", class_val_score, class_signal_score)
         )
         print(
             f"{name}: centroid shift={result['train_validation_centroid_l2_distance']:.6g}, "
-            f"AUC held-out={result['auc_heldout_train_vs_wjet']:.6f}, "
-            f"validation={result['auc_validation_vs_wjet']:.6f}"
+            f"AUC held-out={result['auc_heldout_train_vs_signal']:.6f}, "
+            f"validation={result['auc_validation_vs_signal']:.6f}"
         )
 
     plot_comparison(
@@ -1905,15 +2197,15 @@ def main() -> None:
 
     multi_gaussian = {
         "num_gaussians": int(args.num_gaussians),
-        "auc_fit_subset_vs_wjet": auc(
+        "auc_fit_subset_vs_signal": auc(
             multi_fit_score,
             multi_signal_score,
         ),
-        "auc_heldout_train_vs_wjet": auc(
+        "auc_heldout_train_vs_signal": auc(
             multi_heldout_score,
             multi_signal_score,
         ),
-        "auc_validation_vs_wjet": auc(
+        "auc_validation_vs_signal": auc(
             multi_val_score,
             multi_signal_score,
         ),
@@ -1922,7 +2214,7 @@ def main() -> None:
             multi_heldout_score
         ),
         "validation_background_scores": score_stats(multi_val_score),
-        "wjet_scores": score_stats(multi_signal_score),
+        "signal_scores": score_stats(multi_signal_score),
         "nearest_component_counts": {
             "fit_background": component_counts(
                 multi_fit_nearest,
@@ -1936,7 +2228,7 @@ def main() -> None:
                 multi_val_nearest,
                 args.num_gaussians,
             ),
-            "wjet": component_counts(
+            "signal": component_counts(
                 multi_signal_nearest,
                 args.num_gaussians,
             ),
@@ -1948,19 +2240,19 @@ def main() -> None:
         multi_heldout_score,
         multi_signal_score,
         (
-            "QCD+Hbb+Hcc "
+            f"{background_display_name} "
             f"(held-out train, nearest of {args.num_gaussians} Gaussians)"
         ),
-        output_dir / "04_multi_gaussian_heldout_train_vs_wjet.png",
+        output_dir / "04_multi_gaussian_heldout_train_vs_signal.png",
     )
     plot_one_roc(
         multi_val_score,
         multi_signal_score,
         (
-            "QCD+Hbb+Hcc "
+            f"{background_display_name} "
             f"(validation, nearest of {args.num_gaussians} Gaussians)"
         ),
-        output_dir / "04_multi_gaussian_validation_vs_wjet.png",
+        output_dir / "04_multi_gaussian_validation_vs_signal.png",
     )
     plot_comparison(
         [
@@ -2000,9 +2292,9 @@ def main() -> None:
 
     print(
         f"Multi-Gaussian K={args.num_gaussians}: "
-        f"AUC fit={multi_gaussian['auc_fit_subset_vs_wjet']:.6f}, "
-        f"held-out={multi_gaussian['auc_heldout_train_vs_wjet']:.6f}, "
-        f"validation={multi_gaussian['auc_validation_vs_wjet']:.6f}"
+        f"AUC fit={multi_gaussian['auc_fit_subset_vs_signal']:.6f}, "
+        f"held-out={multi_gaussian['auc_heldout_train_vs_signal']:.6f}, "
+        f"validation={multi_gaussian['auc_validation_vs_signal']:.6f}"
     )
 
 
@@ -2044,28 +2336,28 @@ def main() -> None:
         "effective_k": int(effective_knn_k),
         "standardization": "per-dimension train-fit background z-score",
         "distance": "mean Euclidean distance to k nearest train-fit events",
-        "auc_fit_subset_vs_wjet": auc(knn_fit_score, knn_signal_score),
-        "auc_heldout_train_vs_wjet": auc(
+        "auc_fit_subset_vs_signal": auc(knn_fit_score, knn_signal_score),
+        "auc_heldout_train_vs_signal": auc(
             knn_heldout_score,
             knn_signal_score,
         ),
-        "auc_validation_vs_wjet": auc(knn_val_score, knn_signal_score),
+        "auc_validation_vs_signal": auc(knn_val_score, knn_signal_score),
         "fit_background_scores": score_stats(knn_fit_score),
         "heldout_train_background_scores": score_stats(knn_heldout_score),
         "validation_background_scores": score_stats(knn_val_score),
-        "wjet_scores": score_stats(knn_signal_score),
+        "signal_scores": score_stats(knn_signal_score),
     }
     plot_one_roc(
         knn_heldout_score,
         knn_signal_score,
-        f"QCD+Hbb+Hcc (held-out train, kNN k={effective_knn_k})",
-        output_dir / "05_knn_heldout_train_vs_wjet.png",
+        f"{background_display_name} (held-out train, kNN k={effective_knn_k})",
+        output_dir / "05_knn_heldout_train_vs_signal.png",
     )
     plot_one_roc(
         knn_val_score,
         knn_signal_score,
-        f"QCD+Hbb+Hcc (validation, kNN k={effective_knn_k})",
-        output_dir / "05_knn_validation_vs_wjet.png",
+        f"{background_display_name} (validation, kNN k={effective_knn_k})",
+        output_dir / "05_knn_validation_vs_signal.png",
     )
     plot_comparison(
         [
@@ -2077,9 +2369,9 @@ def main() -> None:
     )
     print(
         f"kNN k={effective_knn_k}: "
-        f"AUC fit={knn_diagnostic['auc_fit_subset_vs_wjet']:.6f}, "
-        f"held-out={knn_diagnostic['auc_heldout_train_vs_wjet']:.6f}, "
-        f"validation={knn_diagnostic['auc_validation_vs_wjet']:.6f}"
+        f"AUC fit={knn_diagnostic['auc_fit_subset_vs_signal']:.6f}, "
+        f"held-out={knn_diagnostic['auc_heldout_train_vs_signal']:.6f}, "
+        f"validation={knn_diagnostic['auc_validation_vs_signal']:.6f}"
     )
 
     print("\n[8/9] Class-conditional Gaussian-mixture likelihood diagnostic")
@@ -2130,15 +2422,15 @@ def main() -> None:
             "negative log likelihood under an empirical-prior mixture of "
             "one full-covariance Gaussian per background class"
         ),
-        "auc_fit_subset_vs_wjet": auc(
+        "auc_fit_subset_vs_signal": auc(
             class_mix_fit_score,
             class_mix_signal_score,
         ),
-        "auc_heldout_train_vs_wjet": auc(
+        "auc_heldout_train_vs_signal": auc(
             class_mix_heldout_score,
             class_mix_signal_score,
         ),
-        "auc_validation_vs_wjet": auc(
+        "auc_validation_vs_signal": auc(
             class_mix_val_score,
             class_mix_signal_score,
         ),
@@ -2147,20 +2439,20 @@ def main() -> None:
             class_mix_heldout_score
         ),
         "validation_background_scores": score_stats(class_mix_val_score),
-        "wjet_scores": score_stats(class_mix_signal_score),
+        "signal_scores": score_stats(class_mix_signal_score),
         "fit": class_mix_fit_diagnostics,
     }
     plot_one_roc(
         class_mix_heldout_score,
         class_mix_signal_score,
-        "QCD+Hbb+Hcc (held-out train, class-conditional mixture NLL)",
-        output_dir / "06_class_conditional_gmm_heldout_train_vs_wjet.png",
+        f"{background_display_name} (held-out train, class-conditional mixture NLL)",
+        output_dir / "06_class_conditional_gmm_heldout_train_vs_signal.png",
     )
     plot_one_roc(
         class_mix_val_score,
         class_mix_signal_score,
-        "QCD+Hbb+Hcc (validation, class-conditional mixture NLL)",
-        output_dir / "06_class_conditional_gmm_validation_vs_wjet.png",
+        f"{background_display_name} (validation, class-conditional mixture NLL)",
+        output_dir / "06_class_conditional_gmm_validation_vs_signal.png",
     )
     plot_comparison(
         [
@@ -2180,9 +2472,9 @@ def main() -> None:
     )
     print(
         "Class-conditional mixture NLL: "
-        f"AUC fit={class_conditional_mixture['auc_fit_subset_vs_wjet']:.6f}, "
-        f"held-out={class_conditional_mixture['auc_heldout_train_vs_wjet']:.6f}, "
-        f"validation={class_conditional_mixture['auc_validation_vs_wjet']:.6f}"
+        f"AUC fit={class_conditional_mixture['auc_fit_subset_vs_signal']:.6f}, "
+        f"held-out={class_conditional_mixture['auc_heldout_train_vs_signal']:.6f}, "
+        f"validation={class_conditional_mixture['auc_validation_vs_signal']:.6f}"
     )
 
     print("\n[9/9] Two-sided local-global consistency diagnostic")
@@ -2215,15 +2507,15 @@ def main() -> None:
             "train-fit background local-global score distribution"
         ),
         "reference_count": int(len(lg_reference)),
-        "auc_fit_subset_vs_wjet": auc(
+        "auc_fit_subset_vs_signal": auc(
             lg_two_fit_score,
             lg_two_signal_score,
         ),
-        "auc_heldout_train_vs_wjet": auc(
+        "auc_heldout_train_vs_signal": auc(
             lg_two_heldout_score,
             lg_two_signal_score,
         ),
-        "auc_validation_vs_wjet": auc(
+        "auc_validation_vs_signal": auc(
             lg_two_val_score,
             lg_two_signal_score,
         ),
@@ -2232,19 +2524,19 @@ def main() -> None:
             lg_two_heldout_score
         ),
         "validation_background_scores": score_stats(lg_two_val_score),
-        "wjet_scores": score_stats(lg_two_signal_score),
+        "signal_scores": score_stats(lg_two_signal_score),
     }
     plot_one_roc(
         lg_two_heldout_score,
         lg_two_signal_score,
-        "QCD+Hbb+Hcc (held-out train, two-sided local-global)",
-        output_dir / "07_two_sided_local_global_heldout_train_vs_wjet.png",
+        f"{background_display_name} (held-out train, two-sided local-global)",
+        output_dir / "07_two_sided_local_global_heldout_train_vs_signal.png",
     )
     plot_one_roc(
         lg_two_val_score,
         lg_two_signal_score,
-        "QCD+Hbb+Hcc (validation, two-sided local-global)",
-        output_dir / "07_two_sided_local_global_validation_vs_wjet.png",
+        f"{background_display_name} (validation, two-sided local-global)",
+        output_dir / "07_two_sided_local_global_validation_vs_signal.png",
     )
     plot_comparison(
         [
@@ -2285,12 +2577,12 @@ def main() -> None:
                 (
                     "Triplet margin score",
                     triplet_metric_arrays["validation"]["triplet_margin_score"],
-                    triplet_metric_arrays["wjet"]["triplet_margin_score"],
+                    triplet_metric_arrays["signal"]["triplet_margin_score"],
                 ),
                 (
                     "Triplet hinge violation",
                     triplet_metric_arrays["validation"]["triplet_hinge_violation"],
-                    triplet_metric_arrays["wjet"]["triplet_hinge_violation"],
+                    triplet_metric_arrays["signal"]["triplet_hinge_violation"],
                 ),
             ]
         )
@@ -2301,9 +2593,9 @@ def main() -> None:
     )
     print(
         "Two-sided local-global: "
-        f"AUC fit={two_sided_local_global['auc_fit_subset_vs_wjet']:.6f}, "
-        f"held-out={two_sided_local_global['auc_heldout_train_vs_wjet']:.6f}, "
-        f"validation={two_sided_local_global['auc_validation_vs_wjet']:.6f}"
+        f"AUC fit={two_sided_local_global['auc_fit_subset_vs_signal']:.6f}, "
+        f"held-out={two_sided_local_global['auc_heldout_train_vs_signal']:.6f}, "
+        f"validation={two_sided_local_global['auc_validation_vs_signal']:.6f}"
     )
 
     results = {
@@ -2351,49 +2643,49 @@ def main() -> None:
         combined_fit_background=fit_score,
         combined_heldout_train_background=heldout_score,
         combined_validation_background=val_score,
-        combined_wjet=signal_score,
+        combined_signal=signal_score,
         full_latent_norm_train_background=train_full_norm,
         full_latent_norm_validation_background=val_full_norm,
-        full_latent_norm_wjet=signal_full_norm,
+        full_latent_norm_signal=signal_full_norm,
         local_global_train_background=train_lg,
         local_global_validation_background=val_lg,
-        local_global_wjet=signal_lg,
+        local_global_signal=signal_lg,
         local_global_cosine_train_background=train_lg_cos,
         local_global_cosine_validation_background=val_lg_cos,
-        local_global_cosine_wjet=signal_lg_cos,
+        local_global_cosine_signal=signal_lg_cos,
         local_global_normalized_mse_train_background=train_lg_nmse,
         local_global_normalized_mse_validation_background=val_lg_nmse,
-        local_global_normalized_mse_wjet=signal_lg_nmse,
+        local_global_normalized_mse_signal=signal_lg_nmse,
         augmented_global_anchor_norm_train_background=train_lg_metrics["global_anchor_norm"],
         augmented_global_anchor_norm_validation_background=val_lg_metrics["global_anchor_norm"],
-        augmented_global_anchor_norm_wjet=signal_lg_metrics["global_anchor_norm"],
+        augmented_global_anchor_norm_signal=signal_lg_metrics["global_anchor_norm"],
         augmented_mean_local_view_norm_train_background=train_lg_metrics["mean_local_view_norm"],
         augmented_mean_local_view_norm_validation_background=val_lg_metrics["mean_local_view_norm"],
-        augmented_mean_local_view_norm_wjet=signal_lg_metrics["mean_local_view_norm"],
+        augmented_mean_local_view_norm_signal=signal_lg_metrics["mean_local_view_norm"],
         multi_gaussian_fit_background=multi_fit_score,
         multi_gaussian_heldout_train_background=multi_heldout_score,
         multi_gaussian_validation_background=multi_val_score,
-        multi_gaussian_wjet=multi_signal_score,
+        multi_gaussian_signal=multi_signal_score,
         multi_gaussian_fit_nearest_component=multi_fit_nearest,
         multi_gaussian_heldout_nearest_component=multi_heldout_nearest,
         multi_gaussian_validation_nearest_component=multi_val_nearest,
-        multi_gaussian_wjet_nearest_component=multi_signal_nearest,
+        multi_gaussian_signal_nearest_component=multi_signal_nearest,
         knn_fit_background=knn_fit_score,
         knn_heldout_train_background=knn_heldout_score,
         knn_validation_background=knn_val_score,
-        knn_wjet=knn_signal_score,
+        knn_signal=knn_signal_score,
         class_conditional_gmm_fit_background=class_mix_fit_score,
         class_conditional_gmm_heldout_train_background=class_mix_heldout_score,
         class_conditional_gmm_validation_background=class_mix_val_score,
-        class_conditional_gmm_wjet=class_mix_signal_score,
+        class_conditional_gmm_signal=class_mix_signal_score,
         two_sided_local_global_fit_background=lg_two_fit_score,
         two_sided_local_global_heldout_train_background=lg_two_heldout_score,
         two_sided_local_global_validation_background=lg_two_val_score,
-        two_sided_local_global_wjet=lg_two_signal_score,
+        two_sided_local_global_signal=lg_two_signal_score,
         two_sided_local_global_fit_pvalue=lg_two_fit_p,
         two_sided_local_global_heldout_pvalue=lg_two_heldout_p,
         two_sided_local_global_validation_pvalue=lg_two_val_p,
-        two_sided_local_global_wjet_pvalue=lg_two_signal_p,
+        two_sided_local_global_signal_pvalue=lg_two_signal_p,
     )
     if triplet_response is not None:
         np.savez_compressed(
