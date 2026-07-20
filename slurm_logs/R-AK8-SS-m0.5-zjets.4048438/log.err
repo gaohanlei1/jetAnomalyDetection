@@ -1,0 +1,51 @@
+Train Epoch 1/12:   0%|          | 0/1000 [00:00<?, ?it/s]/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/awkward/_connect/_numpy.py:197: RuntimeWarning: invalid value encountered in divide
+  result = getattr(ufunc, method)(
+/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/awkward/_connect/_numpy.py:197: RuntimeWarning: invalid value encountered in divide
+  result = getattr(ufunc, method)(
+/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/awkward/_connect/_numpy.py:197: RuntimeWarning: divide by zero encountered in divide
+  result = getattr(ufunc, method)(
+Traceback (most recent call last):
+  File "/oscar/home/hgao50/jetAnomalyDetection/scripts/run_train_lejepa_part.py", line 3488, in <module>
+    trainer.train()
+  File "/oscar/home/hgao50/jetAnomalyDetection/scripts/run_train_lejepa_part.py", line 2627, in train
+    output = self._forward_pretrain_batch(
+  File "/oscar/home/hgao50/jetAnomalyDetection/scripts/run_train_lejepa_part.py", line 1274, in _forward_pretrain_batch
+    return self.model.forward_pretrain(
+  File "/oscar/home/hgao50/jetAnomalyDetection/models/part.py", line 3606, in forward_pretrain
+    views, view_padding_masks, view_types = self.augmentation(
+  File "/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/oscar/home/hgao50/jetAnomalyDetection/models/part.py", line 1367, in forward
+    view_x, view_mask = self._drop_nodes(
+  File "/oscar/home/hgao50/jetAnomalyDetection/models/part.py", line 1287, in _drop_nodes
+    pt = pt.masked_fill(~valid_mask, 0.0)
+RuntimeError: CUDA error: an illegal memory access was encountered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1.
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+Train Epoch 1/12:   0%|          | 0/1000 [00:16<?, ?it/s]
+terminate called after throwing an instance of 'c10::Error'
+  what():  CUDA error: an illegal memory access was encountered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1.
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+Exception raised from c10_cuda_check_implementation at ../c10/cuda/CUDAException.cpp:44 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::string) + 0x57 (0x7f937b750d87 in /oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/torch/lib/libc10.so)
+frame #1: c10::detail::torchCheckFail(char const*, char const*, unsigned int, std::string const&) + 0x64 (0x7f937b70175f in /oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/torch/lib/libc10.so)
+frame #2: c10::cuda::c10_cuda_check_implementation(int, char const*, char const*, int, bool) + 0x118 (0x7f937b8218a8 in /oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/torch/lib/libc10_cuda.so)
+frame #3: <unknown function> + 0xf79166 (0x7f937c7d5166 in /oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/torch/lib/libtorch_cuda.so)
+frame #4: <unknown function> + 0x540090 (0x7f93c9525090 in /oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/torch/lib/libtorch_python.so)
+frame #5: <unknown function> + 0x649bf (0x7f937b7359bf in /oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/torch/lib/libc10.so)
+frame #6: c10::TensorImpl::~TensorImpl() + 0x21b (0x7f937b72ec8b in /oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/torch/lib/libc10.so)
+frame #7: c10::TensorImpl::~TensorImpl() + 0x9 (0x7f937b72ee39 in /oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/torch/lib/libc10.so)
+frame #8: <unknown function> + 0x802068 (0x7f93c97e7068 in /oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/torch/lib/libtorch_python.so)
+frame #9: THPVariable_subclass_dealloc(_object*) + 0x2f6 (0x7f93c97e73e6 in /oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/torch/lib/libtorch_python.so)
+<omitting python frames>
+frame #20: <unknown function> + 0x2a610 (0x7f93f1681610 in /lib64/libc.so.6)
+frame #21: __libc_start_main + 0x80 (0x7f93f16816c0 in /lib64/libc.so.6)
+
+/var/spool/slurmd/job4048438/slurm_script: line 210: 2181010 Aborted                 (core dumped) python -u scripts/run_train_lejepa_part.py --background-dirs "${BG_DIRS_CSV}" --background-names "${BG_NAMES_CSV}" --signal "${SG_DIR}" --signal-name "${DISPLAY_NAME[${SIGNAL}]}" --lowerpt "${LOWERPT}" --upperpt "${UPPERPT}" --stream --steps-per-epoch "${STEPS_PER_EPOCH}" --val-steps "${VAL_STEPS}" --eval-steps "${EVAL_STEPS}" --shuffle-active-shards 4 --model "semi-sup-triplet" --anomaly-score "mahalanobis" --no-normalize-features --embed-dim 128 --representation-dim 128 --num-layers 8 --num-heads 8 --batch-size 128 --epochs "${EPOCHS}" --roc-eval-every "${ROC_EVAL_EVERY}" --learning-rate 1e-3 --weight-decay 5e-2 --precision bf16 --num-global-views 2 --num-local-views 3 --global-drop-pt-frac-min 0.0 --global-drop-pt-frac-max 0.30 --local-drop-pt-frac-min 0.30 --local-drop-pt-frac-max 0.75 --pairwise-hidden-dim 16 --triplet-weight 0.1 --triplet-margin "${MARGIN}" --classification-weight 0.05 --num-negative-views 4 --batch-mix-prob 0.45 --pt-resample-prob 0.25 --node-eta-phi-rotation-prob 0.20 --eta-phi-shuffle-prob 0.05 --identity-shuffle-prob 0.05 --num-augmentation-plot-samples 0 --num-workers 2 --output-dir "${OUTPUT_DIR}"

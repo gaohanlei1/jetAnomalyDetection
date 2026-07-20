@@ -1,0 +1,56 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 4110771
+##  Job Name : AK8-DIAG-m1.0-wjets
+##  Nodelist : gpu2708
+##      CPUs : 1
+##  Mem/Node : 90000 MB
+## Directory : /oscar/home/hgao50/jetAnomalyDetection
+##   Job Started : Sun Jul 19 07:09:23 PM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Sun Jul 19 07:09:23 PM EDT 2026
+Job ID: 4110771
+Node: gpu2708
+RUN_DIR=plots/run-lejepa-ak8-semisup-m1.0-wjets
+==========================================
+
+GPU Information (from host):
+Sun Jul 19 19:09:23 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:21:00.0 Off |                    0 |
+| N/A   31C    P8             33W /  350W |      76MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          157414      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch 2.2.1+cu118, cuda=True, device=NVIDIA L40S
+Loading /oscar/home/hgao50/jetAnomalyDetection/plots/run-lejepa-ak8-semisup-m1.0-wjets/best_model.pth on cuda:0
+Backgrounds: ['QCD', 'ZJets', 'TTbar', 'Hbb']
+Signal: WJets
+Sampling 100 x 128 events per split
+Combined AUC fit=0.527909, held-out=0.500351, validation=0.510569
+
+Per-class Mahalanobis diagnostic
+QCD: AUC held-out=0.649610, validation=0.653858
+ZJets: AUC held-out=0.496716, validation=0.497138
+TTbar: AUC held-out=0.646783, validation=0.660295
+Hbb: AUC held-out=0.717691, validation=0.707749
+
+Wrote /oscar/home/hgao50/jetAnomalyDetection/plots/run-lejepa-ak8-semisup-m1.0-wjets/latent_diagnostics/diagnostic_results.json
+
+Finished at: Sun Jul 19 07:10:12 PM EDT 2026
+Results: plots/run-lejepa-ak8-semisup-m1.0-wjets/latent_diagnostics/

@@ -1,0 +1,23 @@
+Train background latents:   0%|          | 0/100 [00:00<?, ?it/s]/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/awkward/_connect/_numpy.py:197: RuntimeWarning: divide by zero encountered in divide
+  result = getattr(ufunc, method)(
+/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/awkward/_connect/_numpy.py:197: RuntimeWarning: invalid value encountered in divide
+  result = getattr(ufunc, method)(
+/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/awkward/_connect/_numpy.py:197: RuntimeWarning: invalid value encountered in divide
+  result = getattr(ufunc, method)(
+/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/awkward/_connect/_numpy.py:197: RuntimeWarning: divide by zero encountered in divide
+  result = getattr(ufunc, method)(
+/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/torch/nn/functional.py:5109: UserWarning: Support for mismatched key_padding_mask and attn_mask is deprecated. Use same type for both instead.
+  warnings.warn(
+Train background latents:   1%|          | 1/100 [00:08<14:36,  8.85s/it]Train background latents:   2%|▏         | 2/100 [00:09<06:56,  4.25s/it]Train background latents:  15%|█▌        | 15/100 [00:09<00:30,  2.75it/s]Train background latents:  28%|██▊       | 28/100 [00:10<00:11,  6.15it/s]Train background latents:  40%|████      | 40/100 [00:10<00:05, 10.35it/s]Train background latents:  52%|█████▏    | 52/100 [00:10<00:03, 15.84it/s]Train background latents:  65%|██████▌   | 65/100 [00:10<00:01, 23.33it/s]Train background latents:  77%|███████▋  | 77/100 [00:10<00:00, 31.69it/s]Train background latents:  89%|████████▉ | 89/100 [00:10<00:00, 41.41it/s]Train background latents: 100%|██████████| 100/100 [00:10<00:00,  9.34it/s]
+Val background latents:   0%|          | 0/100 [00:00<?, ?it/s]/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/awkward/_connect/_numpy.py:197: RuntimeWarning: invalid value encountered in divide
+  result = getattr(ufunc, method)(
+/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/awkward/_connect/_numpy.py:197: RuntimeWarning: invalid value encountered in divide
+  result = getattr(ufunc, method)(
+/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/awkward/_connect/_numpy.py:197: RuntimeWarning: divide by zero encountered in divide
+  result = getattr(ufunc, method)(
+Val background latents:   1%|          | 1/100 [00:09<15:10,  9.20s/it]Val background latents:   2%|▏         | 2/100 [00:10<07:23,  4.53s/it]Val background latents:  14%|█▍        | 14/100 [00:10<00:35,  2.40it/s]Val background latents:  26%|██▌       | 26/100 [00:10<00:13,  5.37it/s]Val background latents:  38%|███▊      | 38/100 [00:10<00:06,  9.37it/s]Val background latents:  51%|█████     | 51/100 [00:10<00:03, 15.05it/s]Val background latents:  62%|██████▏   | 62/100 [00:11<00:02, 16.32it/s]Val background latents:  75%|███████▌  | 75/100 [00:11<00:01, 23.68it/s]Val background latents:  88%|████████▊ | 88/100 [00:11<00:00, 32.64it/s]Val background latents: 100%|██████████| 100/100 [00:11<00:00, 41.98it/s]Val background latents: 100%|██████████| 100/100 [00:11<00:00,  8.51it/s]
+Signal latents:   0%|          | 0/100 [00:00<?, ?it/s]/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/awkward/_connect/_numpy.py:197: RuntimeWarning: invalid value encountered in divide
+  result = getattr(ufunc, method)(
+/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/awkward/_connect/_numpy.py:197: RuntimeWarning: divide by zero encountered in divide
+  result = getattr(ufunc, method)(
+Signal latents:   1%|          | 1/100 [00:04<08:13,  4.99s/it]Signal latents:  12%|█▏        | 12/100 [00:05<00:27,  3.26it/s]Signal latents:  24%|██▍       | 24/100 [00:05<00:09,  7.71it/s]Signal latents:  36%|███▌      | 36/100 [00:05<00:04, 13.49it/s]Signal latents:  48%|████▊     | 48/100 [00:05<00:02, 20.72it/s]Signal latents:  60%|██████    | 60/100 [00:05<00:01, 29.49it/s]Signal latents:  72%|███████▏  | 72/100 [00:05<00:00, 39.47it/s]Signal latents:  84%|████████▍ | 84/100 [00:05<00:00, 50.23it/s]Signal latents:  96%|█████████▌| 96/100 [00:05<00:00, 60.98it/s]Signal latents: 100%|██████████| 100/100 [00:05<00:00, 17.07it/s]

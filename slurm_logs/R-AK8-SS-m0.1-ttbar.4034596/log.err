@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/oscar/home/hgao50/jetAnomalyDetection/scripts/run_train_lejepa_part.py", line 3481, in <module>
+    trainer.train()
+  File "/oscar/home/hgao50/jetAnomalyDetection/scripts/run_train_lejepa_part.py", line 2517, in train
+    warmup_steps = self.args.warmup_epochs * max(1, len(train_loader))
+  File "/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/torch/utils/data/dataloader.py", line 475, in __len__
+    length = self._IterableDataset_len_called = len(self.dataset)  # type: ignore[assignment, arg-type]
+TypeError: object of type 'CMSIterableDataset' has no len()

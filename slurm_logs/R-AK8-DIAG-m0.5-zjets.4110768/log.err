@@ -1,0 +1,21 @@
+Train background latents:   0%|          | 0/100 [00:00<?, ?it/s]/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/awkward/_connect/_numpy.py:197: RuntimeWarning: divide by zero encountered in divide
+  result = getattr(ufunc, method)(
+/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/awkward/_connect/_numpy.py:197: RuntimeWarning: invalid value encountered in divide
+  result = getattr(ufunc, method)(
+/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/awkward/_connect/_numpy.py:197: RuntimeWarning: invalid value encountered in divide
+  result = getattr(ufunc, method)(
+/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/torch/nn/functional.py:5109: UserWarning: Support for mismatched key_padding_mask and attn_mask is deprecated. Use same type for both instead.
+  warnings.warn(
+Train background latents:   1%|          | 1/100 [00:06<10:43,  6.50s/it]Train background latents:   2%|▏         | 2/100 [00:06<04:46,  2.92s/it]Train background latents:  14%|█▍        | 14/100 [00:07<00:23,  3.69it/s]Train background latents:  26%|██▌       | 26/100 [00:07<00:09,  8.15it/s]Train background latents:  38%|███▊      | 38/100 [00:07<00:04, 13.94it/s]Train background latents:  50%|█████     | 50/100 [00:07<00:02, 21.21it/s]Train background latents:  62%|██████▏   | 62/100 [00:07<00:01, 30.04it/s]Train background latents:  75%|███████▌  | 75/100 [00:07<00:00, 40.99it/s]Train background latents:  88%|████████▊ | 88/100 [00:07<00:00, 52.96it/s]Train background latents: 100%|██████████| 100/100 [00:07<00:00, 12.93it/s]
+Val background latents:   0%|          | 0/100 [00:00<?, ?it/s]/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/awkward/_connect/_numpy.py:197: RuntimeWarning: invalid value encountered in divide
+  result = getattr(ufunc, method)(
+/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/awkward/_connect/_numpy.py:197: RuntimeWarning: invalid value encountered in divide
+  result = getattr(ufunc, method)(
+/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/awkward/_connect/_numpy.py:197: RuntimeWarning: divide by zero encountered in divide
+  result = getattr(ufunc, method)(
+Val background latents:   1%|          | 1/100 [00:07<12:07,  7.35s/it]Val background latents:  13%|█▎        | 13/100 [00:07<00:35,  2.42it/s]Val background latents:  24%|██▍       | 24/100 [00:07<00:14,  5.27it/s]Val background latents:  36%|███▌      | 36/100 [00:07<00:06,  9.44it/s]Val background latents:  48%|████▊     | 48/100 [00:07<00:03, 14.91it/s]Val background latents:  59%|█████▉    | 59/100 [00:08<00:02, 17.66it/s]Val background latents:  71%|███████   | 71/100 [00:08<00:01, 25.08it/s]Val background latents:  84%|████████▍ | 84/100 [00:08<00:00, 34.70it/s]Val background latents:  96%|█████████▌| 96/100 [00:08<00:00, 44.67it/s]Val background latents: 100%|██████████| 100/100 [00:08<00:00, 11.76it/s]
+Signal latents:   0%|          | 0/100 [00:00<?, ?it/s]/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/awkward/_connect/_numpy.py:197: RuntimeWarning: invalid value encountered in divide
+  result = getattr(ufunc, method)(
+/oscar/home/hgao50/jetAnomalyDetection/.venv/lib64/python3.9/site-packages/awkward/_connect/_numpy.py:197: RuntimeWarning: invalid value encountered in divide
+  result = getattr(ufunc, method)(
+Signal latents:   1%|          | 1/100 [00:08<13:32,  8.20s/it]Signal latents:   2%|▏         | 2/100 [00:09<06:58,  4.27s/it]Signal latents:  15%|█▌        | 15/100 [00:09<00:31,  2.74it/s]Signal latents:  28%|██▊       | 28/100 [00:09<00:11,  6.14it/s]Signal latents:  41%|████      | 41/100 [00:10<00:05, 10.69it/s]Signal latents:  54%|█████▍    | 54/100 [00:10<00:02, 16.62it/s]Signal latents:  67%|██████▋   | 67/100 [00:10<00:01, 24.06it/s]Signal latents:  80%|████████  | 80/100 [00:10<00:00, 33.12it/s]Signal latents:  93%|█████████▎| 93/100 [00:10<00:00, 43.57it/s]Signal latents: 100%|██████████| 100/100 [00:10<00:00,  9.52it/s]

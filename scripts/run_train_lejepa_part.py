@@ -53,22 +53,29 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.optim.lr_scheduler import LambdaLR
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, IterableDataset
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score
 from visualize.plot_metrics import plot_anomaly_score, plot_roc_curve
 
 from helpers import helpers_main
-from dataloader import particles_to_node_tensors, read_files
+from helpers.cms_streaming import (
+    CMSIterableDataset,
+    discover_cms_files_by_class,
+    split_files_train_val,
+)
+from dataloader import collect_root_files, particles_to_node_tensors, read_files
 from models.part import (
     CorruptedNegativeAugmentationConfig,
     LeJEPALossConfig,
     LeJEPAParticleTransformerRepresentation,
     LeJEPATripletParticleTransformerRepresentation,
     LeJEPAMahalanobisParticleTransformerRepresentation,
+    LeJEPASemiSupervisedTripletParticleTransformerRepresentation,
     MahalanobisNegativeLossConfig,
     ParticleTransformerConfig,
     MultiViewAugmentationConfig,
+    SemiSupervisedLossConfig,
     TripletLossConfig,
 )
 from torch.profiler import (
@@ -98,6 +105,13 @@ def parse_node_features(feature_string: str) -> List[str]:
     if len(features) == 0:
         raise ValueError("At least one node feature must be provided.")
     return features
+
+
+def parse_csv_list(value: Optional[str]) -> List[str]:
+    """Parse a comma-separated list of non-empty strings."""
+    if value is None:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
 
 
 def row_to_node_tensor(
@@ -344,6 +358,9 @@ class TrainLeJEPAParticleTransformer:
         mahalanobis:
             LeJEPA + SIGReg + corrupted-negative Mahalanobis objective
             with EMA normal-distribution statistics
+
+        semi-sup-triplet:
+            LeJEPA + SIGReg + triplet + multiclass CE over background classes
     """
 
     TRAIN_SPLIT = 0.8
@@ -380,15 +397,55 @@ class TrainLeJEPAParticleTransformer:
                 "sigreg_loss",
             ]
 
+        elif self.model_name == "semi-sup-triplet":
+            self.ssl_metric_keys = [
+                "total_loss",
+                "invariant_loss",
+                "sigreg_loss",
+                "triplet_loss",
+                "triplet_pos_distance",
+                "triplet_neg_distance",
+                "classification_loss",
+            ]
+
         else:
             raise ValueError(
                 f"Unsupported model {self.model_name!r}."
             )
 
-        self.bg_file = self.args.background
+        self.background_dirs = parse_csv_list(self.args.background_dirs)
+        self.background_names = parse_csv_list(self.args.background_names)
+        if self.background_dirs:
+            if not self.background_names:
+                self.background_names = [
+                    helpers_main.trim_name(path)
+                    for path in self.background_dirs
+                ]
+            if len(self.background_names) != len(self.background_dirs):
+                raise ValueError(
+                    "--background-names must have the same length as --background-dirs."
+                )
+            self.bg_file = ",".join(self.background_dirs)
+            self.bg_name = "+".join(self.background_names)
+        else:
+            self.bg_file = self.args.background
+            self.bg_name = helpers_main.trim_name(self.bg_file)
+            self.background_dirs = [self.bg_file]
+            self.background_names = [self.bg_name]
+
         self.sg_file = self.args.signal
-        self.bg_name = helpers_main.trim_name(self.bg_file)
-        self.sg_name = helpers_main.trim_name(self.sg_file)
+        self.sg_name = (
+            self.args.signal_name
+            if self.args.signal_name
+            else helpers_main.trim_name(self.sg_file)
+        )
+        self.background_display_name = "+".join(self.background_names)
+        self.signal_display_name = self.sg_name
+        self.num_background_classes = len(self.background_dirs)
+        self.use_stream = bool(getattr(self.args, "stream", False))
+        if self.use_stream and self.model_name == "semi-sup-triplet" and self.num_background_classes < 2:
+            raise ValueError("Streaming semi-sup-triplet needs >=2 --background-dirs.")
+
 
         self.node_feature_names = parse_node_features(self.args.node_features)
         self.pt_index = self.node_feature_names.index("pt")
@@ -424,27 +481,137 @@ class TrainLeJEPAParticleTransformer:
                     return True
         return False
 
+
+    def _setup_streaming_datasets(self) -> None:
+        """Discover ROOT shards and build infinite/finite CMS iterable datasets."""
+        print("Streaming mode: discovering ROOT shards (no full in-memory load).")
+        files_by_class = discover_cms_files_by_class(self.background_dirs)
+        for class_id, files in files_by_class.items():
+            name = (
+                self.background_names[class_id]
+                if class_id < len(self.background_names)
+                else str(class_id)
+            )
+            print(f"  class {class_id} ({name}): {len(files)} ROOT files")
+
+        train_files, val_files = split_files_train_val(
+            files_by_class,
+            val_fraction=self.args.stream_val_fraction,
+            seed=self.args.seed,
+        )
+        for class_id in sorted(train_files):
+            name = (
+                self.background_names[class_id]
+                if class_id < len(self.background_names)
+                else str(class_id)
+            )
+            print(
+                f"  split {name}: train_files={len(train_files[class_id])} "
+                f"val_files={len(val_files[class_id])}"
+            )
+
+        common = dict(
+            particle_features=self.node_feature_names,
+            max_num_particles=self.args.max_num_particles,
+            min_nodes=self.args.min_nodes,
+            lowerpt=self.args.lowerpt,
+            upperpt=self.args.upperpt,
+            num_classes=self.num_background_classes,
+            seed=self.args.seed,
+            shuffle_active_shards=self.args.shuffle_active_shards,
+        )
+        self.bg_train_dataset = CMSIterableDataset(
+            files_by_class=train_files,
+            shuffle_files=True,
+            infinite=True,
+            max_events=None,
+            **common,
+        )
+        self.bg_val_dataset = CMSIterableDataset(
+            files_by_class=val_files,
+            shuffle_files=True,
+            infinite=True,
+            max_events=None,
+            **common,
+        )
+
+        signal_files = {
+            0: collect_root_files(self.sg_file),
+        }
+        if not signal_files[0]:
+            raise FileNotFoundError(f"No signal ROOT files in {self.sg_file}")
+        print(f"  signal ({self.signal_display_name}): {len(signal_files[0])} ROOT files")
+        self.sg_dataset = CMSIterableDataset(
+            files_by_class=signal_files,
+            particle_features=self.node_feature_names,
+            max_num_particles=self.args.max_num_particles,
+            min_nodes=self.args.min_nodes,
+            lowerpt=self.args.lowerpt,
+            upperpt=self.args.upperpt,
+            num_classes=1,
+            max_events=None,
+            shuffle_files=True,
+            infinite=True,
+            seed=self.args.seed,
+            shuffle_active_shards=1,
+        )
+        # Placeholders for summary / legacy plot paths.
+        self.bg_train_nodes = []
+        self.bg_val_nodes = []
+        self.sg_nodes = []
+        self.feature_mean = None
+        self.feature_std = None
+        self.data_source = "root-stream"
+        print(
+            f"Streaming configured: steps_per_epoch={self.args.steps_per_epoch}, "
+            f"val_steps={self.args.val_steps}, eval_steps={self.args.eval_steps}"
+        )
+
     def load(self) -> None:
+
         """
         Load background and signal once per run.
 
         Supports:
         - DeepNTuplizer ROOT file / directory via JetClass-style ``read_file``
+        - Multiple background ROOT dirs for ``semi-sup-triplet``
         - Legacy processed ``.pkl`` DataFrames
         """
+
+        if self.use_stream:
+            print(f"Streaming backgrounds from {self.bg_file}")
+            print(f"Streaming signal from {self.sg_file}")
+            print(f"Node feature names: {self.node_feature_names}")
+            self._setup_streaming_datasets()
+            return
 
         print(f"Loading background from {self.bg_file}")
         print(f"Loading signal from {self.sg_file}")
         print(f"Node feature names: {self.node_feature_names}")
+        if self.model_name == "semi-sup-triplet":
+            print(
+                "Background classes: "
+                + ", ".join(
+                    f"{name}@{path}"
+                    for name, path in zip(
+                        self.background_names,
+                        self.background_dirs,
+                    )
+                )
+            )
 
         self.bg_data = None
         self.sg_data = None
         self.bg_x_particles = None
         self.sg_x_particles = None
+        self.bg_class_labels: Optional[np.ndarray] = None
         self.data_source = "pickle"
 
-        if self._is_root_source(self.bg_file) or self._is_root_source(self.sg_file):
-            if not (self._is_root_source(self.bg_file) and self._is_root_source(self.sg_file)):
+        multi_root = all(
+            self._is_root_source(path) for path in self.background_dirs
+        )
+        if multi_root or self._is_root_source(self.sg_file):
+            if not (multi_root and self._is_root_source(self.sg_file)):
                 raise ValueError(
                     "Background and signal must both be ROOT sources (file or directory) "
                     "or both be .pkl files."
@@ -456,17 +623,43 @@ class TrainLeJEPAParticleTransformer:
                 + (f", pt <= {self.args.upperpt}" if self.args.upperpt is not None else "")
                 + f", max_num_particles={self.args.max_num_particles})"
             )
-            self.bg_x_particles, self.bg_x_jets, self.bg_y = read_files(
-                self.bg_file,
-                max_num_particles=self.args.max_num_particles,
-                particle_features=self.node_feature_names,
-                lowerpt=self.args.lowerpt,
-                upperpt=self.args.upperpt,
-                class_index=self.args.background_class_index,
-                num_classes=self.args.num_classes,
-                max_files=self.args.max_root_files,
-                max_jets=self.args.max_background_events,
-            )
+
+            max_per_class = self.args.max_events_per_class
+            if max_per_class is None and len(self.background_dirs) == 1:
+                max_per_class = self.args.max_background_events
+
+            bg_parts = []
+            bg_jets = []
+            bg_labels = []
+            for class_index, bg_path in enumerate(self.background_dirs):
+                x_p, x_j, _ = read_files(
+                    bg_path,
+                    max_num_particles=self.args.max_num_particles,
+                    particle_features=self.node_feature_names,
+                    lowerpt=self.args.lowerpt,
+                    upperpt=self.args.upperpt,
+                    class_index=class_index,
+                    num_classes=max(
+                        self.num_background_classes,
+                        self.args.num_classes,
+                    ),
+                    max_files=self.args.max_root_files,
+                    max_jets=max_per_class,
+                )
+                print(
+                    f"  [{self.background_names[class_index]}] jets: "
+                    f"{x_p.shape[0]}  x_particles={tuple(x_p.shape)}"
+                )
+                bg_parts.append(x_p)
+                bg_jets.append(x_j)
+                bg_labels.append(
+                    np.full((x_p.shape[0],), class_index, dtype=np.int64)
+                )
+
+            self.bg_x_particles = np.concatenate(bg_parts, axis=0)
+            self.bg_x_jets = np.concatenate(bg_jets, axis=0)
+            self.bg_class_labels = np.concatenate(bg_labels, axis=0)
+
             self.sg_x_particles, self.sg_x_jets, self.sg_y = read_files(
                 self.sg_file,
                 max_num_particles=self.args.max_num_particles,
@@ -474,12 +667,15 @@ class TrainLeJEPAParticleTransformer:
                 lowerpt=self.args.lowerpt,
                 upperpt=self.args.upperpt,
                 class_index=self.args.signal_class_index,
-                num_classes=self.args.num_classes,
+                num_classes=max(
+                    self.num_background_classes,
+                    self.args.num_classes,
+                ),
                 max_files=self.args.max_root_files,
                 max_jets=self.args.max_signal_events,
             )
             print(
-                f"Background jets: {self.bg_x_particles.shape[0]}  "
+                f"Background jets (all classes): {self.bg_x_particles.shape[0]}  "
                 f"x_particles={tuple(self.bg_x_particles.shape)}"
             )
             print(
@@ -487,6 +683,10 @@ class TrainLeJEPAParticleTransformer:
                 f"x_particles={tuple(self.sg_x_particles.shape)}"
             )
         else:
+            if len(self.background_dirs) != 1:
+                raise ValueError(
+                    "Multi-directory background loading is only supported for ROOT sources."
+                )
             self.bg_data = pd.read_pickle(self.bg_file)
             self.sg_data = pd.read_pickle(self.sg_file)
 
@@ -507,6 +707,10 @@ class TrainLeJEPAParticleTransformer:
         Called once per training run (after ``load``).
         """
 
+        if self.use_stream:
+            print("Streaming datasets already prepared in load(); skipping RAM materialization.")
+            return
+
         print("Loading background node tensors...")
         if self.data_source == "root":
             pt_index = (
@@ -514,12 +718,34 @@ class TrainLeJEPAParticleTransformer:
                 if "pt" in self.node_feature_names
                 else 0
             )
-            bg_nodes, bg_labels = particles_to_node_tensors(
-                self.bg_x_particles,
-                min_nodes=self.args.min_nodes,
-                pt_feature_index=pt_index,
-                label=0,
+            bg_nodes: List[torch.Tensor] = []
+            bg_labels: List[int] = []
+            # Preserve class ids assigned during load() for multiclass CE.
+            class_labels = (
+                self.bg_class_labels
+                if self.bg_class_labels is not None
+                else np.zeros(
+                    self.bg_x_particles.shape[0],
+                    dtype=np.int64,
+                )
             )
+            for class_index in range(int(class_labels.max()) + 1):
+                mask = class_labels == class_index
+                if not np.any(mask):
+                    continue
+                nodes_i, labels_i = particles_to_node_tensors(
+                    self.bg_x_particles[mask],
+                    min_nodes=self.args.min_nodes,
+                    pt_feature_index=pt_index,
+                    label=int(class_index),
+                )
+                bg_nodes.extend(nodes_i)
+                bg_labels.extend(labels_i)
+                print(
+                    f"  class {class_index} "
+                    f"({self.background_names[class_index] if class_index < len(self.background_names) else class_index}): "
+                    f"{len(nodes_i)} jets"
+                )
             print("Loading signal node tensors...")
             sg_nodes, sg_labels = particles_to_node_tensors(
                 self.sg_x_particles,
@@ -549,18 +775,34 @@ class TrainLeJEPAParticleTransformer:
         if len(sg_nodes) == 0:
             raise ValueError("No valid signal events were loaded.")
 
-        train_size = int(self.TRAIN_SPLIT * len(bg_nodes))
-        train_size = max(1, min(train_size, len(bg_nodes) - 1))
-        # shuffle bg before splitting
-        bg_indices = list(range(len(bg_nodes)))
-        random.shuffle(bg_indices)
-        bg_nodes = [bg_nodes[i] for i in bg_indices]
-        bg_labels = [bg_labels[i] for i in bg_indices]
+        # Stratified 80/20 split keeps each background class represented in val.
+        train_nodes: List[torch.Tensor] = []
+        train_labels: List[int] = []
+        val_nodes: List[torch.Tensor] = []
+        val_labels: List[int] = []
+        unique_classes = sorted(set(bg_labels))
+        for class_index in unique_classes:
+            indices = [i for i, lab in enumerate(bg_labels) if lab == class_index]
+            random.shuffle(indices)
+            if len(indices) == 1:
+                train_idx, val_idx = indices, []
+            else:
+                split = int(self.TRAIN_SPLIT * len(indices))
+                split = max(1, min(split, len(indices) - 1))
+                train_idx = indices[:split]
+                val_idx = indices[split:]
+            train_nodes.extend(bg_nodes[i] for i in train_idx)
+            train_labels.extend(bg_labels[i] for i in train_idx)
+            val_nodes.extend(bg_nodes[i] for i in val_idx)
+            val_labels.extend(bg_labels[i] for i in val_idx)
 
-        self.bg_train_nodes = bg_nodes[:train_size]
-        self.bg_train_labels = bg_labels[:train_size]
-        self.bg_val_nodes = bg_nodes[train_size:]
-        self.bg_val_labels = bg_labels[train_size:]
+        # Shuffle train after concatenating classes.
+        train_order = list(range(len(train_nodes)))
+        random.shuffle(train_order)
+        self.bg_train_nodes = [train_nodes[i] for i in train_order]
+        self.bg_train_labels = [train_labels[i] for i in train_order]
+        self.bg_val_nodes = val_nodes
+        self.bg_val_labels = val_labels
         self.sg_nodes = sg_nodes
         self.sg_labels = sg_labels
 
@@ -603,6 +845,10 @@ class TrainLeJEPAParticleTransformer:
         """
         Plot background training feature distributions for sanity checks.
         """
+
+        if self.use_stream:
+            print("Skipping feature plots in streaming mode.")
+            return
 
         os.makedirs(self.feature_plot_dir, exist_ok=True)
         all_features = torch.cat(self.bg_train_nodes, dim=0).numpy()
@@ -655,26 +901,40 @@ class TrainLeJEPAParticleTransformer:
 
         os.makedirs(self.augmentation_plot_dir, exist_ok=True)
 
+        dataset_len = (
+            self.args.num_augmentation_plot_samples
+            if isinstance(self.bg_train_dataset, IterableDataset)
+            else len(self.bg_train_dataset)
+        )
         num_samples = min(
             self.args.num_augmentation_plot_samples,
-            len(self.bg_train_dataset),
+            dataset_len,
         )
         if num_samples <= 0:
             return
 
         self.model.eval()
         num_plotted = 0
+        # Augmentation plots are diagnostics only — keep them on CPU so a
+        # transient CUDA fault here cannot abort the full training run.
+        plot_device = torch.device("cpu")
 
         with torch.no_grad():
             for batch_idx, batch in enumerate(train_loader):
-                x_batch = batch["x"].to(DEVICE, non_blocking=True)
-                padding_mask_batch = batch["padding_mask"].to(DEVICE, non_blocking=True)
+                x_batch = batch["x"].to(plot_device)
+                padding_mask_batch = batch["padding_mask"].to(plot_device)
 
-                views, view_padding_masks, view_types = self.model.augmentation(
-                    x=x_batch,
-                    padding_mask=padding_mask_batch,
-                    return_types=True,
-                )
+                try:
+                    views, view_padding_masks, view_types = self.model.augmentation(
+                        x=x_batch,
+                        padding_mask=padding_mask_batch,
+                        return_types=True,
+                    )
+                except Exception as exc:
+                    print(
+                        f"Warning: skipping augmentation plots after error: {exc}"
+                    )
+                    return
                 
                 if self.model_name != "lejepa":
                     negative_views, negative_padding_masks, negative_types = (
@@ -863,6 +1123,35 @@ class TrainLeJEPAParticleTransformer:
         plt.close(fig)
 
     def make_dataloaders(self) -> Tuple[DataLoader, DataLoader, DataLoader]:
+        if self.use_stream:
+            # IterableDataset owns ordering; DataLoader shuffle is invalid.
+            common = dict(
+                batch_size=self.args.batch_size,
+                num_workers=self.args.num_workers,
+                pin_memory=self.args.pin_memory,
+                collate_fn=collate_node_tensors,
+                persistent_workers=self.args.num_workers > 0,
+            )
+            train_loader = DataLoader(
+                self.bg_train_dataset,
+                shuffle=False,
+                drop_last=True,
+                **common,
+            )
+            bg_val_loader = DataLoader(
+                self.bg_val_dataset,
+                shuffle=False,
+                drop_last=False,
+                **common,
+            )
+            signal_loader = DataLoader(
+                self.sg_dataset,
+                shuffle=False,
+                drop_last=False,
+                **common,
+            )
+            return train_loader, bg_val_loader, signal_loader
+
         train_loader = DataLoader(
             self.bg_train_dataset,
             batch_size=self.args.batch_size,
@@ -938,6 +1227,15 @@ class TrainLeJEPAParticleTransformer:
                 "d-": f"{metrics['triplet_neg_distance']:.4g}",
             }
 
+        if self.model_name == "semi-sup-triplet":
+            return {
+                "total": f"{metrics['total_loss']:.4g}",
+                "inv": f"{metrics['invariant_loss']:.4g}",
+                "sig": f"{metrics['sigreg_loss']:.4g}",
+                "tri": f"{metrics['triplet_loss']:.4g}",
+                "cls": f"{metrics['classification_loss']:.4g}",
+            }
+
         if self.model_name == "mahalanobis":
             return {
                 "total": f"{metrics['total_loss']:.4g}",
@@ -962,6 +1260,28 @@ class TrainLeJEPAParticleTransformer:
         raise RuntimeError(
             f"Unsupported model {self.model_name!r}."
         )
+
+    def _forward_pretrain_batch(
+        self,
+        batch: Dict[str, torch.Tensor],
+        normalize_output: bool,
+    ) -> Dict[str, torch.Tensor]:
+        """Call model.forward_pretrain, passing class labels when required."""
+        x = batch["x"].to(DEVICE, non_blocking=True)
+        padding_mask = batch["padding_mask"].to(DEVICE, non_blocking=True)
+        if self.model_name == "semi-sup-triplet":
+            y = batch["y"].to(DEVICE, non_blocking=True)
+            return self.model.forward_pretrain(
+                x,
+                y,
+                padding_mask=padding_mask,
+                normalize_output=normalize_output,
+            )
+        return self.model.forward_pretrain(
+            x,
+            padding_mask=padding_mask,
+            normalize_output=normalize_output,
+        )
         
     def build_model(self) -> None:
         model_config = ParticleTransformerConfig(
@@ -978,6 +1298,9 @@ class TrainLeJEPAParticleTransformer:
             compute_dtype=precision_to_dtype(self.args.precision),
             use_internal_autocast=False,
             eps=self.args.eps,
+            input_feature_names=tuple(self.node_feature_names),
+            standardized_feature_names=tuple(self.args.standardized_feature_names),
+            feature_norm_momentum=self.args.feature_norm_momentum,
         )
 
         augmentation_config = MultiViewAugmentationConfig(
@@ -1058,6 +1381,40 @@ class TrainLeJEPAParticleTransformer:
                     ),
                     loss_config=loss_config,
                     triplet_loss_config=triplet_loss_config,
+                )
+                .to(DEVICE)
+            )
+
+        elif self.model_name == "semi-sup-triplet":
+            if self.num_background_classes < 2:
+                raise ValueError(
+                    "semi-sup-triplet requires at least 2 background classes "
+                    "(pass multiple dirs via --background-dirs)."
+                )
+            triplet_loss_config = TripletLossConfig(
+                triplet_weight=self.args.triplet_weight,
+                triplet_margin=self.args.triplet_margin,
+                normalize_representations_for_triplet=(
+                    self.args.normalize_triplet_representations
+                ),
+                use_global_views_as_positives=(
+                    not self.args.use_all_views_as_triplet_positives
+                ),
+            )
+            semi_supervised_config = SemiSupervisedLossConfig(
+                classification_weight=self.args.classification_weight,
+                num_classes=self.num_background_classes,
+            )
+            self.model = (
+                LeJEPASemiSupervisedTripletParticleTransformerRepresentation(
+                    model_config=model_config,
+                    augmentation_config=augmentation_config,
+                    negative_augmentation_config=(
+                        negative_augmentation_config
+                    ),
+                    loss_config=loss_config,
+                    triplet_loss_config=triplet_loss_config,
+                    semi_supervised_config=semi_supervised_config,
                 )
                 .to(DEVICE)
             )
@@ -1145,6 +1502,7 @@ class TrainLeJEPAParticleTransformer:
             "triplet_neg_distance": (
                 "Triplet Negative Distance"
             ),
+            "classification_loss": "Classification Loss",
 
             "mahalanobis_loss": (
                 "Negative Samples Mahalanobis Loss"
@@ -1262,14 +1620,14 @@ class TrainLeJEPAParticleTransformer:
             auc_ax.step(
                 eval_steps,
                 auc_bgtrain,
-                label="QCD Train vs WJet",
+                label=f"{self.background_display_name} Train vs {self.signal_display_name}",
                 alpha=0.75,
             )
 
             auc_ax.step(
                 eval_steps,
                 auc_bgval,
-                label="QCD Val vs WJet",
+                label=f"{self.background_display_name} Val vs {self.signal_display_name}",
                 alpha=0.75,
             )
             if np.isfinite(best_auc_bgval):
@@ -1326,14 +1684,21 @@ class TrainLeJEPAParticleTransformer:
                 "LeJEPA + Mahalanobis Negative SSL"
             ),
             "lejepa": "LeJEPA SSL",
-        }[self.model_name]
+            "semi-sup-triplet": (
+                "LeJEPA + Triplet + Multiclass CE"
+            ),
+        }.get(self.model_name, self.model_name)
         fig.suptitle(f"{model_title} Training Progress")
         fig.tight_layout()
         fig.savefig(os.path.join(self.output_dir, "loss.png"))
         plt.close(fig)
 
     @torch.no_grad()
-    def collect_representations(self, loader: DataLoader) -> torch.Tensor:
+    def collect_representations(
+        self,
+        loader: DataLoader,
+        max_batches: Optional[int] = None,
+    ) -> torch.Tensor:
         """
         Compute full-jet representations without augmentation/crop/drop.
         """
@@ -1343,7 +1708,9 @@ class TrainLeJEPAParticleTransformer:
         dtype = precision_to_dtype(self.args.precision)
         use_autocast = autocast_enabled_for_precision(self.args.precision)
 
-        for batch in loader:
+        for batch_idx, batch in enumerate(loader):
+            if max_batches is not None and batch_idx >= max_batches:
+                break
             x = batch["x"].to(DEVICE, non_blocking=True)
             padding_mask = batch["padding_mask"].to(DEVICE, non_blocking=True)
 
@@ -1360,7 +1727,7 @@ class TrainLeJEPAParticleTransformer:
 
             latents.append(z.detach().float().cpu())
 
-        return torch.stack(latents, dim=0)
+        return torch.cat(latents, dim=0)
     
     @torch.no_grad()
     def collect_view_representations(
@@ -1412,9 +1779,6 @@ class TrainLeJEPAParticleTransformer:
                 desc="Collecting positive-view representations",
                 leave=False,
             ):
-                x = batch["x"].to(DEVICE, non_blocking=True)
-                padding_mask = batch["padding_mask"].to(DEVICE, non_blocking=True)
-
                 dtype = precision_to_dtype(self.args.precision)
                 use_autocast = autocast_enabled_for_precision(self.args.precision)
         
@@ -1423,9 +1787,8 @@ class TrainLeJEPAParticleTransformer:
                     dtype=dtype,
                     enabled=use_autocast,
                 ):
-                    output = self.model.forward_pretrain(
-                        x,
-                        padding_mask=padding_mask,
+                    output = self._forward_pretrain_batch(
+                        batch,
                         normalize_output=self.args.normalize_output_representations,
                     )
                 
@@ -1658,16 +2021,20 @@ class TrainLeJEPAParticleTransformer:
             signal_scores
         """
 
+        eval_batches = self.args.eval_steps if self.use_stream else None
         bg_train_latents = self.collect_representations(
-            background_train_loader
+            background_train_loader,
+            max_batches=eval_batches,
         )
 
         bg_val_latents = self.collect_representations(
-            background_val_loader
+            background_val_loader,
+            max_batches=eval_batches,
         )
 
         signal_latents = self.collect_representations(
-            signal_loader
+            signal_loader,
+            max_batches=eval_batches,
         )
 
         # If plot_latent is True, plot the mean of global views for background validation and signal events.
@@ -1848,10 +2215,17 @@ class TrainLeJEPAParticleTransformer:
             epoch=epoch,
         )
 
-        background_train_scores = background_train_scores.detach().cpu().numpy()
-        background_val_scores = background_val_scores.detach().cpu().numpy()
-        signal_scores = signal_scores.detach().cpu().numpy()
-        
+        def _as_numpy(scores):
+            if isinstance(scores, np.ndarray):
+                return scores
+            if torch.is_tensor(scores):
+                return scores.detach().cpu().numpy()
+            return np.asarray(scores)
+
+        background_train_scores = _as_numpy(background_train_scores)
+        background_val_scores = _as_numpy(background_val_scores)
+        signal_scores = _as_numpy(signal_scores)
+
         auc_bgtrain_vs_signal = self.compute_auc(background_train_scores, signal_scores)
         auc_bgval_vs_signal = self.compute_auc(background_val_scores, signal_scores)
 
@@ -1874,24 +2248,24 @@ class TrainLeJEPAParticleTransformer:
         plot_anomaly_score(
             background_val_scores,
             signal_scores,
-            background_label="QCD (Val)",
-            signal_label="WJet",
+            background_label=f"{self.background_display_name} (Val)",
+            signal_label=self.signal_display_name,
             save_path=os.path.join(eval_dir, "bgval-vs-signal-score.png"),
         )
 
         plot_anomaly_score(
             background_train_scores,
             signal_scores,
-            background_label="QCD (Train)",
-            signal_label="WJet",
+            background_label=f"{self.background_display_name} (Train)",
+            signal_label=self.signal_display_name,
             save_path=os.path.join(eval_dir, "bgtrain-vs-signal-score.png"),
         )
 
         plot_roc_curve(
             background_val_scores,
             signal_scores,
-            background_label="QCD (Val)",
-            signal_label="WJet",
+            background_label=f"{self.background_display_name} (Val)",
+            signal_label=self.signal_display_name,
             savepath=os.path.join(eval_dir, "roc-bgval-vs-signal.png"),
             examples=False,
             loss_fn=torch.nn.MSELoss(reduction="mean"),
@@ -1900,8 +2274,8 @@ class TrainLeJEPAParticleTransformer:
         plot_roc_curve(
             background_train_scores,
             signal_scores,
-            background_label="QCD (Train)",
-            signal_label="WJet",
+            background_label=f"{self.background_display_name} (Train)",
+            signal_label=self.signal_display_name,
             savepath=os.path.join(eval_dir, "roc-bgtrain-vs-signal.png"),
             examples=False,
             loss_fn=torch.nn.MSELoss(reduction="mean"),
@@ -1915,9 +2289,16 @@ class TrainLeJEPAParticleTransformer:
             json.dump(metrics, f, indent=2)
 
         print(f"{score_name.capitalize()} metrics saved to {metrics_path}")
-        print(f"{score_name.capitalize()} AUC, QCD train vs WJet: {auc_bgtrain_vs_signal:.6f}")
-        print(f"{score_name.capitalize()} AUC, QCD val vs WJet: {auc_bgval_vs_signal:.6f}")
-
+        print(
+            f"{score_name.capitalize()} AUC, "
+            f"{self.background_display_name} train vs {self.signal_display_name}: "
+            f"{auc_bgtrain_vs_signal:.6f}"
+        )
+        print(
+            f"{score_name.capitalize()} AUC, "
+            f"{self.background_display_name} val vs {self.signal_display_name}: "
+            f"{auc_bgval_vs_signal:.6f}"
+        )
         return auc_bgtrain_vs_signal, auc_bgval_vs_signal
         
     def plot_latent_space_for_epoch(
@@ -1953,8 +2334,8 @@ class TrainLeJEPAParticleTransformer:
         plot_latent_space(
             bg_2d,
             sg_2d,
-            background_label="QCD (Val)",
-            signal_label="WJet",
+            background_label=f"{self.background_display_name} (Val)",
+            signal_label=self.signal_display_name,
             output_path=output_path,
             x_label=x_label,
             y_label=y_label,
@@ -1965,7 +2346,10 @@ class TrainLeJEPAParticleTransformer:
 
         train_loader, bg_val_loader, signal_loader = self.make_dataloaders()
         self.build_model()
-        self.plot_augmentation_samples(train_loader)
+        if self.use_stream or self.args.num_augmentation_plot_samples <= 0:
+            print("Skipping augmentation sample plots.")
+        else:
+            self.plot_augmentation_samples(train_loader)
 
         summary_path = os.path.join(self.output_dir, "summary.json")
 
@@ -1980,11 +2364,27 @@ class TrainLeJEPAParticleTransformer:
 
             # Data.
             "background": self.bg_file,
+            "background_dirs": self.background_dirs,
+            "background_names": self.background_names,
             "signal": self.sg_file,
+            "signal_name": self.signal_display_name,
             "node_features": self.node_feature_names,
-            "background_train_events": len(self.bg_train_dataset),
-            "background_val_events": len(self.bg_val_dataset),
-            "signal_events": len(self.sg_dataset),
+            "streaming": self.use_stream,
+            "background_train_events": (
+                None if self.use_stream else len(self.bg_train_dataset)
+            ),
+            "background_val_events": (
+                None if self.use_stream else len(self.bg_val_dataset)
+            ),
+            "signal_events": (
+                None if self.use_stream else len(self.sg_dataset)
+            ),
+            "steps_per_epoch": (
+                self.args.steps_per_epoch if self.use_stream else None
+            ),
+            "val_steps": self.args.val_steps if self.use_stream else None,
+            "eval_steps": self.args.eval_steps if self.use_stream else None,
+            "num_background_classes": self.num_background_classes,
 
             # Model.
             "batch_size": self.args.batch_size,
@@ -2029,6 +2429,8 @@ class TrainLeJEPAParticleTransformer:
 
             # Misc.
             "normalize_features": self.args.normalize_features,
+            "standardized_feature_names": list(self.args.standardized_feature_names),
+            "feature_norm_momentum": self.args.feature_norm_momentum,
             "seed": self.args.seed,
             "device": str(DEVICE),
 
@@ -2042,7 +2444,7 @@ class TrainLeJEPAParticleTransformer:
         }
         
         # Add info about negative augmentation only if the model uses it.
-        if self.model_name in ["triplet", "mahalanobis"]:
+        if self.model_name in ["triplet", "mahalanobis", "semi-sup-triplet"]:
             summary.update(
                 {
                     # Negative augmentation.
@@ -2063,7 +2465,7 @@ class TrainLeJEPAParticleTransformer:
                 }
             )
         # Add model-specific hyperparameters to the summary.
-        if self.model_name == "triplet":
+        if self.model_name in {"triplet", "semi-sup-triplet"}:
             summary.update(
                 {
                     "triplet_weight": (
@@ -2077,6 +2479,14 @@ class TrainLeJEPAParticleTransformer:
                     ),
                     "use_all_views_as_triplet_positives": (
                         self.args.use_all_views_as_triplet_positives
+                    ),
+                }
+            )
+        if self.model_name == "semi-sup-triplet":
+            summary.update(
+                {
+                    "classification_weight": (
+                        self.args.classification_weight
                     ),
                 }
             )
@@ -2115,10 +2525,15 @@ class TrainLeJEPAParticleTransformer:
             weight_decay=self.args.weight_decay,
         )
 
-        total_steps = self.args.epochs * max(1, len(train_loader))
+        if self.use_stream:
+            total_steps = self.args.epochs * max(1, self.args.steps_per_epoch)
+            steps_per_epoch = max(1, self.args.steps_per_epoch)
+        else:
+            total_steps = self.args.epochs * max(1, len(train_loader))
+            steps_per_epoch = max(1, len(train_loader))
         warmup_steps = self.args.warmup_steps
         if warmup_steps is None:
-            warmup_steps = self.args.warmup_epochs * max(1, len(train_loader))
+            warmup_steps = self.args.warmup_epochs * steps_per_epoch
 
         scheduler = make_warmup_cosine_scheduler(
             optimizer=optimizer,
@@ -2161,6 +2576,8 @@ class TrainLeJEPAParticleTransformer:
             active=5,
             repeat=1,
         )
+        train_iter = iter(train_loader) if self.use_stream else None
+
         for epoch in range(1, self.args.epochs + 1):
             print(f"\nEpoch [{epoch}/{self.args.epochs}]")
             print(f"Learning rate: {optimizer.param_groups[0]['lr']:.8g}")
@@ -2172,10 +2589,17 @@ class TrainLeJEPAParticleTransformer:
                 for key in self.ssl_metric_keys
             }
 
-            pbar = tqdm(
-                train_loader,
-                desc=f"Train Epoch {epoch}/{self.args.epochs}",
-            )
+            if self.use_stream:
+                pbar = tqdm(
+                    range(self.args.steps_per_epoch),
+                    total=self.args.steps_per_epoch,
+                    desc=f"Train Epoch {epoch}/{self.args.epochs}",
+                )
+            else:
+                pbar = tqdm(
+                    train_loader,
+                    desc=f"Train Epoch {epoch}/{self.args.epochs}",
+                )
 
             # Profile only the first epoch.
             should_profile = self.args.profile and epoch == 1
@@ -2196,16 +2620,14 @@ class TrainLeJEPAParticleTransformer:
             )
 
             with profiler_context as prof:
-                for step, batch in enumerate(pbar):
-                    x = batch["x"].to(
-                        DEVICE,
-                        non_blocking=True,
-                    )
-                    padding_mask = batch["padding_mask"].to(
-                        DEVICE,
-                        non_blocking=True,
-                    )
-
+                train_enumerator = (
+                    enumerate(pbar) if self.use_stream else enumerate(pbar)
+                )
+                for step, batch_or_step in train_enumerator:
+                    if self.use_stream:
+                        batch = next(train_iter)
+                    else:
+                        batch = batch_or_step
                     optimizer.zero_grad(set_to_none=True)
 
                     with record_function("training_forward"):
@@ -2214,9 +2636,8 @@ class TrainLeJEPAParticleTransformer:
                             dtype=dtype,
                             enabled=use_autocast,
                         ):
-                            output = self.model.forward_pretrain(
-                                x,
-                                padding_mask=padding_mask,
+                            output = self._forward_pretrain_batch(
+                                batch,
                                 normalize_output=(
                                     self.args.normalize_output_representations
                                 ),
@@ -2287,19 +2708,27 @@ class TrainLeJEPAParticleTransformer:
             }
 
             with torch.no_grad():
-                pbar = tqdm(bg_val_loader, desc=f"Val Epoch {epoch}/{self.args.epochs}")
-                for batch in pbar:
-                    x = batch["x"].to(DEVICE, non_blocking=True)
-                    padding_mask = batch["padding_mask"].to(DEVICE, non_blocking=True)
+                if self.use_stream:
+                    val_iter = iter(bg_val_loader)
+                    n_val = max(1, self.args.val_steps)
+                    pbar = tqdm(
+                        range(n_val),
+                        total=n_val,
+                        desc=f"Val Epoch {epoch}/{self.args.epochs}",
+                    )
+                    val_batches = ((step, next(val_iter)) for step in pbar)
+                else:
+                    pbar = tqdm(bg_val_loader, desc=f"Val Epoch {epoch}/{self.args.epochs}")
+                    val_batches = enumerate(pbar)
 
+                for _, batch in val_batches:
                     with torch.autocast(
                         device_type=DEVICE.type,
                         dtype=dtype,
                         enabled=use_autocast,
                     ):
-                        output = self.model.forward_pretrain(
-                            x,
-                            padding_mask=padding_mask,
+                        output = self._forward_pretrain_batch(
+                            batch,
                             normalize_output=self.args.normalize_output_representations,
                         )
 
@@ -2328,8 +2757,14 @@ class TrainLeJEPAParticleTransformer:
 
             if mean_val["total_loss"] < best_val_loss:
                 best_val_loss = mean_val["total_loss"]
-                torch.save(self.model, best_model_path)
-                print(f"Saved new best model to {best_model_path}")
+                # Save state_dict only — full-module pickling can fail on
+                # torch._C.Generator held by augmentation modules.
+                torch.save(self.model.state_dict(), best_model_path)
+                print(f"Saved new best model state_dict to {best_model_path}")
+
+            last_model_path = os.path.join(self.output_dir, "last_model.pth")
+            torch.save(self.model.state_dict(), last_model_path)
+            print(f"Saved last model state_dict to {last_model_path}")
 
             if ( # Plot latent space and evaluate ROC only at specified intervals or at the final epoch.
                 self.args.roc_eval_every > 0
@@ -2429,7 +2864,8 @@ if __name__ == "__main__":
         choices=[
             "triplet",
             "mahalanobis",
-            "lejepa"
+            "lejepa",
+            "semi-sup-triplet",
         ],
         default="triplet",
         help=(
@@ -2440,6 +2876,8 @@ if __name__ == "__main__":
             "distribution statistics and corrupted-negative "
             "Mahalanobis loss. "
             "'lejepa' uses LeJEPA + SIGReg only, without any corrupted-negative loss. "
+            "'semi-sup-triplet' adds multiclass CE over background classes "
+            "on top of LeJEPA + triplet. "
             "Default: triplet."
         ),
     )
@@ -2488,7 +2926,26 @@ if __name__ == "__main__":
         default=bg_file,
         help=(
             "Background dataset: DeepNTuplizer ROOT file/directory (preferred) "
-            "or legacy processed .pkl. Defaults to config.yaml."
+            "or legacy processed .pkl. Defaults to config.yaml. "
+            "For multiclass, prefer --background-dirs."
+        ),
+    )
+    parser.add_argument(
+        "--background-dirs",
+        type=str,
+        default=None,
+        help=(
+            "Comma-separated background ROOT dirs for multiclass training "
+            "(e.g. qcd,wjets,zjets,ttbar). Overrides --background when set."
+        ),
+    )
+    parser.add_argument(
+        "--background-names",
+        type=str,
+        default=None,
+        help=(
+            "Comma-separated display names matching --background-dirs "
+            "(e.g. QCD,WJets,ZJets,TTbar)."
         ),
     )
     parser.add_argument(
@@ -2499,6 +2956,21 @@ if __name__ == "__main__":
         help=(
             "Signal dataset: DeepNTuplizer ROOT file/directory (preferred) "
             "or legacy processed .pkl. Defaults to config.yaml."
+        ),
+    )
+    parser.add_argument(
+        "--signal-name",
+        type=str,
+        default=None,
+        help="Display name for the held-out anomaly signal (e.g. WJets).",
+    )
+    parser.add_argument(
+        "--max-events-per-class",
+        type=int,
+        default=None,
+        help=(
+            "Optional per-background-class jet cap when loading ROOT "
+            "(used with --background-dirs). Default: None."
         ),
     )
     parser.add_argument(
@@ -2750,6 +3222,14 @@ if __name__ == "__main__":
         help="Margin in ReLU(d_pos - d_neg + margin). Default: 1.0.",
     )
     parser.add_argument(
+        "--classification-weight",
+        type=float,
+        default=0.05,
+        help=(
+            "Weight for multiclass CE in semi-sup-triplet. Default: 0.05."
+        ),
+    )
+    parser.add_argument(
         "--normalize-triplet-representations",
         action="store_true",
         help="L2-normalize representations before triplet distance computation.",
@@ -2964,6 +3444,68 @@ if __name__ == "__main__":
         type=int,
         default=5000,
         help="Maximum points per class in latent-space plots. Use no value by editing to None. Default: 5000.",
+    )
+
+
+    parser.add_argument(
+        "--stream",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Stream CMS ROOT shards lazily (JetClass-style). "
+            "Epochs use --steps-per-epoch instead of a full dataset pass."
+        ),
+    )
+    parser.add_argument(
+        "--steps-per-epoch",
+        type=int,
+        default=1000,
+        help="Optimizer steps per epoch in --stream mode. Default: 1000.",
+    )
+    parser.add_argument(
+        "--val-steps",
+        type=int,
+        default=100,
+        help="Validation batches per epoch in --stream mode. Default: 100.",
+    )
+    parser.add_argument(
+        "--eval-steps",
+        type=int,
+        default=100,
+        help="Anomaly-eval batches per loader in --stream mode. Default: 100.",
+    )
+    parser.add_argument(
+        "--max-val-events",
+        type=int,
+        default=None,
+        help="Optional event cap for finite streaming val datasets.",
+    )
+    parser.add_argument(
+        "--stream-val-fraction",
+        type=float,
+        default=0.1,
+        help="Per-class ROOT-file fraction reserved for val in --stream mode. Default: 0.1.",
+    )
+    parser.add_argument(
+        "--shuffle-active-shards",
+        type=int,
+        default=4,
+        help="Active ROOT shards in the streaming mixer. Default: 4.",
+    )
+    parser.add_argument(
+        "--standardized-feature-names",
+        nargs="+",
+        default=["log_pt", "d0/d0Err", "dz/dzErr"],
+        help=(
+            "Node features to batch-normalize online (train batch stats; "
+            "running stats at eval). Default: log_pt d0/d0Err dz/dzErr."
+        ),
+    )
+    parser.add_argument(
+        "--feature-norm-momentum",
+        type=float,
+        default=0.1,
+        help="EMA momentum for feature BN running stats. Default: 0.1.",
     )
 
     trainer = TrainLeJEPAParticleTransformer()

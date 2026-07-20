@@ -1,5 +1,5 @@
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, List, Tuple, Dict
 import lejepa
 
@@ -83,6 +83,10 @@ class ParticleTransformerConfig:
         "eta,phi,pt,d0/d0Err,dz/dzErr,charge,mass,log_pt,pdgId_-211,pdgId_-13,pdgId_-11,pdgId_11,pdgId_13,pdgId_22,pdgId_130,pdgId_211"
 
     The model produces a representation vector instead of class logits.
+
+    ``standardized_feature_names`` selects channels that are batch-normalized
+    online (train batch stats + running buffers for eval), matching JetClass.
+    Defaults match the CMS relative features: log(pt/jet_pt), d0sig, dzsig.
     """
 
     input_dim: int = 16
@@ -103,6 +107,52 @@ class ParticleTransformerConfig:
     use_internal_autocast: bool = False
 
     eps: float = 1e-8
+
+    # Names must match the node feature order used to build ``x``.
+    input_feature_names: Optional[Tuple[str, ...]] = None
+    standardized_feature_names: Tuple[str, ...] = (
+        "log_pt",
+        "d0/d0Err",
+        "dz/dzErr",
+    )
+    feature_norm_momentum: float = 0.1
+    standardized_feature_indices: Tuple[int, ...] = field(init=False)
+
+    def __post_init__(self) -> None:
+        if self.input_feature_names is None:
+            # Fallback: only allow empty standardization unless names are given.
+            if len(self.standardized_feature_names) > 0:
+                raise ValueError(
+                    "input_feature_names must be set when "
+                    "standardized_feature_names is non-empty."
+                )
+            self.standardized_feature_indices = ()
+            return
+
+        names = tuple(self.input_feature_names)
+        if len(names) != self.input_dim:
+            raise ValueError(
+                f"input_dim={self.input_dim} does not match "
+                f"len(input_feature_names)={len(names)}."
+            )
+        if len(names) != len(set(names)):
+            raise ValueError(f"input_feature_names contains duplicates: {names}")
+
+        missing = [
+            name
+            for name in self.standardized_feature_names
+            if name not in names
+        ]
+        if missing:
+            raise ValueError(
+                "standardized_feature_names not found in input_feature_names: "
+                f"{missing}"
+            )
+
+        name_to_idx = {name: i for i, name in enumerate(names)}
+        self.standardized_feature_indices = tuple(
+            name_to_idx[name] for name in self.standardized_feature_names
+        )
 
 
 # ------------------------------------------------------------
@@ -801,6 +851,7 @@ class MinimalParticleTransformerRepresentation(nn.Module):
         super().__init__()
 
         self.config = config
+        self.feature_norm_momentum = float(config.feature_norm_momentum)
 
         self.node_embedding = NodeEmbedding(
             input_dim=config.input_dim,
@@ -818,6 +869,29 @@ class MinimalParticleTransformerRepresentation(nn.Module):
             )
         else:
             self.pairwise_bias = None
+
+        standardized_index_tensor = torch.tensor(
+            config.standardized_feature_indices,
+            dtype=torch.long,
+        )
+        self.register_buffer(
+            "_standardized_feature_indices",
+            standardized_index_tensor,
+            persistent=False,
+        )
+        # Running BN stats for eval (train uses per-batch stats).
+        self.register_buffer(
+            "_feature_running_mean",
+            torch.zeros(len(standardized_index_tensor), dtype=torch.float32),
+        )
+        self.register_buffer(
+            "_feature_running_var",
+            torch.ones(len(standardized_index_tensor), dtype=torch.float32),
+        )
+        self.register_buffer(
+            "_feature_num_batches_tracked",
+            torch.zeros((), dtype=torch.long),
+        )
 
         self.encoder = ParticleTransformerEncoder(
             embed_dim=config.embed_dim,
@@ -840,6 +914,123 @@ class MinimalParticleTransformerRepresentation(nn.Module):
             representation_dim=config.representation_dim,
             dropout=config.dropout,
         )
+
+    def _prepare_node_features(
+        self,
+        x: torch.Tensor,
+        padding_mask: Optional[torch.Tensor],
+    ) -> torch.Tensor:
+        """
+        Batch-standardize selected node features.
+
+        During training:
+            - Compute statistics over valid nodes in the batch.
+            - Normalize with those batch statistics.
+            - Update running mean / variance.
+
+        During evaluation:
+            - Normalize with frozen running statistics.
+        """
+
+        node_x = x.clone()
+        standardized_indices = self._standardized_feature_indices
+        if standardized_indices.numel() == 0:
+            return node_x
+
+        if padding_mask is None:
+            valid_mask = torch.ones(
+                x.shape[:2],
+                dtype=torch.bool,
+                device=x.device,
+            )
+        else:
+            valid_mask = ~padding_mask
+
+        selected = torch.index_select(
+            node_x.float(),
+            dim=-1,
+            index=standardized_indices,
+        )
+
+        if self.training:
+            valid_values = selected[valid_mask]
+            num_features = selected.shape[-1]
+
+            if valid_values.numel() > 0:
+                local_sum = valid_values.sum(dim=0)
+                local_squared_sum = valid_values.square().sum(dim=0)
+                local_count = torch.tensor(
+                    valid_values.shape[0],
+                    dtype=torch.float32,
+                    device=selected.device,
+                )
+            else:
+                local_sum = torch.zeros(
+                    num_features,
+                    dtype=torch.float32,
+                    device=selected.device,
+                )
+                local_squared_sum = torch.zeros_like(local_sum)
+                local_count = torch.zeros(
+                    (),
+                    dtype=torch.float32,
+                    device=selected.device,
+                )
+
+            if (
+                torch.distributed.is_available()
+                and torch.distributed.is_initialized()
+            ):
+                torch.distributed.all_reduce(
+                    local_sum,
+                    op=torch.distributed.ReduceOp.SUM,
+                )
+                torch.distributed.all_reduce(
+                    local_squared_sum,
+                    op=torch.distributed.ReduceOp.SUM,
+                )
+                torch.distributed.all_reduce(
+                    local_count,
+                    op=torch.distributed.ReduceOp.SUM,
+                )
+
+            if local_count.item() > 0:
+                batch_mean = local_sum / local_count
+                batch_var = (
+                    local_squared_sum / local_count - batch_mean.square()
+                ).clamp_min(0.0)
+                mean = batch_mean
+                var = batch_var
+
+                with torch.no_grad():
+                    momentum = self.feature_norm_momentum
+                    self._feature_running_mean.mul_(1.0 - momentum).add_(
+                        momentum * batch_mean.detach()
+                    )
+                    self._feature_running_var.mul_(1.0 - momentum).add_(
+                        momentum * batch_var.detach()
+                    )
+                    self._feature_num_batches_tracked.add_(1)
+            else:
+                mean = self._feature_running_mean
+                var = self._feature_running_var
+        else:
+            mean = self._feature_running_mean
+            var = self._feature_running_var
+
+        std = torch.sqrt(var).clamp_min(self.config.eps)
+        standardized = (selected - mean.view(1, 1, -1)) / std.view(1, 1, -1)
+        selected = torch.where(
+            valid_mask.unsqueeze(-1),
+            standardized,
+            torch.zeros_like(standardized),
+        )
+        node_x[..., standardized_indices] = selected.to(dtype=node_x.dtype)
+
+        if padding_mask is not None:
+            node_x = node_x.masked_fill(padding_mask.unsqueeze(-1), 0.0)
+
+        return node_x
 
     def encode_cls(
         self,
@@ -881,17 +1072,19 @@ class MinimalParticleTransformerRepresentation(nn.Module):
             dtype=self.config.compute_dtype,
             enabled=use_autocast,
         ):
-            h = self.node_embedding(x)
-
-            if padding_mask is not None:
-                h = h.masked_fill(padding_mask.unsqueeze(-1), 0.0)
-
+            # Pairwise bias always sees the untouched raw features.
             attn_bias = None
             if self.pairwise_bias is not None:
                 attn_bias = self.pairwise_bias(
                     x,
                     padding_mask=padding_mask,
                 )
+
+            node_x = self._prepare_node_features(x, padding_mask)
+            h = self.node_embedding(node_x)
+
+            if padding_mask is not None:
+                h = h.masked_fill(padding_mask.unsqueeze(-1), 0.0)
 
             h = self.encoder(
                 h,
@@ -975,6 +1168,28 @@ class ClassificationHead(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x).squeeze(-1)
+
+
+class CategoricalClassificationHead(nn.Module):
+    """Categorical head producing one logit per background class."""
+
+    def __init__(
+        self,
+        embed_dim: int,
+        num_classes: int,
+        dropout: float = 0.1,
+    ):
+        super().__init__()
+        self.net = nn.Sequential(
+            RMSNorm(embed_dim),
+            nn.Linear(embed_dim, embed_dim),
+            nn.SiLU(),
+            nn.Dropout(dropout),
+            nn.Linear(embed_dim, num_classes),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x)
 
 
 class ParticleTransformerClassifier(MinimalParticleTransformerRepresentation):
@@ -3401,6 +3616,293 @@ class LeJEPAMahalanobisParticleTransformerRepresentation(
             output["negative_padding_masks"] = (
                 negative_padding_masks
             )
+            output["negative_types"] = negative_types
+
+        return output
+
+# ------------------------------------------------------------
+# Semi-supervised (multiclass) + triplet SSL
+# ------------------------------------------------------------
+
+@dataclass
+class SemiSupervisedLossConfig:
+    classification_weight: float = 1.0
+    num_classes: int = 4
+
+
+class LeJEPASIGRegTripletClassificationLoss(nn.Module):
+    """
+    Combine LeJEPA invariant loss, SIGReg, corrupted-negative triplet loss,
+    and auxiliary categorical background classification.
+    """
+
+    def __init__(
+        self,
+        lejepa_config: LeJEPALossConfig,
+        triplet_config: TripletLossConfig,
+        semi_supervised_config: SemiSupervisedLossConfig,
+    ):
+        super().__init__()
+        self.triplet_loss = LeJEPASIGRegTripletLoss(
+            lejepa_config=lejepa_config,
+            triplet_config=triplet_config,
+        )
+        self.semi_supervised_config = semi_supervised_config
+
+    def forward(
+        self,
+        z_views: torch.Tensor,
+        z_negatives: torch.Tensor,
+        classification_logits: torch.Tensor,
+        y: torch.Tensor,
+        num_global_views: int,
+    ) -> Dict[str, torch.Tensor]:
+        base_loss = self.triplet_loss(
+            z_views=z_views,
+            z_negatives=z_negatives,
+            num_global_views=num_global_views,
+        )
+
+        if classification_logits.ndim != 2:
+            raise ValueError(
+                "Expected classification_logits shape (B, C), got "
+                f"{tuple(classification_logits.shape)}."
+            )
+        if y.ndim != 2:
+            raise ValueError(
+                f"Expected one-hot y shape (B, C), got {tuple(y.shape)}."
+            )
+        if classification_logits.shape != y.shape:
+            raise ValueError(
+                "classification_logits and y must have the same shape, got "
+                f"{tuple(classification_logits.shape)} and {tuple(y.shape)}."
+            )
+
+        target_class = y.argmax(dim=-1).long()
+        classification_loss = F.cross_entropy(
+            classification_logits.float(),
+            target_class,
+        )
+
+        total_loss = (
+            base_loss["total_loss"]
+            + self.semi_supervised_config.classification_weight
+            * classification_loss
+        )
+
+        return {
+            **base_loss,
+            "classification_loss": classification_loss,
+            "total_loss": total_loss,
+        }
+
+
+class LeJEPASemiSupervisedTripletParticleTransformerRepresentation(
+    LeJEPATripletParticleTransformerRepresentation
+):
+    """
+    ParticleTransformer trained jointly with four objectives:
+
+        1. LeJEPA invariant loss on positive global/local views;
+        2. SIGReg on all positive-view representations;
+        3. triplet loss against corrupted negative views;
+        4. categorical classification of the selected background classes.
+
+    The classification head reads the mean pre-projection CLS state of the
+    global positive views. Triplet / LeJEPA losses use the shared
+    representation head output.
+    """
+
+    def __init__(
+        self,
+        model_config: ParticleTransformerConfig,
+        augmentation_config: Optional[MultiViewAugmentationConfig] = None,
+        negative_augmentation_config: Optional[
+            CorruptedNegativeAugmentationConfig
+        ] = None,
+        loss_config: Optional[LeJEPALossConfig] = None,
+        triplet_loss_config: Optional[TripletLossConfig] = None,
+        semi_supervised_config: Optional[SemiSupervisedLossConfig] = None,
+    ):
+        if semi_supervised_config is None:
+            semi_supervised_config = SemiSupervisedLossConfig()
+
+        super().__init__(
+            model_config=model_config,
+            augmentation_config=augmentation_config,
+            negative_augmentation_config=negative_augmentation_config,
+            loss_config=loss_config,
+            triplet_loss_config=triplet_loss_config,
+        )
+
+        resolved_loss_config = (
+            loss_config if loss_config is not None else LeJEPALossConfig()
+        )
+        resolved_triplet_config = (
+            triplet_loss_config
+            if triplet_loss_config is not None
+            else TripletLossConfig()
+        )
+
+        self.semi_supervised_config = semi_supervised_config
+        self.classification_head = CategoricalClassificationHead(
+            embed_dim=model_config.embed_dim,
+            num_classes=semi_supervised_config.num_classes,
+            dropout=model_config.dropout,
+        )
+        self.loss = LeJEPASIGRegTripletClassificationLoss(
+            lejepa_config=resolved_loss_config,
+            triplet_config=resolved_triplet_config,
+            semi_supervised_config=semi_supervised_config,
+        )
+
+    def _prepare_one_hot_labels(
+        self,
+        y: torch.Tensor,
+        batch_size: int,
+    ) -> torch.Tensor:
+        num_classes = self.semi_supervised_config.num_classes
+        if y.ndim == 1:
+            if y.size(0) != batch_size:
+                raise ValueError(
+                    f"Expected integer y shape ({batch_size},), got {tuple(y.shape)}."
+                )
+            y = F.one_hot(y.long(), num_classes=num_classes).to(
+                dtype=torch.float32
+            )
+        expected_shape = (batch_size, num_classes)
+        if tuple(y.shape) != expected_shape:
+            raise ValueError(
+                f"Expected one-hot y shape {expected_shape}, got {tuple(y.shape)}."
+            )
+        return y.float()
+
+    def forward_pretrain(
+        self,
+        x: torch.Tensor,
+        y: torch.Tensor,
+        padding_mask: Optional[torch.Tensor] = None,
+        normalize_output: bool = False,
+        return_views: bool = False,
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Pretraining forward with LeJEPA + triplet + multiclass CE.
+
+        Args:
+            x: (B, N, F)
+            y: integer class ids (B,) or one-hot (B, C)
+            padding_mask: optional bool tensor (B, N)
+        """
+        y = self._prepare_one_hot_labels(y, batch_size=x.size(0))
+
+        with record_function("positive_augmentation"):
+            views, view_padding_masks, view_types = self.augmentation(
+                x=x,
+                padding_mask=padding_mask,
+                return_types=return_views,
+            )
+
+        with record_function("negative_augmentation"):
+            (
+                negative_views,
+                negative_padding_masks,
+                negative_types,
+            ) = self.negative_augmentation(
+                x=x,
+                padding_mask=padding_mask,
+                return_types=return_views,
+            )
+
+        num_views = len(views)
+        num_negative_views = len(negative_views)
+        batch_size = x.size(0)
+        num_global_views = self.augmentation.config.num_global_views
+
+        with record_function("batch_concat"):
+            batched_views = torch.cat(views, dim=0)
+            batched_view_masks = torch.cat(view_padding_masks, dim=0)
+            batched_negatives = torch.cat(negative_views, dim=0)
+            batched_negative_masks = torch.cat(
+                negative_padding_masks,
+                dim=0,
+            )
+
+            all_inputs = torch.cat(
+                [batched_views, batched_negatives],
+                dim=0,
+            )
+            all_masks = torch.cat(
+                [batched_view_masks, batched_negative_masks],
+                dim=0,
+            )
+
+        with record_function("backbone_forward"):
+            # CLS before representation head (needed for classification).
+            all_cls = self.encode_cls(
+                all_inputs,
+                padding_mask=all_masks,
+            )
+
+        with record_function("classification_forward"):
+            positive_cls_flat = all_cls[: num_views * batch_size]
+            positive_cls = positive_cls_flat.view(
+                num_views,
+                batch_size,
+                -1,
+            )
+            global_cls_anchor = positive_cls[:num_global_views].mean(dim=0)
+            classification_logits = self.classification_head(
+                global_cls_anchor
+            )
+
+        with record_function("representation_projection"):
+            use_autocast = (
+                self.config.use_internal_autocast
+                and all_cls.device.type in {"cuda", "cpu"}
+                and self.config.compute_dtype in {torch.float16, torch.bfloat16}
+            )
+            with torch.autocast(
+                device_type=all_cls.device.type,
+                dtype=self.config.compute_dtype,
+                enabled=use_autocast,
+            ):
+                all_z = self.representation_head(all_cls)
+            if normalize_output:
+                all_z = F.normalize(all_z, p=2, dim=-1)
+
+        with record_function("reshape_representations"):
+            z_views_flat = all_z[: num_views * batch_size]
+            z_negatives_flat = all_z[num_views * batch_size :]
+
+            z_views = z_views_flat.view(num_views, batch_size, -1)
+            z_negatives = z_negatives_flat.view(
+                num_negative_views,
+                batch_size,
+                -1,
+            )
+
+        with record_function("joint_ssl_loss"):
+            loss_dict = self.loss(
+                z_views=z_views,
+                z_negatives=z_negatives,
+                classification_logits=classification_logits,
+                y=y,
+                num_global_views=num_global_views,
+            )
+
+        output: Dict[str, torch.Tensor] = {
+            **loss_dict,
+            "classification_logits": classification_logits,
+            "z_views": z_views,
+            "z_negatives": z_negatives,
+        }
+
+        if return_views:
+            output["views"] = views
+            output["view_padding_masks"] = view_padding_masks
+            output["view_types"] = view_types
+            output["negative_views"] = negative_views
+            output["negative_padding_masks"] = negative_padding_masks
             output["negative_types"] = negative_types
 
         return output

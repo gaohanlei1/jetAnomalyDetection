@@ -1,0 +1,177 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 4029396
+##  Job Name : AK8-SS-m0.5-hbb
+##  Nodelist : gpu2708
+##      CPUs : 1
+##  Mem/Node : 128000 MB
+## Directory : /oscar/home/hgao50/jetAnomalyDetection
+##   Job Started : Thu Jul 16 12:56:49 PM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Thu Jul 16 12:56:49 PM EDT 2026
+Job ID: 4029396
+Node: gpu2708
+MARGIN=0.5  SIGNAL=hbb
+==========================================
+
+GPU Information (from host):
+Thu Jul 16 12:56:49 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:01:00.0 Off |                    0 |
+| N/A   44C    P0             85W /  350W |      75MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          157414      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch 2.2.1+cu118, cuda=True, device=NVIDIA L40S
+Staged qcd: 400 files -> /tmp/ak8_semisup_hbb_m0.5_4029396/qcd
+Staged wjets: 200 files -> /tmp/ak8_semisup_hbb_m0.5_4029396/wjets
+Staged zjets: 200 files -> /tmp/ak8_semisup_hbb_m0.5_4029396/zjets
+Staged ttbar: 200 files -> /tmp/ak8_semisup_hbb_m0.5_4029396/ttbar
+Staged signal hbb: 189 files -> /tmp/ak8_semisup_hbb_m0.5_4029396/signal_hbb
+Background dirs: /tmp/ak8_semisup_hbb_m0.5_4029396/qcd,/tmp/ak8_semisup_hbb_m0.5_4029396/wjets,/tmp/ak8_semisup_hbb_m0.5_4029396/zjets,/tmp/ak8_semisup_hbb_m0.5_4029396/ttbar
+Background names: QCD,WJets,ZJets,TTbar
+Signal: hbb (Hbb)
+Margin: 0.5
+Output dir: plots/run-lejepa-ak8-semisup-m0.5-hbb
+Loading background from /tmp/ak8_semisup_hbb_m0.5_4029396/qcd,/tmp/ak8_semisup_hbb_m0.5_4029396/wjets,/tmp/ak8_semisup_hbb_m0.5_4029396/zjets,/tmp/ak8_semisup_hbb_m0.5_4029396/ttbar
+Loading signal from /tmp/ak8_semisup_hbb_m0.5_4029396/signal_hbb
+Node feature names: ['eta', 'phi', 'pt', 'd0/d0Err', 'dz/dzErr', 'charge', 'mass', 'log_pt', 'pdgId_-211', 'pdgId_-13', 'pdgId_-11', 'pdgId_11', 'pdgId_13', 'pdgId_22', 'pdgId_130', 'pdgId_211']
+Background classes: QCD@/tmp/ak8_semisup_hbb_m0.5_4029396/qcd, WJets@/tmp/ak8_semisup_hbb_m0.5_4029396/wjets, ZJets@/tmp/ak8_semisup_hbb_m0.5_4029396/zjets, TTbar@/tmp/ak8_semisup_hbb_m0.5_4029396/ttbar
+Using JetClass-style dataloader.read_file on DeepNTuplizer ROOT (pt >= 200.0, pt <= 400.0, max_num_particles=128)
+  [QCD] jets: 75000  x_particles=(75000, 16, 128)
+  [WJets] jets: 75000  x_particles=(75000, 16, 128)
+  [ZJets] jets: 75000  x_particles=(75000, 16, 128)
+  [TTbar] jets: 75000  x_particles=(75000, 16, 128)
+Background jets (all classes): 300000  x_particles=(300000, 16, 128)
+Signal jets: 20000  x_particles=(20000, 16, 128)
+Loading background node tensors...
+  class 0 (QCD): 74999 jets
+  class 1 (WJets): 74997 jets
+  class 2 (ZJets): 74998 jets
+  class 3 (TTbar): 74996 jets
+Loading signal node tensors...
+Loaded background train events: 239990
+Loaded background val events: 60000
+Loaded signal events: 19746
+Feature mean: tensor([-3.1022e-01, -3.0368e-01,  2.7690e-02,  1.1327e+00, -4.5522e-04,
+         8.5385e-03,  9.3073e-02, -4.5446e+00,  0.0000e+00,  0.0000e+00,
+         0.0000e+00,  4.2933e-03,  3.0019e-03,  2.4852e-01,  8.2710e-02,
+         6.6145e-01])
+Feature std: tensor([0.1589, 0.1589, 0.0583, 1.6614, 1.2803, 0.8177, 0.0654, 1.2748, 1.0000,
+        1.0000, 1.0000, 0.0654, 0.0547, 0.4322, 0.2754, 0.4732])
+Example node tensor shape: torch.Size([33, 16])
+Selected SSL model: semi-sup-triplet
+Model summary:
+LeJEPASemiSupervisedTripletParticleTransformerRepresentation(
+  (node_embedding): NodeEmbedding(
+    (net): Sequential(
+      (0): Linear(in_features=16, out_features=128, bias=True)
+      (1): GELU(approximate='none')
+      (2): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+      (3): Linear(in_features=128, out_features=512, bias=True)
+      (4): GELU(approximate='none')
+      (5): LayerNorm((512,), eps=1e-05, elementwise_affine=True)
+      (6): Linear(in_features=512, out_features=128, bias=True)
+      (7): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (pairwise_bias): PairwiseAttentionBias(
+    (mlp): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=4, out_features=16, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.1, inplace=False)
+      (4): Linear(in_features=16, out_features=16, bias=True)
+      (5): SiLU()
+      (6): Dropout(p=0.1, inplace=False)
+      (7): Linear(in_features=16, out_features=8, bias=True)
+    )
+  )
+  (encoder): ParticleTransformerEncoder(
+    (layers): ModuleList(
+      (0-7): 8 x ParticleTransformerBlock(
+        (attn_norm): RMSNorm()
+        (self_attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=128, out_features=128, bias=True)
+        )
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (ffn_norm): RMSNorm()
+        (ffn): SwiGLUFFN(
+          (fc1): Linear(in_features=128, out_features=1024, bias=True)
+          (act): SwiGLU()
+          (fc2): Linear(in_features=512, out_features=128, bias=True)
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+      )
+    )
+  )
+  (cls_pooling): CLSPooling(
+    (layers): ModuleList(
+      (0-1): 2 x ClassAttentionBlock(
+        (query_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (context_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=128, out_features=128, bias=True)
+        )
+        (attn_dropout): Dropout(p=0.0, inplace=False)
+        (ffn_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (ffn): Sequential(
+          (0): Linear(in_features=128, out_features=512, bias=True)
+          (1): GELU(approximate='none')
+          (2): Dropout(p=0.0, inplace=False)
+          (3): Linear(in_features=512, out_features=128, bias=True)
+          (4): Dropout(p=0.0, inplace=False)
+        )
+      )
+    )
+  )
+  (representation_head): RepresentationHead(
+    (net): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=128, out_features=128, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.1, inplace=False)
+      (4): Linear(in_features=128, out_features=128, bias=True)
+    )
+  )
+  (augmentation): MultiViewAugmentation()
+  (negative_augmentation): CorruptedNegativeAugmentation()
+  (loss): LeJEPASIGRegTripletClassificationLoss(
+    (triplet_loss): LeJEPASIGRegTripletLoss(
+      (lejepa_loss): LeJEPASIGRegLoss(
+        (sigreg_loss_fn): SlicingUnivariateTest(
+          (univariate_test): EppsPulley()
+        )
+      )
+    )
+  )
+  (classification_head): CategoricalClassificationHead(
+    (net): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=128, out_features=128, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.1, inplace=False)
+      (4): Linear(in_features=128, out_features=4, bias=True)
+    )
+  )
+)
+Number of trainable parameters: 2695664
+Initialized run summary at plots/run-lejepa-ak8-semisup-m0.5-hbb/summary.json
+
+Epoch [1/100]
+Learning rate: 5.3333333e-08

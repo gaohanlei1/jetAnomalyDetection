@@ -1,0 +1,271 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 4060867
+##  Job Name : AK8-SS-m0.1-zjets
+##  Nodelist : gpu3004
+##      CPUs : 1
+##  Mem/Node : 90000 MB
+## Directory : /oscar/home/hgao50/jetAnomalyDetection
+##   Job Started : Fri Jul 17 06:56:07 AM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Fri Jul 17 06:56:07 AM EDT 2026
+Job ID: 4060867
+Node: gpu3004
+MARGIN=0.1  SIGNAL=zjets
+==========================================
+
+GPU Information (from host):
+Fri Jul 17 06:56:07 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:C1:00.0 Off |                    0 |
+| N/A   30C    P8             31W /  350W |      74MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          184125      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch 2.2.1+cu118, cuda=True, device=NVIDIA L40S
+Staged qcd: 395 files -> /tmp/ak8_semisup_zjets_m0.1_4060867/qcd
+Staged wjets: 200 files -> /tmp/ak8_semisup_zjets_m0.1_4060867/wjets
+Staged ttbar: 199 files -> /tmp/ak8_semisup_zjets_m0.1_4060867/ttbar
+Staged hbb: 188 files -> /tmp/ak8_semisup_zjets_m0.1_4060867/hbb
+Staged signal zjets: 200 files -> /tmp/ak8_semisup_zjets_m0.1_4060867/signal_zjets
+Background dirs: /tmp/ak8_semisup_zjets_m0.1_4060867/qcd,/tmp/ak8_semisup_zjets_m0.1_4060867/wjets,/tmp/ak8_semisup_zjets_m0.1_4060867/ttbar,/tmp/ak8_semisup_zjets_m0.1_4060867/hbb
+Background names: QCD,WJets,TTbar,Hbb
+Signal: zjets (ZJets)
+Margin: 0.1
+Output dir: plots/run-lejepa-ak8-semisup-m0.1-zjets
+Streaming backgrounds from /tmp/ak8_semisup_zjets_m0.1_4060867/qcd,/tmp/ak8_semisup_zjets_m0.1_4060867/wjets,/tmp/ak8_semisup_zjets_m0.1_4060867/ttbar,/tmp/ak8_semisup_zjets_m0.1_4060867/hbb
+Streaming signal from /tmp/ak8_semisup_zjets_m0.1_4060867/signal_zjets
+Node feature names: ['eta', 'phi', 'pt', 'd0/d0Err', 'dz/dzErr', 'charge', 'mass', 'log_pt', 'pdgId_-211', 'pdgId_-13', 'pdgId_-11', 'pdgId_11', 'pdgId_13', 'pdgId_22', 'pdgId_130', 'pdgId_211']
+Streaming mode: discovering ROOT shards (no full in-memory load).
+  class 0 (QCD): 395 ROOT files
+  class 1 (WJets): 200 ROOT files
+  class 2 (TTbar): 199 ROOT files
+  class 3 (Hbb): 188 ROOT files
+  split QCD: train_files=355 val_files=40
+  split WJets: train_files=180 val_files=20
+  split TTbar: train_files=179 val_files=20
+  split Hbb: train_files=169 val_files=19
+  signal (ZJets): 200 ROOT files
+Streaming configured: steps_per_epoch=1000, val_steps=100, eval_steps=100
+Streaming datasets already prepared in load(); skipping RAM materialization.
+Skipping feature plots in streaming mode.
+Selected SSL model: semi-sup-triplet
+Model summary:
+LeJEPASemiSupervisedTripletParticleTransformerRepresentation(
+  (node_embedding): NodeEmbedding(
+    (net): Sequential(
+      (0): Linear(in_features=16, out_features=128, bias=True)
+      (1): GELU(approximate='none')
+      (2): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+      (3): Linear(in_features=128, out_features=512, bias=True)
+      (4): GELU(approximate='none')
+      (5): LayerNorm((512,), eps=1e-05, elementwise_affine=True)
+      (6): Linear(in_features=512, out_features=128, bias=True)
+      (7): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (pairwise_bias): PairwiseAttentionBias(
+    (mlp): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=4, out_features=16, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.1, inplace=False)
+      (4): Linear(in_features=16, out_features=16, bias=True)
+      (5): SiLU()
+      (6): Dropout(p=0.1, inplace=False)
+      (7): Linear(in_features=16, out_features=8, bias=True)
+    )
+  )
+  (encoder): ParticleTransformerEncoder(
+    (layers): ModuleList(
+      (0-7): 8 x ParticleTransformerBlock(
+        (attn_norm): RMSNorm()
+        (self_attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=128, out_features=128, bias=True)
+        )
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (ffn_norm): RMSNorm()
+        (ffn): SwiGLUFFN(
+          (fc1): Linear(in_features=128, out_features=1024, bias=True)
+          (act): SwiGLU()
+          (fc2): Linear(in_features=512, out_features=128, bias=True)
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+      )
+    )
+  )
+  (cls_pooling): CLSPooling(
+    (layers): ModuleList(
+      (0-1): 2 x ClassAttentionBlock(
+        (query_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (context_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=128, out_features=128, bias=True)
+        )
+        (attn_dropout): Dropout(p=0.0, inplace=False)
+        (ffn_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (ffn): Sequential(
+          (0): Linear(in_features=128, out_features=512, bias=True)
+          (1): GELU(approximate='none')
+          (2): Dropout(p=0.0, inplace=False)
+          (3): Linear(in_features=512, out_features=128, bias=True)
+          (4): Dropout(p=0.0, inplace=False)
+        )
+      )
+    )
+  )
+  (representation_head): RepresentationHead(
+    (net): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=128, out_features=128, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.1, inplace=False)
+      (4): Linear(in_features=128, out_features=128, bias=True)
+    )
+  )
+  (augmentation): MultiViewAugmentation()
+  (negative_augmentation): CorruptedNegativeAugmentation()
+  (loss): LeJEPASIGRegTripletClassificationLoss(
+    (triplet_loss): LeJEPASIGRegTripletLoss(
+      (lejepa_loss): LeJEPASIGRegLoss(
+        (sigreg_loss_fn): SlicingUnivariateTest(
+          (univariate_test): EppsPulley()
+        )
+      )
+    )
+  )
+  (classification_head): CategoricalClassificationHead(
+    (net): Sequential(
+      (0): RMSNorm()
+      (1): Linear(in_features=128, out_features=128, bias=True)
+      (2): SiLU()
+      (3): Dropout(p=0.1, inplace=False)
+      (4): Linear(in_features=128, out_features=4, bias=True)
+    )
+  )
+)
+Number of trainable parameters: 2695664
+Skipping augmentation sample plots.
+Initialized run summary at plots/run-lejepa-ak8-semisup-m0.1-zjets/summary.json
+
+Epoch [1/12]
+Learning rate: 1e-07
+Saved new best model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/best_model.pth
+Saved last model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/last_model.pth
+Epoch 1 train losses: {'total_loss': 1.8318961856365203, 'invariant_loss': 0.22362890405021607, 'sigreg_loss': 77.05675, 'triplet_loss': 0.021829075345071034, 'triplet_pos_distance': 0.05796147814556025, 'triplet_neg_distance': 0.6051801452366635, 'classification_loss': 1.3018436745405197}
+Epoch 1 val losses: {'total_loss': 0.831759250164032, 'invariant_loss': 0.14345194786787033, 'sigreg_loss': 31.26875, 'triplet_loss': 0.010120117710903287, 'triplet_pos_distance': 0.02629393547773361, 'triplet_neg_distance': 1.011044030189514, 'classification_loss': 1.2380932104587554}
+Updated run summary at plots/run-lejepa-ak8-semisup-m0.1-zjets/summary.json
+
+Epoch [2/12]
+Learning rate: 0.0001001
+Saved new best model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/best_model.pth
+Saved last model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/last_model.pth
+Epoch 2 train losses: {'total_loss': 0.7073262451291085, 'invariant_loss': 0.20240958020091057, 'sigreg_loss': 22.1259375, 'triplet_loss': 0.004987579757347703, 'triplet_pos_distance': 0.05571785083040595, 'triplet_neg_distance': 1.160380634367466, 'classification_loss': 1.2383581562042236}
+Epoch 2 val losses: {'total_loss': 0.586424224972725, 'invariant_loss': 0.1337447026371956, 'sigreg_loss': 19.55375, 'triplet_loss': 0.007713706088252365, 'triplet_pos_distance': 0.024568395549431445, 'triplet_neg_distance': 1.2196466362476348, 'classification_loss': 1.2151161217689515}
+Updated run summary at plots/run-lejepa-ak8-semisup-m0.1-zjets/summary.json
+
+Epoch [3/12]
+Learning rate: 0.0002001
+Saved new best model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/best_model.pth
+Saved last model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/last_model.pth
+Epoch 3 train losses: {'total_loss': 0.5845300684273242, 'invariant_loss': 0.2001865149587393, 'sigreg_loss': 16.1860625, 'triplet_loss': 0.003308794769924134, 'triplet_pos_distance': 0.05694281353801489, 'triplet_neg_distance': 1.3189902925491332, 'classification_loss': 1.2055659766197204}
+Epoch 3 val losses: {'total_loss': 0.5157365968823433, 'invariant_loss': 0.12800907261669636, 'sigreg_loss': 16.3875, 'triplet_loss': 0.0049344368139281865, 'triplet_pos_distance': 0.024148368444293737, 'triplet_neg_distance': 1.3514602041244508, 'classification_loss': 1.189994158744812}
+Updated run summary at plots/run-lejepa-ak8-semisup-m0.1-zjets/summary.json
+
+Epoch [4/12]
+Learning rate: 0.0003001
+Saved new best model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/best_model.pth
+Saved last model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/last_model.pth
+Epoch 4 train losses: {'total_loss': 0.5261216323673725, 'invariant_loss': 0.189832559004426, 'sigreg_loss': 13.8405, 'triplet_loss': 0.002223831620416604, 'triplet_pos_distance': 0.054812050469219685, 'triplet_neg_distance': 1.4442290974855423, 'classification_loss': 1.1845173552036286}
+Epoch 4 val losses: {'total_loss': 0.4834583762288094, 'invariant_loss': 0.11462465658783913, 'sigreg_loss': 15.481875, 'triplet_loss': 0.0036336616007611156, 'triplet_pos_distance': 0.020456635379232466, 'triplet_neg_distance': 1.3920125663280487, 'classification_loss': 1.1760477149486541}
+Updated run summary at plots/run-lejepa-ak8-semisup-m0.1-zjets/summary.json
+
+Epoch [5/12]
+Learning rate: 0.0004001
+Saved new best model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/best_model.pth
+Saved last model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/last_model.pth
+Mahalanobis metrics saved to plots/run-lejepa-ak8-semisup-m0.1-zjets/mahalanobis_eval/epoch_0005/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+WJets+TTbar+Hbb train vs ZJets: 0.527410
+Mahalanobis AUC, QCD+WJets+TTbar+Hbb val vs ZJets: 0.512996
+Epoch 5 train losses: {'total_loss': 0.4884337333440781, 'invariant_loss': 0.18098633678257464, 'sigreg_loss': 12.4179375, 'triplet_loss': 0.001945980360847898, 'triplet_pos_distance': 0.05144273486360908, 'triplet_neg_distance': 1.443471541762352, 'classification_loss': 1.177497302055359}
+Epoch 5 val losses: {'total_loss': 0.4341796162724495, 'invariant_loss': 0.10982193544507027, 'sigreg_loss': 13.29375, 'triplet_loss': 0.0030850559670943765, 'triplet_pos_distance': 0.020069318041205406, 'triplet_neg_distance': 1.394139051437378, 'classification_loss': 1.162233511209488}
+Updated run summary at plots/run-lejepa-ak8-semisup-m0.1-zjets/summary.json
+
+Epoch [6/12]
+Learning rate: 0.0005001
+Saved new best model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/best_model.pth
+Saved last model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/last_model.pth
+Epoch 6 train losses: {'total_loss': 0.46238388603925706, 'invariant_loss': 0.1767299595028162, 'sigreg_loss': 11.3365, 'triplet_loss': 0.0018079953488486353, 'triplet_pos_distance': 0.04990422125533223, 'triplet_neg_distance': 1.416954896211624, 'classification_loss': 1.174774977505207}
+Epoch 6 val losses: {'total_loss': 0.410319068133831, 'invariant_loss': 0.10660493738949299, 'sigreg_loss': 12.26875, 'triplet_loss': 0.002880929437233135, 'triplet_pos_distance': 0.019985923958010972, 'triplet_neg_distance': 1.3206960713863374, 'classification_loss': 1.1603176426887511}
+Updated run summary at plots/run-lejepa-ak8-semisup-m0.1-zjets/summary.json
+
+Epoch [7/12]
+Learning rate: 0.0006001
+Saved new best model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/best_model.pth
+Saved last model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/last_model.pth
+Epoch 7 train losses: {'total_loss': 0.4466928022801876, 'invariant_loss': 0.1732595740556717, 'sigreg_loss': 10.774, 'triplet_loss': 0.0017689672237756896, 'triplet_pos_distance': 0.04918693393096328, 'triplet_neg_distance': 1.4206253759860992, 'classification_loss': 1.1552828128933907}
+Epoch 7 val losses: {'total_loss': 0.39195177584886554, 'invariant_loss': 0.11259720981121063, 'sigreg_loss': 11.105625, 'triplet_loss': 0.002984348916215822, 'triplet_pos_distance': 0.019701710594817998, 'triplet_neg_distance': 1.339327062368393, 'classification_loss': 1.1383491957187652}
+Updated run summary at plots/run-lejepa-ak8-semisup-m0.1-zjets/summary.json
+
+Epoch [8/12]
+Learning rate: 0.0007001
+Saved new best model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/best_model.pth
+Saved last model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/last_model.pth
+Epoch 8 train losses: {'total_loss': 0.435487032443285, 'invariant_loss': 0.17093110455572605, 'sigreg_loss': 10.3516875, 'triplet_loss': 0.001779439016652759, 'triplet_pos_distance': 0.048527772095054385, 'triplet_neg_distance': 1.4201934678554535, 'classification_loss': 1.1467783761620522}
+Epoch 8 val losses: {'total_loss': 0.38366650968790056, 'invariant_loss': 0.10205467708408833, 'sigreg_loss': 11.22, 'triplet_loss': 0.002765011795563623, 'triplet_pos_distance': 0.017818219624459744, 'triplet_neg_distance': 1.35880264878273, 'classification_loss': 1.1384253871440888}
+Updated run summary at plots/run-lejepa-ak8-semisup-m0.1-zjets/summary.json
+
+Epoch [9/12]
+Learning rate: 0.0008001
+Saved new best model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/best_model.pth
+Saved last model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/last_model.pth
+Epoch 9 train losses: {'total_loss': 0.4259011397659779, 'invariant_loss': 0.1698772037625313, 'sigreg_loss': 9.9161875, 'triplet_loss': 0.0017204792750708294, 'triplet_pos_distance': 0.04772502890974283, 'triplet_neg_distance': 1.4380978957414627, 'classification_loss': 1.150650993824005}
+Epoch 9 val losses: {'total_loss': 0.3710880923271179, 'invariant_loss': 0.10966417707502842, 'sigreg_loss': 10.2028125, 'triplet_loss': 0.0024614229251164943, 'triplet_pos_distance': 0.01902403835672885, 'triplet_neg_distance': 1.394344118833542, 'classification_loss': 1.1423054146766662}
+Updated run summary at plots/run-lejepa-ak8-semisup-m0.1-zjets/summary.json
+
+Epoch [10/12]
+Learning rate: 0.0009001
+Saved new best model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/best_model.pth
+Saved last model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/last_model.pth
+Mahalanobis metrics saved to plots/run-lejepa-ak8-semisup-m0.1-zjets/mahalanobis_eval/epoch_0010/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+WJets+TTbar+Hbb train vs ZJets: 0.517130
+Mahalanobis AUC, QCD+WJets+TTbar+Hbb val vs ZJets: 0.509982
+Epoch 10 train losses: {'total_loss': 0.4244229525029659, 'invariant_loss': 0.17017021504044533, 'sigreg_loss': 9.818625, 'triplet_loss': 0.0016987102662969847, 'triplet_pos_distance': 0.04758283491805196, 'triplet_neg_distance': 1.4407899338006973, 'classification_loss': 1.153864291191101}
+Epoch 10 val losses: {'total_loss': 0.3684699946641922, 'invariant_loss': 0.10835942834615707, 'sigreg_loss': 10.1525, 'triplet_loss': 0.002682654984528199, 'triplet_pos_distance': 0.02051964108366519, 'triplet_neg_distance': 1.367617098093033, 'classification_loss': 1.1353226351737975}
+Updated run summary at plots/run-lejepa-ak8-semisup-m0.1-zjets/summary.json
+
+Epoch [11/12]
+Learning rate: 0.001
+Saved new best model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/best_model.pth
+Saved last model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/last_model.pth
+Epoch 11 train losses: {'total_loss': 0.4089467597603798, 'invariant_loss': 0.1672184606641531, 'sigreg_loss': 9.19334375, 'triplet_loss': 0.0016266843812773005, 'triplet_pos_distance': 0.0466484267860651, 'triplet_neg_distance': 1.4215464154481887, 'classification_loss': 1.153714894592762}
+Epoch 11 val losses: {'total_loss': 0.34763172805309295, 'invariant_loss': 0.10544350951910018, 'sigreg_loss': 9.2784375, 'triplet_loss': 0.0022802597511326892, 'triplet_pos_distance': 0.01873020054772496, 'triplet_neg_distance': 1.3658205330371858, 'classification_loss': 1.1276804274320602}
+Updated run summary at plots/run-lejepa-ak8-semisup-m0.1-zjets/summary.json
+
+Epoch [12/12]
+Learning rate: 0.0005005
+Saved new best model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/best_model.pth
+Saved last model state_dict to plots/run-lejepa-ak8-semisup-m0.1-zjets/last_model.pth
+Mahalanobis metrics saved to plots/run-lejepa-ak8-semisup-m0.1-zjets/mahalanobis_eval/epoch_0012/mahalanobis_metrics.json
+Mahalanobis AUC, QCD+WJets+TTbar+Hbb train vs ZJets: 0.523408
+Mahalanobis AUC, QCD+WJets+TTbar+Hbb val vs ZJets: 0.513000
+Epoch 12 train losses: {'total_loss': 0.3840540663599968, 'invariant_loss': 0.16025424741208552, 'sigreg_loss': 8.372875, 'triplet_loss': 0.0013795474447397282, 'triplet_pos_distance': 0.04543277956545353, 'triplet_neg_distance': 1.4226217243671417, 'classification_loss': 1.123998934149742}
+Epoch 12 val losses: {'total_loss': 0.33389646470546724, 'invariant_loss': 0.09697272948920727, 'sigreg_loss': 9.06125, 'triplet_loss': 0.0020941268076421693, 'triplet_pos_distance': 0.017711982205510138, 'triplet_neg_distance': 1.3552263963222504, 'classification_loss': 1.1102629977464675}
+Updated run summary at plots/run-lejepa-ak8-semisup-m0.1-zjets/summary.json
+Saved run summary to plots/run-lejepa-ak8-semisup-m0.1-zjets/summary.json
+Job finished at: Fri Jul 17 08:04:07 AM EDT 2026

@@ -1,0 +1,66 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 4060873
+##  Job Name : AK8-SS-m0.2-hbb
+##  Nodelist : gpu2708
+##      CPUs : 1
+##  Mem/Node : 90000 MB
+## Directory : /oscar/home/hgao50/jetAnomalyDetection
+##   Job Started : Fri Jul 17 10:17:41 AM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Fri Jul 17 10:17:41 AM EDT 2026
+Job ID: 4060873
+Node: gpu2708
+MARGIN=0.2  SIGNAL=hbb
+==========================================
+
+GPU Information (from host):
+Fri Jul 17 10:17:41 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:A1:00.0 Off |                    0 |
+| N/A   36C    P8             36W /  350W |      76MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          157414      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch 2.2.1+cu118, cuda=True, device=NVIDIA L40S
+Staged qcd: 395 files -> /tmp/ak8_semisup_hbb_m0.2_4060873/qcd
+Staged wjets: 200 files -> /tmp/ak8_semisup_hbb_m0.2_4060873/wjets
+Staged zjets: 200 files -> /tmp/ak8_semisup_hbb_m0.2_4060873/zjets
+Staged ttbar: 199 files -> /tmp/ak8_semisup_hbb_m0.2_4060873/ttbar
+Staged signal hbb: 188 files -> /tmp/ak8_semisup_hbb_m0.2_4060873/signal_hbb
+Background dirs: /tmp/ak8_semisup_hbb_m0.2_4060873/qcd,/tmp/ak8_semisup_hbb_m0.2_4060873/wjets,/tmp/ak8_semisup_hbb_m0.2_4060873/zjets,/tmp/ak8_semisup_hbb_m0.2_4060873/ttbar
+Background names: QCD,WJets,ZJets,TTbar
+Signal: hbb (Hbb)
+Margin: 0.2
+Output dir: plots/run-lejepa-ak8-semisup-m0.2-hbb
+Streaming backgrounds from /tmp/ak8_semisup_hbb_m0.2_4060873/qcd,/tmp/ak8_semisup_hbb_m0.2_4060873/wjets,/tmp/ak8_semisup_hbb_m0.2_4060873/zjets,/tmp/ak8_semisup_hbb_m0.2_4060873/ttbar
+Streaming signal from /tmp/ak8_semisup_hbb_m0.2_4060873/signal_hbb
+Node feature names: ['eta', 'phi', 'pt', 'd0/d0Err', 'dz/dzErr', 'charge', 'mass', 'log_pt', 'pdgId_-211', 'pdgId_-13', 'pdgId_-11', 'pdgId_11', 'pdgId_13', 'pdgId_22', 'pdgId_130', 'pdgId_211']
+Streaming mode: discovering ROOT shards (no full in-memory load).
+  class 0 (QCD): 395 ROOT files
+  class 1 (WJets): 200 ROOT files
+  class 2 (ZJets): 200 ROOT files
+  class 3 (TTbar): 199 ROOT files
+  split QCD: train_files=355 val_files=40
+  split WJets: train_files=180 val_files=20
+  split ZJets: train_files=180 val_files=20
+  split TTbar: train_files=179 val_files=20
+  signal (Hbb): 188 ROOT files
+Streaming configured: steps_per_epoch=1000, val_steps=100, eval_steps=100
+Streaming datasets already prepared in load(); skipping RAM materialization.
+Skipping feature plots in streaming mode.

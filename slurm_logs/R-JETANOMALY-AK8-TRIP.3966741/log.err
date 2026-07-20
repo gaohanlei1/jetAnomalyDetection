@@ -1,0 +1,12 @@
+
+EnvironmentNameNotFound: Could not find conda environment: jet
+You can list all discoverable environments with `conda info --envs`.
+
+
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+ModuleNotFoundError: No module named 'torch'
+Traceback (most recent call last):
+  File "/oscar/home/hgao50/jetAnomalyDetection/scripts/run_train_lejepa_part.py", line 51, in <module>
+    import matplotlib.pyplot as plt
+ModuleNotFoundError: No module named 'matplotlib'

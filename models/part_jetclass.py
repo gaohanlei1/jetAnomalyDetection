@@ -97,6 +97,7 @@ class ParticleTransformerConfig:
     compute_dtype: torch.dtype = torch.bfloat16
     use_internal_autocast: bool = False
     eps: float = 1e-8
+    feature_norm_momentum: float = 0.1
 
     input_feature_names: Tuple[str, ...] = (
         "part_px",
@@ -862,6 +863,9 @@ class MinimalParticleTransformer(nn.Module):
         super().__init__()
 
         self.config = config
+        self.feature_norm_momentum = float(
+            getattr(config, "feature_norm_momentum", 0.1)
+        )
 
         self.node_embedding = NodeEmbedding(
             input_dim=config.node_input_dim,
@@ -913,7 +917,7 @@ class MinimalParticleTransformer(nn.Module):
         )
         self.register_buffer(
             "_feature_num_batches_tracked",
-            torch.zeros(0, dtype=torch.long),
+            torch.zeros((), dtype=torch.long),
         )
         self._use_frozen_feature_stats_in_eval = True # for compatibility with old models without frozen stats
 

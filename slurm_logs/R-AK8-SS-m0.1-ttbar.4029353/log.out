@@ -1,0 +1,50 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 4029353
+##  Job Name : AK8-SS-m0.1-ttbar
+##  Nodelist : gpu2708
+##      CPUs : 1
+##  Mem/Node : 128000 MB
+## Directory : /oscar/home/hgao50/jetAnomalyDetection
+##   Job Started : Thu Jul 16 10:48:14 AM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Thu Jul 16 10:48:14 AM EDT 2026
+Job ID: 4029353
+Node: gpu2708
+MARGIN=0.1  SIGNAL=ttbar
+==========================================
+
+GPU Information (from host):
+Thu Jul 16 10:48:14 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:01:00.0 Off |                    0 |
+| N/A   28C    P8             32W /  350W |      75MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          157414      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch 2.2.1+cu118, cuda=True, device=NVIDIA L40S
+Staged qcd: 400 files -> /tmp/ak8_semisup_ttbar_m0.1_4029353/qcd
+Staged wjets: 200 files -> /tmp/ak8_semisup_ttbar_m0.1_4029353/wjets
+Staged zjets: 200 files -> /tmp/ak8_semisup_ttbar_m0.1_4029353/zjets
+Staged hbb: 189 files -> /tmp/ak8_semisup_ttbar_m0.1_4029353/hbb
+Staged signal ttbar: 200 files -> /tmp/ak8_semisup_ttbar_m0.1_4029353/signal_ttbar
+Background dirs: /tmp/ak8_semisup_ttbar_m0.1_4029353/qcd,/tmp/ak8_semisup_ttbar_m0.1_4029353/wjets,/tmp/ak8_semisup_ttbar_m0.1_4029353/zjets,/tmp/ak8_semisup_ttbar_m0.1_4029353/hbb
+Background names: QCD,WJets,ZJets,Hbb
+Signal: ttbar (TTbar)
+Margin: 0.1
+Output dir: plots/run-lejepa-ak8-semisup-m0.1-ttbar

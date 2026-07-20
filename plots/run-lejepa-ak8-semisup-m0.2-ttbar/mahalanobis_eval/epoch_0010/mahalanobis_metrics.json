@@ -1,0 +1,11 @@
+{
+  "epoch": 10,
+  "auc_bgtrain_vs_signal": 0.48796201171875,
+  "auc_bgval_vs_signal": 0.4830203918457031,
+  "background_train_score_mean": 103.43124740124449,
+  "background_val_score_mean": 104.05191040765945,
+  "signal_score_mean": 102.51640149792345,
+  "background_train_score_median": 100.72705609260117,
+  "background_val_score_median": 101.32451601367984,
+  "signal_score_median": 99.95297059670591
+}
