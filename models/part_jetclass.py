@@ -97,7 +97,7 @@ class ParticleTransformerConfig:
     compute_dtype: torch.dtype = torch.bfloat16
     use_internal_autocast: bool = False
     eps: float = 1e-8
-    feature_norm_momentum: float = 0.1
+    feature_norm_momentum: float = 0.9
 
     input_feature_names: Tuple[str, ...] = (
         "part_px",
@@ -917,7 +917,7 @@ class MinimalParticleTransformer(nn.Module):
         )
         self.register_buffer(
             "_feature_num_batches_tracked",
-            torch.zeros((), dtype=torch.long),
+            torch.zeros((), dtype=torch.long), # scalar tensor
         )
         self._use_frozen_feature_stats_in_eval = True # for compatibility with old models without frozen stats
 
@@ -1047,7 +1047,7 @@ class MinimalParticleTransformer(nn.Module):
                     # Updating running buffers must not enter autograd.
                     if self.training: # if in eval model, don't need to update
                         with torch.no_grad():
-                            momentum = self.feature_norm_momentum
+                            momentum = self.config.feature_norm_momentum
 
                             self._feature_running_mean.mul_(
                                 1.0 - momentum
@@ -1649,6 +1649,11 @@ class CorruptedNegativeAugmentation(nn.Module):
         if x.ndim != 3:
             raise ValueError(f"Expected x shape (B, N, F), got {tuple(x.shape)}.")
 
+        if self.config.num_negative_views == 0:
+            return [], [], []
+        if self.config.num_negative_views < 0:
+            raise ValueError(f"Expected num_negative_views >= 0, got {self.config.num_negative_views}.")
+        
         batch_size, seq_len, _ = x.shape
         device = x.device
 
@@ -2526,6 +2531,7 @@ class LeJEPASIGRegTripletLoss(nn.Module):
                 f"Representation dimension mismatch: z_views has D={z_views.size(2)}, "
                 f"z_negatives has D={z_negatives.size(2)}."
             )
+            
         
         # Compute loss terms in fp32 even when the encoder forward pass uses autocast.
         # This avoids reduced-precision quantization in SIGReg and triplet distances.
@@ -2536,6 +2542,16 @@ class LeJEPASIGRegTripletLoss(nn.Module):
             z_views=z_views,
             num_global_views=num_global_views,
         )
+        
+        if z_negatives.size(0) == 0:
+            # for ablation, skip triplet loss if no negatives are provided
+            output = {
+                **base_loss,
+                "triplet_loss": torch.tensor(0.0, device=z_views.device),
+                "triplet_pos_distance": torch.tensor(0.0, device=z_views.device),
+                "triplet_neg_distance": torch.tensor(0.0, device=z_views.device),
+            }
+            return output
 
         triplet_views = z_views
         triplet_negatives = z_negatives
@@ -3127,20 +3143,24 @@ class LeJEPASemiSupervisedTripletParticleTransformerRepresentation(
         with record_function("batch_concat"):
             batched_views = torch.cat(views, dim=0)
             batched_view_masks = torch.cat(view_padding_masks, dim=0)
-            batched_negatives = torch.cat(negative_views, dim=0)
-            batched_negative_masks = torch.cat(
-                negative_padding_masks,
-                dim=0,
-            )
+            if num_negative_views == 0: # for ablation
+                all_inputs = batched_views
+                all_masks = batched_view_masks
+            else:
+                batched_negatives = torch.cat(negative_views, dim=0)
+                batched_negative_masks = torch.cat(
+                    negative_padding_masks,
+                    dim=0,
+                )
 
-            all_inputs = torch.cat(
-                [batched_views, batched_negatives],
-                dim=0,
-            )
-            all_masks = torch.cat(
-                [batched_view_masks, batched_negative_masks],
-                dim=0,
-            )
+                all_inputs = torch.cat(
+                    [batched_views, batched_negatives],
+                    dim=0,
+                )
+                all_masks = torch.cat(
+                    [batched_view_masks, batched_negative_masks],
+                    dim=0,
+                )
 
         with record_function("backbone_forward"):
             all_cls = MinimalParticleTransformer.forward(
@@ -3169,11 +3189,18 @@ class LeJEPASemiSupervisedTripletParticleTransformerRepresentation(
             z_negatives_flat = all_z[num_views * batch_size :]
 
             z_views = z_views_flat.view(num_views, batch_size, -1)
-            z_negatives = z_negatives_flat.view(
-                num_negative_views,
-                batch_size,
-                -1,
-            )
+            if num_negative_views != 0: # for ablation
+                z_negatives = z_negatives_flat.view(
+                    num_negative_views,
+                    batch_size,
+                    -1,
+                )
+            else:
+                z_negatives = torch.empty(
+                    (0, batch_size, all_z.size(-1)),
+                    device=all_z.device,
+                    dtype=all_z.dtype,
+                )
 
         with record_function("joint_ssl_loss"):
             loss_dict = self.loss(

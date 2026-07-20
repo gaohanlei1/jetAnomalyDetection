@@ -34,7 +34,7 @@ import random
 
 # Add parent directory to import local project modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-import temp_constants as c
+import constants as c
 from helpers import helpers_main
 
 import torch

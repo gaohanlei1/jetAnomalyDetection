@@ -1,49 +1,25 @@
 # Jet Anomaly Detection
 
-A PyTorch Geometric project for detecting anomalous jets with graph neural
-networks. The current workflow creates QCD and WJet pickle datasets from ROOT
-files and trains a graph autoencoder on Brown's Oscar cluster.
+This project focused on multibackground anomaly detection via representation 
+learning, combining Particle Transformer (ParT) and LeJEPA, and other 
+contrastive and semi-supervised methods.
 
-## Current workflow
+## Main Contributions
 
-Use the single beginner guide:
+What are the most significant results? What were limitations with previous GAE
+methods? How this new representation learning path tackles the problems? 
+How well does the model perform? Mention specific numbers.
 
-[From raw data to a graph-autoencoder job on Oscar](docs/OSCAR_GUIDE.md)
+## Training Pipeline
 
-It covers:
+Introduce model design intuition, data augmentation, and optimization target.
+Introduce data set. Which particle/jet level variables are used? 
+Introduce evaluation metrics and how to interpret the ROC graphs.
 
-1. copying this local checkout to Oscar;
-2. copying the selected ROOT source files from Brux to Oscar;
-3. installing the Python environment;
-4. submitting a CPU job to create `QCD_scaled.pkl` and `WJet_scaled.pkl`;
-5. submitting a GPU job to train the graph autoencoder;
-6. monitoring jobs and reading the resulting AUC.
+## Quick Start
 
-Do not run heavy preprocessing or training directly on an Oscar login node.
-
-## Main scripts
-
-- `oscar_batch_prepare_data.sh`: CPU batch job that creates the pickle pair.
-- `oscar_batch_ae.sh`: GPU batch job that trains and evaluates the graph
-  autoencoder.
-- `oscar_batch_classifier.sh`: GPU batch job that trains a supervised
-  background-vs-signal graph classifier and reports a held-out ROC AUC reference.
-- `oscar_batch_classifier_part.sh`: GPU batch job that trains a supervised
-  ParticleTransformer classifier upper bound for PART + LeJEPA comparisons.
-- `scripts/preprocessing.py`: converts ROOT events into intermediate pickle
-  chunks.
-- `scripts/processing.py`: combines, feature-engineers, filters, and scales the
-  intermediate data.
-- `scripts/run_train_autoencoder.py`: trains and evaluates the model.
-- `scripts/run_train_classifier.py`: trains the supervised graph classifier
-  upper-bound benchmark on the same processed pickle pair.
-- `scripts/run_train_classifier_part.py`: trains the supervised PART classifier
-  upper-bound benchmark for comparison with PART + LeJEPA runs.
-
-## Local repository
-
-The local checkout used by Cursor is:
-
-```text
-/Users/gaohanlei1/Documents/Codex/jetAnomalyDetection
-```
+How to install dependencies? Create conda env and install python packages?
+Expected data set file structure? APIs used (read_file())? 
+How is data processing done? Which scripts to run? How to submit jobs?
+How to train models? Which scripts to run? How to submit jobs?
+How to evaluate models? Which scripts to run? How to submit jobs?
