@@ -41,7 +41,7 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 # --background-labels "label_QCD,label_Hbb,label_Hcc,label_Hgg,label_H4q,label_Hqql,label_Zqq,label_Tbqq,label_Tbl" \
 
 # python -u \
-#     scripts/run_train_lejepa_part_jetclass.py \
+#     scripts/run_train_lejepa_part.py \
 #     --dataset cms \
 #     --dataset-root "/HEP/export/home/hgao50/jet-anomaly-data/ak8-v2" \
 #     --model semi-sup-triplet \
@@ -52,7 +52,7 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #     --dropout 0.01 \
 #     --num-layers 4 \
 #     --num-heads 8 \
-#     --batch-size 256 \
+#     --batch-size 128 \
 #     --steps-per-epoch 4000 \
 #     --val-steps 100 \
 #     --eval-steps 100 \
@@ -89,7 +89,7 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #     "plots/margin-sweep/wqq-0.2"
 
 # python -u \
-#     scripts/run_train_lejepa_part_jetclass.py \
+#     scripts/run_train_lejepa_part.py \
 #     --dataset cms \
 #     --dataset-root "/HEP/export/home/hgao50/jet-anomaly-data/ak8-v2" \
 #     --model semi-sup-triplet \
@@ -100,7 +100,7 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #     --dropout 0.01 \
 #     --num-layers 4 \
 #     --num-heads 8 \
-#     --batch-size 256 \
+#     --batch-size 128 \
 #     --steps-per-epoch 4000 \
 #     --val-steps 100 \
 #     --eval-steps 100 \
@@ -137,7 +137,7 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #     "plots/margin-sweep/wqq-0.5"
 
 # python -u \
-#     scripts/run_train_lejepa_part_jetclass.py \
+#     scripts/run_train_lejepa_part.py \
 #     --dataset cms \
 #     --dataset-root "/HEP/export/home/hgao50/jet-anomaly-data/ak8-v2" \
 #     --model semi-sup-triplet \
@@ -148,7 +148,7 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #     --dropout 0.01 \
 #     --num-layers 4 \
 #     --num-heads 8 \
-#     --batch-size 256 \
+#     --batch-size 128 \
 #     --steps-per-epoch 4000 \
 #     --val-steps 100 \
 #     --eval-steps 100 \
@@ -185,7 +185,7 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #     "plots/margin-sweep/wqq-1.0"
 
 # python -u \
-#     scripts/run_train_lejepa_part_jetclass.py \
+#     scripts/run_train_lejepa_part.py \
 #     --dataset cms \
 #     --dataset-root "/HEP/export/home/hgao50/jet-anomaly-data/ak8-v2" \
 #     --model semi-sup-triplet \
@@ -196,7 +196,7 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #     --dropout 0.01 \
 #     --num-layers 4 \
 #     --num-heads 8 \
-#     --batch-size 256 \
+#     --batch-size 128 \
 #     --steps-per-epoch 4000 \
 #     --val-steps 100 \
 #     --eval-steps 100 \
@@ -233,7 +233,7 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #     "plots/margin-sweep/wqq-2.0"
 
 python -u \
-    scripts/run_train_lejepa_part_jetclass.py \
+    scripts/run_train_lejepa_part.py \
     --dataset cms \
     --dataset-root "/HEP/export/home/hgao50/jet-anomaly-data/ak8-v2" \
     --model semi-sup-triplet \
@@ -244,7 +244,7 @@ python -u \
     --dropout 0.01 \
     --num-layers 4 \
     --num-heads 8 \
-    --batch-size 256 \
+    --batch-size 128 \
     --steps-per-epoch 4000 \
     --val-steps 100 \
     --eval-steps 100 \
@@ -281,7 +281,7 @@ python -u \
     "plots/margin-sweep/hbb-0.2"
 
 python -u \
-    scripts/run_train_lejepa_part_jetclass.py \
+    scripts/run_train_lejepa_part.py \
     --dataset cms \
     --dataset-root "/HEP/export/home/hgao50/jet-anomaly-data/ak8-v2" \
     --model semi-sup-triplet \
@@ -292,7 +292,7 @@ python -u \
     --dropout 0.01 \
     --num-layers 4 \
     --num-heads 8 \
-    --batch-size 256 \
+    --batch-size 128 \
     --steps-per-epoch 4000 \
     --val-steps 100 \
     --eval-steps 100 \
@@ -329,7 +329,7 @@ python -u \
     "plots/margin-sweep/hbb-0.5"
 
 python -u \
-    scripts/run_train_lejepa_part_jetclass.py \
+    scripts/run_train_lejepa_part.py \
     --dataset cms \
     --dataset-root "/HEP/export/home/hgao50/jet-anomaly-data/ak8-v2" \
     --model semi-sup-triplet \
@@ -340,7 +340,7 @@ python -u \
     --dropout 0.01 \
     --num-layers 4 \
     --num-heads 8 \
-    --batch-size 256 \
+    --batch-size 128 \
     --steps-per-epoch 4000 \
     --val-steps 100 \
     --eval-steps 100 \
@@ -377,7 +377,7 @@ python -u \
     "plots/margin-sweep/hbb-1.0"
 
 python -u \
-    scripts/run_train_lejepa_part_jetclass.py \
+    scripts/run_train_lejepa_part.py \
     --dataset cms \
     --dataset-root "/HEP/export/home/hgao50/jet-anomaly-data/ak8-v2" \
     --model semi-sup-triplet \
@@ -388,7 +388,7 @@ python -u \
     --dropout 0.01 \
     --num-layers 4 \
     --num-heads 8 \
-    --batch-size 256 \
+    --batch-size 128 \
     --steps-per-epoch 4000 \
     --val-steps 100 \
     --eval-steps 100 \

@@ -1,0 +1,56 @@
+Traceback (most recent call last):
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_train_lejepa_part_jetclass.py", line 98, in <module>
+    from visualize.plot_metrics import plot_anomaly_score, plot_roc_curve
+ModuleNotFoundError: No module named 'visualize.plot_metrics'
+Traceback (most recent call last):
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/diagnose_lejepa_latents.py", line 1767, in <module>
+    main()
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/diagnose_lejepa_latents.py", line 1376, in main
+    with summary_path.open() as handle:
+         ^^^^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/pathlib.py", line 1044, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/oscar/home/lwang223/jetAnomalyDetection/plots/margin-sweep/hbb-0.2/summary.json'
+Traceback (most recent call last):
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_train_lejepa_part_jetclass.py", line 98, in <module>
+    from visualize.plot_metrics import plot_anomaly_score, plot_roc_curve
+ModuleNotFoundError: No module named 'visualize.plot_metrics'
+Traceback (most recent call last):
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/diagnose_lejepa_latents.py", line 1767, in <module>
+    main()
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/diagnose_lejepa_latents.py", line 1376, in main
+    with summary_path.open() as handle:
+         ^^^^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/pathlib.py", line 1044, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/oscar/home/lwang223/jetAnomalyDetection/plots/margin-sweep/hbb-0.5/summary.json'
+Traceback (most recent call last):
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_train_lejepa_part_jetclass.py", line 98, in <module>
+    from visualize.plot_metrics import plot_anomaly_score, plot_roc_curve
+ModuleNotFoundError: No module named 'visualize.plot_metrics'
+Traceback (most recent call last):
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/diagnose_lejepa_latents.py", line 1767, in <module>
+    main()
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/diagnose_lejepa_latents.py", line 1376, in main
+    with summary_path.open() as handle:
+         ^^^^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/pathlib.py", line 1044, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/oscar/home/lwang223/jetAnomalyDetection/plots/margin-sweep/hbb-1.0/summary.json'
+Traceback (most recent call last):
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_train_lejepa_part_jetclass.py", line 98, in <module>
+    from visualize.plot_metrics import plot_anomaly_score, plot_roc_curve
+ModuleNotFoundError: No module named 'visualize.plot_metrics'
+Traceback (most recent call last):
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/diagnose_lejepa_latents.py", line 1767, in <module>
+    main()
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/diagnose_lejepa_latents.py", line 1376, in main
+    with summary_path.open() as handle:
+         ^^^^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/pathlib.py", line 1044, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/oscar/home/lwang223/jetAnomalyDetection/plots/margin-sweep/hbb-2.0/summary.json'
