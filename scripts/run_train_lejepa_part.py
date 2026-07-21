@@ -64,7 +64,7 @@ from helpers.cms_streaming import (
     discover_cms_files_by_class,
     split_files_train_val,
 )
-from dataloader import collect_root_files, particles_to_node_tensors, read_files
+from helpers.cms_dataloader import collect_root_files, particles_to_node_tensors, read_files
 from models.part import (
     CorruptedNegativeAugmentationConfig,
     LeJEPALossConfig,

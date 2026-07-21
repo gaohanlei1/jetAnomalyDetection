@@ -1,8 +1,0 @@
-Traceback (most recent call last):
-  File "/oscar/home/hgao50/jetAnomalyDetection/scripts/run_train_lejepa_part.py", line 3502, in <module>
-    trainer.train()
-  File "/oscar/home/hgao50/jetAnomalyDetection/scripts/run_train_lejepa_part.py", line 2346, in train
-    self.build_model()
-  File "/oscar/home/hgao50/jetAnomalyDetection/scripts/run_train_lejepa_part.py", line 1287, in build_model
-    model_config = ParticleTransformerConfig(
-TypeError: __init__() got an unexpected keyword argument 'standardized_feature_names'

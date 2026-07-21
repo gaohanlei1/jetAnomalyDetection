@@ -10,6 +10,10 @@ What are the most significant results? What were limitations with previous GAE
 methods? How this new representation learning path tackles the problems? 
 How well does the model perform? Mention specific numbers.
 
+## Dataset Locations
+
+CMS Data: /HEP/export/home/hgao50/jet-anomaly-data/ak8-v2
+
 ## Training Pipeline
 
 Introduce model design intuition, data augmentation, and optimization target.

@@ -16,7 +16,7 @@ import numpy as np
 import torch
 from torch.utils.data import IterableDataset, get_worker_info
 
-from dataloader import collect_root_files, particles_to_node_tensors, read_file
+from helpers.cms_dataloader import collect_root_files, particles_to_node_tensors, read_file
 
 
 def discover_cms_files_by_class(
