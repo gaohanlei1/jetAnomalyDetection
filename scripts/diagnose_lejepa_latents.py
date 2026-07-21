@@ -1,33 +1,27 @@
 #!/usr/bin/env python3
-"""Post-training latent diagnostics for a JetClass LeJEPA run.
+"""Post-training latent diagnostics for JetClass or CMS LeJEPA runs.
 
-This script reuses the dataset/preprocessing pipeline from
-run_train_lejepa_part_jetclass.py, reads model settings from summary.json,
-loads best_model.pth, and runs:
-
-1. Unaugmented full-jet Mahalanobis diagnostics with a stratified
-   train-fit / train-held-out split.
-2. Augmented multi-view local-global consistency diagnostics.
-3. Separate background-class centroid and class-specific Mahalanobis diagnostics.
-4. Multi-Gaussian nearest-component Mahalanobis diagnostics.
-5. Standardized latent-space k-nearest-neighbor distance diagnostics.
-6. Class-conditional background Gaussian-mixture likelihood diagnostics.
-7. Two-sided local-global consistency diagnostics.
-8. Full-jet/view latent norms plus cosine and unit-normalized local-global diagnostics.
+The dataset backend, particle feature order, batch-standardized feature list,
+label axis, and CMS class × production-family split are reconstructed from the
+training ``summary.json``.  A command-line dataset override is available for
+explicit recovery workflows, but normal use requires only the run directory.
 
 Example:
     python -u scripts/diagnose_lejepa_latents.py \
-        plots/run-lejepa-semi-sup-jetclass-ddp
+        plots/run-lejepa-semi-sup-triplet
 """
 
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import random
 import sys
+import warnings
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -42,43 +36,471 @@ for path in (SCRIPT_DIR, PROJECT_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-try:
-    from run_train_lejepa_part_jetclass import (
-        JETCLASS_LABELS,
-        JetClassIterableDataset,
-        collate_jetclass_tensors,
-    )
-except ImportError:
-    from scripts.run_train_lejepa_part_jetclass import (
-        JETCLASS_LABELS,
-        JetClassIterableDataset,
-        collate_jetclass_tensors,
-    )
-
+from helpers import cms_streaming
+from helpers import jetclass_streaming
 from models.part_jetclass import (
     CorruptedNegativeAugmentationConfig,
     LeJEPALossConfig,
-    LeJEPAParticleTransformerRepresentation,
-    LeJEPASemiSupervisedParticleTransformerRepresentation,
     LeJEPASemiSupervisedTripletParticleTransformerRepresentation,
-    LeJEPATripletParticleTransformerRepresentation,
     MultiViewAugmentationConfig,
     ParticleTransformerConfig,
     SemiSupervisedLossConfig,
     TripletLossConfig,
 )
 
+FOUR_VECTOR_FEATURES = (
+    "part_px",
+    "part_py",
+    "part_pz",
+    "part_energy",
+)
+
+JETCLASS_DEFAULT_BATCH_STANDARDIZED_FEATURES = (
+    "log_pt_fraction",
+    "d0_sig",
+    "dz_sig",
+)
+
+CMS_DEFAULT_BATCH_STANDARDIZED_FEATURES = (
+    "log_pt_fraction",
+    "Cpfcan_dxysig",
+    "log_Cpfcan_dxysig",
+    "Cpfcan_dz",
+)
+
+
+def _construct_with_supported_kwargs(factory, **kwargs):
+    """Call a class/function while tolerating removed compatibility kwargs."""
+
+    parameters = inspect.signature(factory).parameters
+    supported = {key: value for key, value in kwargs.items() if key in parameters}
+    return factory(**supported)
+
+
+def _first_summary_list(
+    summary: Mapping[str, object],
+    keys: Sequence[str],
+) -> Optional[List[str]]:
+    for key in keys:
+        value = summary.get(key)
+        if value is not None:
+            return [str(item) for item in value]
+    return None
+
+
+def _dataset_metadata_list(
+    dataset: object,
+    names: Sequence[str],
+) -> Optional[List[str]]:
+    for name in names:
+        value = getattr(dataset, name, None)
+        if value is not None:
+            return [str(item) for item in value]
+    return None
+
+
+def _validate_four_vector_prefix(features: Sequence[str], source: str) -> None:
+    actual = tuple(features[:4])
+    if actual != FOUR_VECTOR_FEATURES:
+        raise ValueError(
+            f"{source} must begin with the ordered four-vector features "
+            f"{list(FOUR_VECTOR_FEATURES)}, found {list(actual)}."
+        )
+
+
+def _strip_common_prefix(
+    state_dict: Dict[str, torch.Tensor],
+    prefix: str,
+) -> Dict[str, torch.Tensor]:
+    if state_dict and all(key.startswith(prefix) for key in state_dict):
+        return {key[len(prefix):]: value for key, value in state_dict.items()}
+    return state_dict
+
+
+@dataclass
+class DiagnosticDatasetBackend:
+    dataset_name: str
+    dataset_root: Path
+    run_dir: Path
+    summary: Mapping[str, object]
+    feature_names: List[str]
+    batch_standardized_feature_names: List[str]
+    label_axis: List[str]
+    max_num_particles: int
+    min_nodes: int
+    shuffle_active_shards: int
+    cms_splits: Optional[Dict[str, Dict[str, Dict[str, List[str]]]]] = None
+    cms_manifest_sha256: Optional[str] = None
+    cms_manifest_source: Optional[str] = None
+
+    @classmethod
+    def from_summary(
+        cls,
+        *,
+        summary: Mapping[str, object],
+        run_dir: Path,
+        dataset_override: Optional[str],
+        dataset_root_override: Optional[Path],
+        cms_manifest_override: Optional[Path],
+        max_num_particles_override: Optional[int],
+    ) -> "DiagnosticDatasetBackend":
+        dataset_name = str(dataset_override or summary.get("dataset", "jetclass"))
+        if dataset_name not in {"jetclass", "cms"}:
+            raise ValueError(
+                f"Unsupported dataset {dataset_name!r}; expected 'jetclass' or 'cms'."
+            )
+
+        if dataset_root_override is not None:
+            dataset_root = dataset_root_override.expanduser().resolve()
+        else:
+            if "dataset_root" not in summary:
+                raise KeyError(
+                    "summary.json has no dataset_root; pass --dataset-root explicitly."
+                )
+            dataset_root = Path(str(summary["dataset_root"])).expanduser().resolve()
+
+        features = _first_summary_list(
+            summary,
+            ("particle_features", "feature_names"),
+        )
+        if features is None:
+            module = jetclass_streaming if dataset_name == "jetclass" else cms_streaming
+            for attr in (
+                "DEFAULT_PARTICLE_FEATURES",
+                "CMS_PARTICLE_FEATURES",
+                "CANONICAL_PARTICLE_FEATURES",
+            ):
+                value = getattr(module, attr, None)
+                if value is not None:
+                    features = list(value)
+                    break
+        if not features:
+            raise KeyError(
+                "Could not resolve the model particle feature list from summary.json "
+                "or the selected dataset module."
+            )
+        _validate_four_vector_prefix(features, "Current dataset feature list")
+
+        standardized = _first_summary_list(
+            summary,
+            (
+                "batch_standardized_particle_features",
+                "batch_normalized_particle_features",
+                "standardized_particle_features",
+            ),
+        )
+        if standardized is None:
+            standardized = list(
+                JETCLASS_DEFAULT_BATCH_STANDARDIZED_FEATURES
+                if dataset_name == "jetclass"
+                else CMS_DEFAULT_BATCH_STANDARDIZED_FEATURES
+            )
+        missing_standardized = sorted(set(standardized) - set(features))
+        if missing_standardized:
+            raise ValueError(
+                "summary.json requests batch standardization for features absent "
+                f"from the input schema: {missing_standardized}."
+            )
+
+        if dataset_name == "jetclass":
+            default_axis = list(jetclass_streaming.JETCLASS_LABELS)
+        else:
+            default_axis = list(cms_streaming.CMS_LABELS)
+        label_axis = _first_summary_list(summary, ("dataset_label_axis",)) or default_axis
+
+        max_num_particles = int(
+            max_num_particles_override
+            if max_num_particles_override is not None
+            else summary.get("max_num_particles", 128)
+        )
+        min_nodes = int(summary.get("min_nodes", 4))
+        shuffle_active_shards = int(summary.get("shuffle_active_shards", 3))
+
+        backend = cls(
+            dataset_name=dataset_name,
+            dataset_root=dataset_root,
+            run_dir=run_dir,
+            summary=summary,
+            feature_names=features,
+            batch_standardized_feature_names=standardized,
+            label_axis=label_axis,
+            max_num_particles=max_num_particles,
+            min_nodes=min_nodes,
+            shuffle_active_shards=shuffle_active_shards,
+        )
+        backend._initialize_dataset(cms_manifest_override)
+        return backend
+
+    def _initialize_dataset(self, cms_manifest_override: Optional[Path]) -> None:
+        if self.dataset_name == "jetclass":
+            for split_name, directory_name in (
+                ("train", "train_100M"),
+                ("val", "val_5M"),
+                ("test", "test_20M"),
+            ):
+                directory = self.dataset_root / directory_name
+                if not directory.is_dir():
+                    raise FileNotFoundError(
+                        f"Missing JetClass {split_name} split directory: {directory}"
+                    )
+            return
+
+        manifest_path = (
+            cms_manifest_override.expanduser().resolve()
+            if cms_manifest_override is not None
+            else self.run_dir / "cms_split_manifest.json"
+        )
+        expected_hash = self.summary.get("cms_split_manifest_sha256")
+
+        if manifest_path.is_file():
+            with manifest_path.open() as handle:
+                manifest = json.load(handle)
+            if "splits" not in manifest:
+                raise ValueError(
+                    f"CMS split manifest has no 'splits' mapping: {manifest_path}"
+                )
+            splits = manifest["splits"]
+            self.cms_manifest_sha256 = str(manifest.get("sha256", "")) or None
+            self.cms_manifest_source = str(manifest_path)
+            if (
+                expected_hash is not None
+                and self.cms_manifest_sha256 is not None
+                and str(expected_hash) != self.cms_manifest_sha256
+            ):
+                raise RuntimeError(
+                    "The saved CMS split manifest hash does not match summary.json: "
+                    f"summary={expected_hash}, manifest={self.cms_manifest_sha256}."
+                )
+            self.cms_splits = self._resolve_manifest_paths(splits)
+        else:
+            requested_labels = list(dict.fromkeys(
+                list(self.summary["background_labels"])
+                + list(self.summary["signal_labels"])
+            ))
+            discovered = cms_streaming.discover_cms_files_by_label_family(
+                str(self.dataset_root),
+                requested_labels,
+            )
+            self.cms_splits = cms_streaming.split_cms_files_by_family(
+                discovered,
+                val_fraction=float(self.summary.get("cms_val_fraction", 0.1)),
+                test_fraction=float(self.summary.get("cms_test_fraction", 0.1)),
+                seed=int(self.summary.get("cms_split_seed", 42)),
+            )
+            rebuilt_manifest = cms_streaming.cms_split_manifest(self.cms_splits)
+            self.cms_manifest_sha256 = str(rebuilt_manifest["sha256"])
+            self.cms_manifest_source = "reconstructed from summary.json"
+            if expected_hash is not None and str(expected_hash) != self.cms_manifest_sha256:
+                raise RuntimeError(
+                    "Reconstructed CMS split does not match the split used by training. "
+                    f"summary={expected_hash}, reconstructed={self.cms_manifest_sha256}. "
+                    "Restore cms_split_manifest.json from the run directory."
+                )
+
+        assert self.cms_splits is not None
+        for split_name in ("train", "val", "test"):
+            if split_name not in self.cms_splits:
+                raise ValueError(f"CMS split mapping is missing {split_name!r}.")
+
+    def _resolve_manifest_paths(
+        self,
+        splits: Mapping[str, Mapping[str, Mapping[str, Sequence[str]]]],
+    ) -> Dict[str, Dict[str, Dict[str, List[str]]]]:
+        old_root_value = self.summary.get("dataset_root")
+        old_root = (
+            Path(str(old_root_value)).expanduser()
+            if old_root_value is not None
+            else None
+        )
+        resolved: Dict[str, Dict[str, Dict[str, List[str]]]] = {}
+        missing: List[str] = []
+        for split_name, labels in splits.items():
+            resolved[split_name] = {}
+            for label, families in labels.items():
+                resolved[split_name][label] = {}
+                for family, paths in families.items():
+                    resolved_paths: List[str] = []
+                    for raw_path in paths:
+                        path = Path(str(raw_path)).expanduser()
+                        if path.is_file():
+                            candidate = path.resolve()
+                        elif old_root is not None:
+                            try:
+                                relative = path.relative_to(old_root)
+                            except ValueError:
+                                directory_map = getattr(cms_streaming, "CMS_LABEL_TO_DIRECTORY", {})
+                                directory_name = directory_map.get(
+                                    label, label.removeprefix("label_").lower()
+                                )
+                                relative = Path(directory_name) / path.name
+                            candidate = (self.dataset_root / relative).resolve()
+                        else:
+                            candidate = (self.dataset_root / path.name).resolve()
+                        if not candidate.is_file():
+                            missing.append(str(candidate))
+                        resolved_paths.append(str(candidate))
+                    resolved[split_name][label][family] = resolved_paths
+        if missing:
+            preview = "\n  ".join(missing[:10])
+            raise FileNotFoundError(
+                "CMS split manifest references ROOT shards that do not exist "
+                f"under the resolved dataset root. First missing paths:\n  {preview}"
+            )
+        return resolved
+
+    def validate_requested_labels(self, labels: Sequence[str]) -> None:
+        unknown = sorted(set(labels) - set(self.label_axis))
+        if unknown:
+            raise ValueError(
+                f"Labels {unknown} are absent from the saved dataset label axis "
+                f"{self.label_axis}."
+            )
+        if self.dataset_name == "jetclass":
+            jetclass_streaming.validate_requested_labels(labels)
+        else:
+            cms_streaming.validate_cms_labels(labels)
+
+    def _validate_dataset_metadata(self, dataset: object) -> None:
+        dataset_features = _dataset_metadata_list(
+            dataset,
+            ("feature_names", "particle_features"),
+        )
+        if dataset_features is not None and dataset_features != self.feature_names:
+            raise RuntimeError(
+                "Dataset object feature metadata disagrees with summary.json: "
+                f"dataset={dataset_features}, summary={self.feature_names}."
+            )
+        dataset_standardized = _dataset_metadata_list(
+            dataset,
+            (
+                "batch_normalized_feature_names",
+                "batch_standardized_feature_names",
+                "batch_normalized_particle_features",
+            ),
+        )
+        if (
+            dataset_standardized is not None
+            and dataset_standardized != self.batch_standardized_feature_names
+        ):
+            raise RuntimeError(
+                "Dataset object batch-normalization metadata disagrees with "
+                f"summary.json: dataset={dataset_standardized}, "
+                f"summary={self.batch_standardized_feature_names}."
+            )
+
+    def make_dataset(
+        self,
+        split_name: str,
+        labels: Sequence[str],
+        seed: int,
+    ):
+        self.validate_requested_labels(labels)
+        if self.dataset_name == "jetclass":
+            split_directory = {
+                "train": self.dataset_root / "train_100M",
+                "val": self.dataset_root / "val_5M",
+                "test": self.dataset_root / "test_20M",
+            }[split_name]
+            dataset = jetclass_streaming.JetClassIterableDataset(
+                split_dir=str(split_directory),
+                labels_to_load=labels,
+                particle_features=self.feature_names,
+                max_num_particles=self.max_num_particles,
+                max_events=None,
+                shuffle_files=True,
+                shuffle_active_shards=self.shuffle_active_shards,
+                infinite=True,
+                seed=seed,
+                rank=0,
+                world_size=1,
+            )
+        else:
+            assert self.cms_splits is not None
+            dataset = _construct_with_supported_kwargs(
+                cms_streaming.CMSIterableDataset,
+                files_by_label_family=self.cms_splits[split_name],
+                labels_to_load=labels,
+                label_axis=self.label_axis,
+                particle_features=self.feature_names,
+                max_num_particles=self.max_num_particles,
+                min_nodes=self.min_nodes,
+                lowerpt=self.summary.get("cms_pt_min"),
+                upperpt=self.summary.get("cms_pt_max"),
+                max_events=None,
+                shuffle_files=True,
+                shuffle_active_shards=self.shuffle_active_shards,
+                min_active_families_per_class=int(
+                    self.summary.get("cms_min_active_families_per_class", 2)
+                ),
+                family_sampling=str(
+                    self.summary.get("cms_family_sampling", "proportional")
+                ),
+                infinite=True,
+                seed=seed,
+                rank=0,
+                world_size=1,
+            )
+        self._validate_dataset_metadata(dataset)
+        return dataset
+
+    def make_loader(
+        self,
+        *,
+        split_name: str,
+        labels: Sequence[str],
+        seed: int,
+        batch_size: int,
+        num_workers: int,
+        pin_memory: bool,
+    ) -> DataLoader:
+        dataset = self.make_dataset(split_name, labels, seed)
+        collate_fn = (
+            jetclass_streaming.collate_jetclass_tensors
+            if self.dataset_name == "jetclass"
+            else cms_streaming.collate_cms_tensors
+        )
+        kwargs = {
+            "dataset": dataset,
+            "batch_size": batch_size,
+            "num_workers": num_workers,
+            "pin_memory": pin_memory,
+            "collate_fn": collate_fn,
+            "persistent_workers": False,
+            "drop_last": True,
+        }
+        if num_workers > 0:
+            kwargs["prefetch_factor"] = int(self.summary.get("prefetch_factor", 1))
+        return DataLoader(**kwargs)
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Diagnose latent geometry and anomaly scores of a trained LeJEPA run."
+        description=(
+            "Diagnose latent geometry and anomaly scores of a JetClass or CMS "
+            "LeJEPA semi-supervised triplet run."
+        )
     )
     parser.add_argument(
-        "run_dir", type=Path, help="Directory containing summary.json and best_model.pth."
+        "run_dir", type=Path, help="Directory containing summary.json and a checkpoint."
     )
     parser.add_argument("--output-dir", type=Path, default=None)
     parser.add_argument("--checkpoint", type=Path, default=None)
+    parser.add_argument(
+        "--dataset",
+        choices=["jetclass", "cms"],
+        default=None,
+        help="Override summary.json. Normally the saved dataset field is used.",
+    )
     parser.add_argument("--dataset-root", type=Path, default=None)
+    parser.add_argument(
+        "--cms-split-manifest",
+        type=Path,
+        default=None,
+        help=(
+            "Optional CMS split manifest override. By default the script uses "
+            "<run_dir>/cms_split_manifest.json and only reconstructs the split "
+            "when that file is absent."
+        ),
+    )
     parser.add_argument(
         "--eval-steps",
         type=int,
@@ -98,26 +520,20 @@ def parse_args() -> argparse.Namespace:
         "--num-gaussians",
         type=int,
         default=6,
-        help=(
-            "Number of KMeans-defined Gaussian components used by the "
-            "nearest-component Mahalanobis diagnostic. Default: 6."
-        ),
+        help="Reserved for the extended multi-Gaussian diagnostic. Default: 6.",
     )
     parser.add_argument(
         "--knn-k",
         type=int,
         default=30,
-        help=(
-            "Number of standardized latent-space neighbors averaged by the "
-            "kNN anomaly score. Default: 30."
-        ),
+        help="Reserved for the extended kNN diagnostic. Default: 30.",
     )
     parser.add_argument("--mahalanobis-cov-eps", type=float, default=None)
     parser.add_argument(
         "--max-num-particles",
         type=int,
-        default=128,
-        help="Training default is 128; summary.json currently does not store it.",
+        default=None,
+        help="Override summary.json; otherwise uses the training value.",
     )
     parser.add_argument(
         "--full-latent-space",
@@ -125,12 +541,10 @@ def parse_args() -> argparse.Namespace:
         default="representation",
         help=(
             "Which unaugmented latent to use for density scores. "
-            "'representation' applies representation_head to the CLS state and "
-            "matches LeJEPA/triplet losses; 'cls' keeps old raw-CLS behavior."
+            "'representation' applies representation_head to the CLS state."
         ),
     )
     return parser.parse_args()
-
 
 def resolve_device(value: str) -> torch.device:
     if value == "auto":
@@ -164,84 +578,47 @@ def autocast_context(device: torch.device, precision: str):
     )
 
 
-def make_loader(
-    split_dir: Path,
-    labels: Sequence[str],
-    particle_features: Sequence[str],
-    max_num_particles: int,
-    shuffle_active_shards: int,
-    seed: int,
-    batch_size: int,
-    num_workers: int,
-    pin_memory: bool,
-) -> DataLoader:
-    dataset = JetClassIterableDataset(
-        split_dir=str(split_dir),
-        labels_to_load=labels,
-        particle_features=particle_features,
-        max_num_particles=max_num_particles,
-        max_events=None,
-        shuffle_files=True,
-        shuffle_active_shards=shuffle_active_shards,
-        infinite=True,
-        seed=seed,
-        rank=0,
-        world_size=1,
-    )
-    kwargs = {
-        "dataset": dataset,
-        "batch_size": batch_size,
-        "num_workers": num_workers,
-        "pin_memory": pin_memory,
-        "collate_fn": collate_jetclass_tensors,
-        "persistent_workers": False,
-        "drop_last": True,
-    }
-    if num_workers > 0:
-        kwargs["prefetch_factor"] = 1
-    return DataLoader(**kwargs)
+def _feature_index(
+    features: Sequence[str],
+    candidates: Sequence[str],
+    fallback: str,
+) -> int:
+    for name in candidates:
+        if name in features:
+            return features.index(name)
+    return features.index(fallback)
 
 
-def build_model(summary: Dict[str, object], device: torch.device) -> torch.nn.Module:
-    features = list(summary["particle_features"])
-    if "part_eta" in features or "part_phi" in features:
-        raise ValueError("part_eta/part_phi must not appear in the revised JetClass pipeline.")
+def build_model(
+    summary: Mapping[str, object],
+    backend: DiagnosticDatasetBackend,
+    device: torch.device,
+) -> torch.nn.Module:
+    features = list(backend.feature_names)
+    standardized = list(backend.batch_standardized_feature_names)
+    _validate_four_vector_prefix(features, "Model input feature list")
     precision = str(summary.get("precision", "fp32"))
 
-    expected_features = [
-        "part_px",
-        "part_py",
-        "part_pz",
-        "part_energy",
-        "part_pt",
-        "log_pt_fraction",
-        "part_deta",
-        "part_dphi",
-        "d0_sig",
-        "dz_sig",
-        "part_charge",
-        "part_isChargedHadron",
-        "part_isNeutralHadron",
-        "part_isPhoton",
-        "part_isElectron",
-        "part_isMuon",
-    ]
-    if features != expected_features:
+    model_name = str(summary.get("model", "semi-sup-triplet"))
+    if model_name != "semi-sup-triplet":
         raise ValueError(
-            "The run summary does not use the revised JetClass feature pipeline. "
-            f"Expected {expected_features}, found {features}. "
-            "Use the older diagnostic script for checkpoints trained with the old "
-            "part_eta/part_phi and raw impact-parameter inputs."
+            "The revised training script supports only "
+            "LeJEPASemiSupervisedTripletParticleTransformerRepresentation; "
+            f"summary.json records model={model_name!r}."
         )
 
-    model_config = ParticleTransformerConfig(
+    model_config = _construct_with_supported_kwargs(
+        ParticleTransformerConfig,
         input_dim=len(features),
         input_feature_names=tuple(features),
+        standardized_feature_names=tuple(standardized),
         embed_dim=int(summary["embed_dim"]),
         num_heads=int(summary["num_heads"]),
         num_layers=int(summary["num_layers"]),
+        num_class_layers=int(summary.get("num_class_layers", 2)),
         ffn_mult=int(summary.get("ffn_mult", 4)),
         dropout=float(summary.get("dropout", 0.1)),
+        class_dropout=float(summary.get("class_dropout", 0.0)),
         representation_dim=int(summary["representation_dim"]),
         use_pairwise_bias=bool(summary.get("use_pairwise_bias", True)),
         pairwise_hidden_dim=int(summary.get("pairwise_hidden_dim", 64)),
@@ -249,6 +626,7 @@ def build_model(summary: Dict[str, object], device: torch.device) -> torch.nn.Mo
         compute_dtype=precision_to_dtype(precision),
         use_internal_autocast=False,
         eps=float(summary.get("eps", 1e-8)),
+        feature_norm_momentum=float(summary.get("feature_norm_momentum", 0.9)),
     )
 
     global_range = summary.get("global_drop_pt_frac_range", [0.0, 0.5])
@@ -276,125 +654,86 @@ def build_model(summary: Dict[str, object], device: torch.device) -> torch.nn.Mo
         num_slices=int(summary.get("num_slices", 1024)),
     )
 
-    model_name = str(summary.get("model", "semi-sup"))
-
-    negative_augmentation_config = None
-    triplet_loss_config = None
-    if model_name in {"triplet", "semi-sup-triplet"}:
-        negative_augmentation_config = CorruptedNegativeAugmentationConfig(
-            num_negative_views=int(summary.get("num_negative_views", 4)),
-            batch_mix_prob=float(summary.get("batch_mix_prob", 0.45)),
-            pt_resample_prob=float(summary.get("pt_resample_prob", 0.25)),
-            node_deta_dphi_rotation_prob=float(
-                summary.get("node_deta_dphi_rotation_prob", 0.20)
+    negative_augmentation_config = _construct_with_supported_kwargs(
+        CorruptedNegativeAugmentationConfig,
+        num_negative_views=int(summary.get("num_negative_views", 4)),
+        batch_mix_prob=float(summary.get("batch_mix_prob", 0.45)),
+        pt_resample_prob=float(summary.get("pt_resample_prob", 0.25)),
+        node_deta_dphi_rotation_prob=float(
+            summary.get("node_deta_dphi_rotation_prob", 0.20)
+        ),
+        deta_dphi_shuffle_prob=float(summary.get("deta_dphi_shuffle_prob", 0.05)),
+        identity_shuffle_prob=float(summary.get("identity_shuffle_prob", 0.05)),
+        min_nodes=int(summary.get("min_nodes", 4)),
+        eps=float(summary.get("eps", 1e-8)),
+        deta_index=features.index("part_deta"),
+        dphi_index=features.index("part_dphi"),
+        pt_index=features.index("part_pt"),
+        log_pt_fraction_index=features.index("log_pt_fraction"),
+        d0_sig_index=_feature_index(
+            features,
+            ("d0_sig", "Cpfcan_dxysig"),
+            "part_charge",
+        ),
+        dz_sig_index=_feature_index(
+            features,
+            ("dz_sig", "Cpfcan_dz"),
+            "part_charge",
+        ),
+        charge_index=features.index("part_charge"),
+        identity_start_index=features.index("part_isChargedHadron"),
+        identity_end_index=features.index("part_isMuon") + 1,
+        corrupt_node_frac=float(summary.get("corrupt_node_frac", 0.5)),
+        batch_mix_anchor_frac_min=float(summary.get("batch_mix_anchor_frac_min", 0.3)),
+        batch_mix_anchor_frac_max=float(summary.get("batch_mix_anchor_frac_max", 0.7)),
+        renormalize_pt_sum=bool(summary.get("renormalize_negative_pt_sum", True)),
+    )
+    triplet_loss_config = TripletLossConfig(
+        triplet_weight=float(summary.get("triplet_weight", 0.1)),
+        triplet_margin=float(summary.get("triplet_margin", 1.0)),
+        normalize_representations_for_triplet=bool(
+            summary.get("normalize_representations_for_triplet", False)
+        ),
+        use_global_views_as_positives=not bool(
+            summary.get("use_all_views_as_triplet_positives", False)
+        ),
+    )
+    model = LeJEPASemiSupervisedTripletParticleTransformerRepresentation(
+        model_config=model_config,
+        augmentation_config=augmentation_config,
+        negative_augmentation_config=negative_augmentation_config,
+        loss_config=loss_config,
+        triplet_loss_config=triplet_loss_config,
+        semi_supervised_config=SemiSupervisedLossConfig(
+            classification_weight=float(summary.get("classification_weight", 0.1)),
+            num_classes=int(
+                summary.get(
+                    "num_classification_classes",
+                    len(summary["background_labels"]),
+                )
             ),
-            deta_dphi_shuffle_prob=float(
-                summary.get("deta_dphi_shuffle_prob", 0.05)
-            ),
-            identity_shuffle_prob=float(summary.get("identity_shuffle_prob", 0.05)),
-            min_nodes=int(summary.get("min_nodes", 4)),
-            eps=float(summary.get("eps", 1e-8)),
-            deta_index=features.index("part_deta"),
-            dphi_index=features.index("part_dphi"),
-            pt_index=features.index("part_pt"),
-            log_pt_fraction_index=features.index("log_pt_fraction"),
-            d0_sig_index=features.index("d0_sig"),
-            dz_sig_index=features.index("dz_sig"),
-            charge_index=features.index("part_charge"),
-            identity_start_index=features.index("part_isChargedHadron"),
-            identity_end_index=features.index("part_isMuon") + 1,
-            corrupt_node_frac=float(summary.get("corrupt_node_frac", 0.5)),
-            batch_mix_anchor_frac_min=float(
-                summary.get("batch_mix_anchor_frac_min", 0.3)
-            ),
-            batch_mix_anchor_frac_max=float(
-                summary.get("batch_mix_anchor_frac_max", 0.7)
-            ),
-            renormalize_pt_sum=bool(
-                summary.get("renormalize_negative_pt_sum", True)
-            ),
-        )
-        triplet_loss_config = TripletLossConfig(
-            triplet_weight=float(summary.get("triplet_weight", 0.1)),
-            triplet_margin=float(summary.get("triplet_margin", 1.0)),
-            normalize_representations_for_triplet=bool(
-                summary.get("normalize_representations_for_triplet", False)
-            ),
-            use_global_views_as_positives=not bool(
-                summary.get("use_all_views_as_triplet_positives", False)
-            ),
-        )
-
-    if model_name == "semi-sup":
-        backgrounds = list(summary["background_labels"])
-        model = LeJEPASemiSupervisedParticleTransformerRepresentation(
-            model_config=model_config,
-            augmentation_config=augmentation_config,
-            loss_config=loss_config,
-            semi_supervised_config=SemiSupervisedLossConfig(
-                classification_weight=float(summary.get("classification_weight", 0.1)),
-                num_classes=int(
-                    summary.get("num_classification_classes", len(backgrounds))
-                ),
-            ),
-        )
-    elif model_name == "semi-sup-triplet":
-        backgrounds = list(summary["background_labels"])
-        model = LeJEPASemiSupervisedTripletParticleTransformerRepresentation(
-            model_config=model_config,
-            augmentation_config=augmentation_config,
-            negative_augmentation_config=negative_augmentation_config,
-            loss_config=loss_config,
-            triplet_loss_config=triplet_loss_config,
-            semi_supervised_config=SemiSupervisedLossConfig(
-                classification_weight=float(summary.get("classification_weight", 0.1)),
-                num_classes=int(
-                    summary.get("num_classification_classes", len(backgrounds))
-                ),
-            ),
-        )
-    elif model_name == "triplet":
-        model = LeJEPATripletParticleTransformerRepresentation(
-            model_config=model_config,
-            augmentation_config=augmentation_config,
-            negative_augmentation_config=negative_augmentation_config,
-            loss_config=loss_config,
-            triplet_loss_config=triplet_loss_config,
-        )
-    elif model_name == "lejepa":
-        model = LeJEPAParticleTransformerRepresentation(
-            model_config=model_config,
-            augmentation_config=augmentation_config,
-            loss_config=loss_config,
-        )
-    else:
-        raise ValueError(
-            "This diagnostic script supports model='lejepa', 'semi-sup', "
-            "'triplet', and 'semi-sup-triplet'; "
-            f"found {model_name!r}."
-        )
+        ),
+    )
     return model.to(device)
-
 
 def read_state_dict(checkpoint_path: Path, device: torch.device) -> Dict[str, torch.Tensor]:
     try:
-        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     except TypeError:
         checkpoint = torch.load(checkpoint_path, map_location=device)
 
-    if "state_dict" in checkpoint:
-        state_dict = checkpoint["state_dict"]
-    elif "model_state_dict" in checkpoint:
+    if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
         state_dict = checkpoint["model_state_dict"]
+    elif isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+        state_dict = checkpoint["state_dict"]
     else:
         state_dict = checkpoint
 
     if not isinstance(state_dict, dict):
         raise TypeError(f"Unsupported checkpoint type: {type(state_dict)}")
-    if state_dict and all(key.startswith("module.") for key in state_dict):
-        state_dict = {
-            key.removeprefix("module."): value for key, value in state_dict.items()
-        }
+    state_dict = dict(state_dict)
+    for prefix in ("module.", "model."):
+        state_dict = _strip_common_prefix(state_dict, prefix)
     return state_dict
 
 
@@ -564,20 +903,31 @@ def collect_interleaved_full_latents(
 
 
 
-def label_ids(y: np.ndarray) -> np.ndarray:
-    if y.ndim != 2 or y.shape[1] != len(JETCLASS_LABELS):
-        raise ValueError(f"Unexpected one-hot label shape: {y.shape}")
+def label_ids(y: np.ndarray, label_axis: Sequence[str]) -> np.ndarray:
+    if y.ndim != 2 or y.shape[1] != len(label_axis):
+        raise ValueError(
+            f"Unexpected one-hot label shape {y.shape}; saved label axis has "
+            f"{len(label_axis)} entries: {list(label_axis)}."
+        )
     return np.argmax(y, axis=1).astype(np.int64)
 
 
-def class_mask(y: np.ndarray, label: str) -> np.ndarray:
-    return label_ids(y) == JETCLASS_LABELS.index(label)
+def class_mask(
+    y: np.ndarray,
+    label: str,
+    label_axis: Sequence[str],
+) -> np.ndarray:
+    return label_ids(y, label_axis) == list(label_axis).index(label)
 
 
-def labels_mask(y: np.ndarray, labels: Sequence[str]) -> np.ndarray:
-    ids = label_ids(y)
+def labels_mask(
+    y: np.ndarray,
+    labels: Sequence[str],
+    label_axis: Sequence[str],
+) -> np.ndarray:
+    ids = label_ids(y, label_axis)
     requested_ids = np.asarray(
-        [JETCLASS_LABELS.index(label) for label in labels],
+        [list(label_axis).index(label) for label in labels],
         dtype=np.int64,
     )
     return np.isin(ids, requested_ids)
@@ -586,16 +936,17 @@ def labels_mask(y: np.ndarray, labels: Sequence[str]) -> np.ndarray:
 def stratified_split(
     y: np.ndarray,
     labels: Sequence[str],
+    label_axis: Sequence[str],
     fit_fraction: float,
     seed: int,
 ) -> Tuple[np.ndarray, np.ndarray]:
     if not 0.0 < fit_fraction < 1.0:
         raise ValueError("--fit-fraction must lie strictly between 0 and 1.")
-    ids = label_ids(y)
+    ids = label_ids(y, label_axis)
     rng = np.random.default_rng(seed)
     fit, heldout = [], []
     for label in labels:
-        indices = np.flatnonzero(ids == JETCLASS_LABELS.index(label))
+        indices = np.flatnonzero(ids == list(label_axis).index(label))
         if len(indices) < 4:
             raise RuntimeError(f"Only {len(indices)} sampled events found for {label}.")
         rng.shuffle(indices)
@@ -606,7 +957,6 @@ def stratified_split(
     rng.shuffle(fit_idx)
     rng.shuffle(heldout_idx)
     return fit_idx, heldout_idx
-
 
 def fit_mahalanobis(
     latents: np.ndarray, cov_eps: float
@@ -1023,30 +1373,28 @@ def main() -> None:
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    with summary_path.open() as f:
-        summary = json.load(f)
+    with summary_path.open() as handle:
+        summary = json.load(handle)
 
     device = resolve_device(args.device)
-    seed = int(summary.get("base_seed", 42))
+    seed = int(summary.get("base_seed", summary.get("seed", 42)))
     seed_everything(seed)
 
-    dataset_root = (
-        args.dataset_root.expanduser().resolve()
-        if args.dataset_root
-        else Path(summary["dataset_root"]).expanduser().resolve()
+    backend = DiagnosticDatasetBackend.from_summary(
+        summary=summary,
+        run_dir=run_dir,
+        dataset_override=args.dataset,
+        dataset_root_override=args.dataset_root,
+        cms_manifest_override=args.cms_split_manifest,
+        max_num_particles_override=args.max_num_particles,
     )
-    train_dir, val_dir, test_dir = (
-        dataset_root / "train_100M",
-        dataset_root / "val_5M",
-        dataset_root / "test_20M",
-    )
-    for directory in (train_dir, val_dir, test_dir):
-        if not directory.is_dir():
-            raise FileNotFoundError(f"Missing JetClass split: {directory}")
 
     backgrounds = list(summary["background_labels"])
     signals = list(summary["signal_labels"])
-    features = list(summary["particle_features"])
+    backend.validate_requested_labels(backgrounds + signals)
+    overlap = sorted(set(backgrounds) & set(signals))
+    if overlap:
+        raise ValueError(f"Background and signal labels overlap: {overlap}")
 
     def display_label(label: str) -> str:
         return label.removeprefix("label_")
@@ -1067,73 +1415,89 @@ def main() -> None:
         else summary.get("mahalanobis_cov_eps", 1e-4)
     )
     precision = str(summary.get("precision", "fp32"))
-    model_name = str(summary.get("model", "semi-sup"))
-    num_global_views = int(summary.get("num_global_views", 2))
 
+    print(f"Dataset backend: {backend.dataset_name}")
+    print(f"Dataset root: {backend.dataset_root}")
     print(f"Loading {checkpoint_path} on {device}")
-    print(f"Sampling {steps} x {batch_size} events from each split")
+    print(f"Sampling {steps} x {batch_size} events from each source stream")
     print(f"Full-jet density latent space: {args.full_latent_space}")
     print(f"Background labels: {background_display_name}")
     print(f"Signal labels: {signal_display_name}")
+    print(f"Dataset label axis: {backend.label_axis}")
+    print("Particle feature order:")
+    for index, name in enumerate(backend.feature_names):
+        print(f"  {index:2d}: {name}")
     print(
-        "Full-jet latent collection retains the interleaved background-signal "
-        "path for compatibility with older models; current eval-mode "
-        "normalization uses frozen statistics."
+        "Batch-standardized particle features: "
+        f"{backend.batch_standardized_feature_names}"
     )
-    model = build_model(summary, device)
+    if backend.dataset_name == "cms":
+        print(
+            "CMS split source: "
+            f"{backend.cms_manifest_source}; sha256={backend.cms_manifest_sha256}"
+        )
 
+    model = build_model(summary, backend, device)
     state_dict = read_state_dict(checkpoint_path, device)
     load_result = model.load_state_dict(state_dict, strict=False)
-    feature_stats_keys = { # old models don't have frozen running stats for eval
+
+    feature_stat_suffixes = (
         "_feature_running_mean",
         "_feature_running_var",
         "_feature_num_batches_tracked",
+    )
+    checkpoint_stat_suffixes = {
+        suffix
+        for suffix in feature_stat_suffixes
+        if any(key.endswith(suffix) for key in state_dict)
     }
-    missing_feature_stats = not feature_stats_keys.issubset(state_dict.keys())
+    missing_feature_stats = len(checkpoint_stat_suffixes) != len(feature_stat_suffixes)
     unexpected_missing = [
         key
-        for key in load_result.missing_keys 
-        if key not in feature_stats_keys
+        for key in load_result.missing_keys
+        if not key.endswith(feature_stat_suffixes)
     ]
     if unexpected_missing:
         raise RuntimeError(
-            "Checkpoint is missing unexpected model params: "
+            "Checkpoint is missing unexpected model parameters: "
             f"{unexpected_missing}"
         )
     if load_result.unexpected_keys:
         raise RuntimeError(
-            "Checkpoint contains unexpected model params: "
+            "Checkpoint contains unexpected model parameters: "
             f"{load_result.unexpected_keys}"
         )
     if missing_feature_stats:
-        model._use_frozen_feature_stats_in_eval = False 
-        print(
-            "Legacy checkpoint detected: feature running stats are absent. "
-            "Evaluation will use per-batch feature stats."
+        model._use_frozen_feature_stats_in_eval = False
+        warnings.warn(
+            "Legacy checkpoint detected: one or more feature running-stat "
+            "buffers are absent. Evaluation will use per-batch feature stats.",
+            RuntimeWarning,
         )
     else:
         model._use_frozen_feature_stats_in_eval = True
-    
     model.eval()
 
-    common = {
-        "particle_features": features,
-        "max_num_particles": args.max_num_particles,
-        "shuffle_active_shards": int(summary.get("shuffle_active_shards", 3)),
+    loader_common = {
         "batch_size": batch_size,
         "num_workers": num_workers,
         "pin_memory": device.type == "cuda",
     }
 
-    print("\nCollecting latents for full-events from train, val, and signals...")
-
+    print("\nCollecting full-event latents from train, validation, and signal streams...")
     train_mixed_z, train_mixed_y = collect_interleaved_full_latents(
         model=model,
-        background_loader=make_loader(
-            train_dir, backgrounds, seed=seed + 101, **common
+        background_loader=backend.make_loader(
+            split_name="train",
+            labels=backgrounds,
+            seed=seed + 101,
+            **loader_common,
         ),
-        signal_loader=make_loader(
-            test_dir, signals, seed=seed + 301, **common
+        signal_loader=backend.make_loader(
+            split_name="test",
+            labels=signals,
+            seed=seed + 301,
+            **loader_common,
         ),
         steps=steps,
         device=device,
@@ -1145,17 +1509,27 @@ def main() -> None:
         seed=seed + 401,
         latent_space=args.full_latent_space,
     )
-    train_background_mask = labels_mask(train_mixed_y, backgrounds)
+    train_background_mask = labels_mask(
+        train_mixed_y,
+        backgrounds,
+        backend.label_axis,
+    )
     train_z = train_mixed_z[train_background_mask]
     train_y = train_mixed_y[train_background_mask]
 
     validation_mixed_z, validation_mixed_y = collect_interleaved_full_latents(
         model=model,
-        background_loader=make_loader(
-            val_dir, backgrounds, seed=seed + 202, **common
+        background_loader=backend.make_loader(
+            split_name="val",
+            labels=backgrounds,
+            seed=seed + 202,
+            **loader_common,
         ),
-        signal_loader=make_loader(
-            test_dir, signals, seed=seed + 302, **common
+        signal_loader=backend.make_loader(
+            split_name="test",
+            labels=signals,
+            seed=seed + 302,
+            **loader_common,
         ),
         steps=steps,
         device=device,
@@ -1167,18 +1541,29 @@ def main() -> None:
         seed=seed + 402,
         latent_space=args.full_latent_space,
     )
-    validation_background_mask = labels_mask(validation_mixed_y, backgrounds)
-    validation_signal_mask = labels_mask(validation_mixed_y, signals)
+    validation_background_mask = labels_mask(
+        validation_mixed_y,
+        backgrounds,
+        backend.label_axis,
+    )
+    validation_signal_mask = labels_mask(
+        validation_mixed_y,
+        signals,
+        backend.label_axis,
+    )
     val_z = validation_mixed_z[validation_background_mask]
     val_y = validation_mixed_y[validation_background_mask]
     signal_z = validation_mixed_z[validation_signal_mask]
     signal_y = validation_mixed_y[validation_signal_mask]
-    
-    # Plot pair-wise latent space for each background class against the signal
+
     for background_index, background in enumerate(backgrounds):
         background_name = display_label(background)
         background_pair_z = validation_mixed_z[
-            labels_mask(validation_mixed_y, [background])
+            labels_mask(
+                validation_mixed_y,
+                [background],
+                backend.label_axis,
+            )
         ]
         max_pair_points = int(summary.get("max_latent_plot_points", 5000))
         plot_pair_latent_space(
@@ -1223,7 +1608,11 @@ def main() -> None:
     )
 
     fit_idx, heldout_idx = stratified_split(
-        train_y, backgrounds, args.fit_fraction, seed + 404
+        train_y,
+        backgrounds,
+        backend.label_axis,
+        args.fit_fraction,
+        seed + 404,
     )
     mean, precision_matrix, cov_diag = fit_mahalanobis(train_z[fit_idx], cov_eps)
     fit_score = mahalanobis_scores(train_z[fit_idx], mean, precision_matrix)
@@ -1260,9 +1649,9 @@ def main() -> None:
     train_curves = []
     validation_curves = []
     for label in backgrounds:
-        name = label.removeprefix("label_")
-        train_mask = class_mask(train_y, label)
-        val_mask = class_mask(val_y, label)
+        name = display_label(label)
+        train_mask = class_mask(train_y, label, backend.label_axis)
+        val_mask = class_mask(val_y, label, backend.label_axis)
         class_train_indices = np.flatnonzero(train_mask)
         class_fit_idx = fit_idx[np.isin(fit_idx, class_train_indices)]
         class_heldout_idx = heldout_idx[np.isin(heldout_idx, class_train_indices)]
@@ -1292,9 +1681,7 @@ def main() -> None:
                 ),
                 "auc_validation_vs_signal": auc(class_val_score, class_signal_score),
                 "fit_background_scores": score_stats(class_fit_score),
-                "heldout_train_background_scores": score_stats(
-                    class_heldout_score
-                ),
+                "heldout_train_background_scores": score_stats(class_heldout_score),
                 "validation_background_scores": score_stats(class_val_score),
                 "signal_scores": score_stats(class_signal_score),
                 "covariance": class_cov_diag,
@@ -1317,7 +1704,8 @@ def main() -> None:
             (f"{name} validation", class_val_score, class_signal_score)
         )
         print(
-            f"{name}: centroid shift={result['train_validation_centroid_l2_distance']:.6g}, "
+            f"{name}: centroid shift="
+            f"{result['train_validation_centroid_l2_distance']:.6g}, "
             f"AUC held-out={result['auc_heldout_train_vs_signal']:.6f}, "
             f"validation={result['auc_validation_vs_signal']:.6f}"
         )
@@ -1336,17 +1724,26 @@ def main() -> None:
     results = {
         "run_dir": str(run_dir),
         "checkpoint": str(checkpoint_path),
-        "dataset_root": str(dataset_root),
+        "dataset": backend.dataset_name,
+        "dataset_root": str(backend.dataset_root),
+        "dataset_label_axis": backend.label_axis,
+        "particle_features": backend.feature_names,
+        "batch_standardized_particle_features": (
+            backend.batch_standardized_feature_names
+        ),
+        "cms_split_manifest_source": backend.cms_manifest_source,
+        "cms_split_manifest_sha256": backend.cms_manifest_sha256,
         "device": str(device),
         "sampling": {
             "eval_steps": steps,
             "batch_size": batch_size,
-            "events_per_dataset": steps * batch_size,
+            "events_per_source_stream": steps * batch_size,
             "num_workers": num_workers,
             "fit_fraction": float(args.fit_fraction),
             "num_gaussians": int(args.num_gaussians),
             "knn_k": int(args.knn_k),
             "seed": seed,
+            "max_num_particles": backend.max_num_particles,
         },
         "labels": {"background": backgrounds, "signal": signals},
         "full_latent_space": args.full_latent_space,
@@ -1360,8 +1757,8 @@ def main() -> None:
         "combined_mahalanobis": combined,
         "per_class": per_class,
     }
-    with (output_dir / "diagnostic_results.json").open("w") as f:
-        json.dump(safe_json(results), f, indent=2)
+    with (output_dir / "diagnostic_results.json").open("w") as handle:
+        json.dump(safe_json(results), handle, indent=2)
 
     print(f"\nSaved diagnostics to {output_dir}")
 

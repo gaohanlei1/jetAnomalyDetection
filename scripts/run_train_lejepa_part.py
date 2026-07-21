@@ -1,40 +1,75 @@
-"""
-Train a ParticleTransformer representation model with LeJEPA + triplet SSL.
+"""Train one LeJEPA semi-supervised triplet ParticleTransformer on JetClass or CMS.
 
-This script is intentionally simpler than the previous masked-reconstruction
-training script:
+Each dataset owns its native ordered particle-feature schema and its own list
+of features standardized inside the model. CMS ROOT shards are split inside
+every class × production-family stratum and streamed with DDP-safe hierarchical
+mixing. Cross-dataset checkpoint loading preserves schema-independent weights
+while reinitializing the node embedding and feature-normalization state.
 
-- It reads per-event node features directly from pandas DataFrames.
-- It does not construct graph edges.
-- It trains only on background jets using multi-view pt-drop augmentation plus corrupted negative views.
-- It validates on held-out background jets with the same SSL objective.
-- It plots total / invariant / SIGReg / triplet losses.
-- It plots the full-jet representation space for background validation jets
-  and signal jets without any crop/drop augmentation.
+Example commands:
 
-Expected input (preferred): DeepNTuplizer AK8 ROOT via JetClass-style
-``dataloader.read_file`` (called once in ``load`` / ``build_node_datasets``).
+Train on CMS dataset: (use --dataset [cms | jetclass])
+python -u \
+    scripts/run_train_lejepa_part_jetclass.py \
+    --dataset cms \
+    --dataset-root "/HEP/export/home/hgao50/jet-anomaly-data/ak8-v2" \
+    --model semi-sup-triplet \
+    --background-labels "label_QCD,label_Hbb,label_Zqq,label_Tbqq" \
+    --signal-labels "label_Wqq" \
+    --embed-dim 32 \
+    --representation-dim 32 \
+    --dropout 0.01 \
+    --num-layers 4 \
+    --num-heads 8 \
+    --batch-size 256 \
+    --steps-per-epoch 4000 \
+    --val-steps 100 \
+    --eval-steps 100 \
+    --epochs 12 \
+    --learning-rate 1e-3 \
+    --weight-decay 5e-2 \
+    --precision bf16 \
+    --num-global-views 2 \
+    --num-local-views 4 \
+    --num-negative-views 4 \
+    --batch-mix-prob 0.4 \
+    --pt-resample-prob 0.25 \
+    --node-deta-dphi-rotation-prob 0.1 \
+    --deta-dphi-shuffle-prob 0.1 \
+    --identity-shuffle-prob 0.15 \
+    --global-drop-pt-frac-min 0.0 \
+    --global-drop-pt-frac-max 0.3 \
+    --local-drop-pt-frac-min 0.3 \
+    --local-drop-pt-frac-max 0.75 \
+    --batch-mix-anchor-frac-min 0.4 \
+    --batch-mix-anchor-frac-max 0.6 \
+    --anomaly-score mahalanobis \
+    --pairwise-hidden-dim 32 \
+    --triplet-weight 0.1 \
+    --triplet-margin 0.2 \
+    --classification-weight 0.1 \
+    --num-workers 3 \
+    --prefetch-factor 2 \
+    --shuffle-active-shards 4 \
+    --output-dir "plots/cms-wqq"
 
-Legacy ``.pkl`` DataFrames are still supported.
+Finetune a JetClass model on CMS dataset: (specify --checkpoint and --checkpoint-summary)
+python -u \
+    scripts/run_train_lejepa_part.py \
+    --dataset cms \
+    --dataset-root /HEP/export/home/hgao50/jet-anomaly-data/ak8-v2 \
+    --model semi-sup-triplet \
+    --background-labels label_QCD,label_Hbb \
+    --signal-labels label_Wqq \
+    --checkpoint plots/old-jetclass-run/best_model.pth \
+    --checkpoint-summary plots/old-jetclass-run/summary.json \
+    --output-dir plots/finetune-cms
 
-Default node feature order:
-
-    [
-        eta, phi, pt, d0/d0Err, dz/dzErr, charge, mass, log_pt,
-        pdgId_-211, pdgId_-13, pdgId_-11, pdgId_11,
-        pdgId_13, pdgId_22, pdgId_130, pdgId_211,
-    ]
-
-Example (ROOT):
-
-python -u scripts/run_train_lejepa_trip_part.py \
-  --background /HEP/export/home/hgao50/jet-anomaly-data/ak8-v2/qcd \
-  --signal /HEP/export/home/hgao50/jet-anomaly-data/ak8-v2/wjets \
-  --lowerpt 150 \
-  --max-background-events 5000 \
-  --max-signal-events 2000 \
-  --no-normalize-features \
-  --output-dir plots/run-lejepa-ak8-root
+Use DDP training: (4 GPU example)
+Replace 
+    python -u 
+with
+    torchrun --standalone --nproc-per-node=4
 """
 
 import argparse
@@ -43,6 +78,9 @@ import math
 import os
 import random
 import sys
+import warnings
+from contextlib import nullcontext
+from pathlib import Path
 from typing import Dict, List, Literal, Optional, Sequence, Tuple
 
 # Add parent directory to import local project modules.
@@ -50,256 +88,117 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import torch
-from torch.optim.lr_scheduler import LambdaLR
-from torch.utils.data import DataLoader, Dataset, IterableDataset
-from tqdm import tqdm
+import torch.distributed as dist
 from sklearn.metrics import roc_auc_score
-from visualize.plot_metrics import plot_anomaly_score, plot_roc_curve
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.optim.lr_scheduler import LambdaLR
+from torch.profiler import ProfilerActivity, profile, record_function, schedule
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from helpers import helpers_main
 from helpers.cms_streaming import (
+    CMS_BATCH_NORMALIZED_FEATURES,
+    CMS_FEATURE_SOURCES,
+    CMS_PARTICLE_FEATURES,
     CMSIterableDataset,
-    discover_cms_files_by_class,
-    split_files_train_val,
+    CMS_LABELS,
+    CMS_TO_JETCLASS_FEATURE_MAP,
+    cms_split_manifest,
+    collate_cms_tensors,
+    discover_cms_files_by_label_family,
+    split_cms_files_by_family,
+    validate_cms_labels,
 )
-from helpers.cms_dataloader import collect_root_files, particles_to_node_tensors, read_files
-from models.part import (
+from helpers.jetclass_streaming import (
+    DEFAULT_PARTICLE_FEATURES,
+    JETCLASS_BATCH_NORMALIZED_FEATURES,
+    JETCLASS_LABELS,
+    JetClassIterableDataset,
+    collate_jetclass_tensors,
+    validate_requested_labels as validate_jetclass_labels,
+)
+from models.part_jetclass import (
     CorruptedNegativeAugmentationConfig,
     LeJEPALossConfig,
-    LeJEPAParticleTransformerRepresentation,
-    LeJEPATripletParticleTransformerRepresentation,
-    LeJEPAMahalanobisParticleTransformerRepresentation,
-    LeJEPASemiSupervisedTripletParticleTransformerRepresentation,
-    MahalanobisNegativeLossConfig,
+    SemiSupervisedLossConfig,
     ParticleTransformerConfig,
     MultiViewAugmentationConfig,
-    SemiSupervisedLossConfig,
     TripletLossConfig,
+    LeJEPASemiSupervisedTripletParticleTransformerRepresentation,
 )
-from torch.profiler import (
-    profile,
-    ProfilerActivity,
-    record_function,
-    schedule,
-)
-from contextlib import nullcontext
 from visualize.plot_latent_space import reduce_to_2d, plot_latent_space
+from visualize.plot_metrics import plot_anomaly_score, plot_roc_curve
 
 config = helpers_main.load_config()
-bg_file = os.path.join(config["data"]["processed_data_dir"], config["data"]["background_file"])
-sg_file = os.path.join(config["data"]["processed_data_dir"], config["data"]["signal_file"])
 DEVICE = torch.device(helpers_main.get_device())
 
-
-def parse_node_features(feature_string: str) -> List[str]:
-    """
-    Parse a comma-separated node feature list.
-
-    Example:
-        "eta,phi,pt,d0/d0Err,dz/dzErr,mass,charge"
-    """
-
-    features = [item.strip() for item in feature_string.split(",") if item.strip()]
-    if len(features) == 0:
-        raise ValueError("At least one node feature must be provided.")
-    return features
+FEATURE_SCHEMA_VERSION = "dataset-native-features-v2"
+ONLY_MODEL_NAME = "semi-sup-triplet"
+FOUR_VECTOR_FEATURE_PREFIX = [
+    "part_px",
+    "part_py",
+    "part_pz",
+    "part_energy",
+]
 
 
-def parse_csv_list(value: Optional[str]) -> List[str]:
-    """Parse a comma-separated list of non-empty strings."""
-    if value is None:
-        return []
-    return [item.strip() for item in value.split(",") if item.strip()]
+def validate_four_vector_prefix(feature_names: Sequence[str], *, source: str) -> None:
+    prefix = list(feature_names[:4])
+    if prefix != FOUR_VECTOR_FEATURE_PREFIX:
+        raise ValueError(
+            f"{source} must begin with the ordered four-momentum features "
+            f"{FOUR_VECTOR_FEATURE_PREFIX}, found {prefix}."
+        )
 
 
-def row_to_node_tensor(
-    row: pd.Series,
-    node_feature_names: Sequence[str],
-    min_nodes: int,
-) -> torch.Tensor:
-    """
-    Convert one DataFrame row into a node tensor.
+class PretrainForwardAdapter(torch.nn.Module):
+    """Expose forward_pretrain through nn.Module.forward for DDP."""
 
-    Input row columns are expected to contain array-like per-node values.
-    The output tensor has shape:
+    def __init__(self, model: torch.nn.Module):
+        super().__init__()
+        self.model = model
 
-        (N, F)
-
-    No edge index is constructed.
-    """
-
-    arrays = []
-    expected_length: Optional[int] = None
-
-    for name in node_feature_names:
-        if name not in row:
-            raise ValueError(f"Missing node feature: {name}")
-
-        values = np.asarray(row[name], dtype=np.float32)
-
-        if values.ndim != 1:
-            raise ValueError(f"Feature {name} is not one-dimensional.")
-
-        if expected_length is None:
-            expected_length = len(values)
-        elif len(values) != expected_length:
-            raise ValueError(
-                f"Length mismatch for feature {name}: "
-                f"expected {expected_length}, got {len(values)}."
-            )
-
-        arrays.append(values)
-
-    if expected_length is None or expected_length < min_nodes:
-        raise ValueError(f"Too few nodes: {expected_length}.")
-
-    stacked = np.column_stack(arrays).astype(np.float32)
-    valid_mask = np.isfinite(stacked).all(axis=1)
-
-    # Pairwise physics features assume pt is positive. If pt is present,
-    # remove non-positive pt nodes before padding/collation.
-    if "pt" in node_feature_names:
-        pt_index = node_feature_names.index("pt")
-        valid_mask = valid_mask & (stacked[:, pt_index] > 0)
-
-    stacked = stacked[valid_mask]
-
-    if stacked.shape[0] < min_nodes:
-        raise ValueError(f"Too few valid nodes after cleaning: {stacked.shape[0]}.")
-
-    return torch.tensor(stacked, dtype=torch.float32)
+    def forward(
+        self,
+        x_particles: torch.Tensor,
+        y: torch.Tensor,
+        padding_mask: Optional[torch.Tensor] = None,
+    ) -> Dict[str, torch.Tensor]:
+        return self.model.forward_pretrain(
+            x_particles,
+            y,
+            padding_mask=padding_mask,
+        )
 
 
-def dataframe_to_node_tensors(
-    df: pd.DataFrame,
-    node_feature_names: Sequence[str],
-    label: int,
-    min_nodes: int,
-    max_events: Optional[int] = None,
-) -> Tuple[List[torch.Tensor], List[int]]:
-    """
-    Convert a DataFrame into a list of variable-length node tensors.
-
-    Returns:
-        node_tensors:
-            List of tensors, each with shape (N_i, F).
-
-        labels:
-            List of integer labels. These are used only for bookkeeping and
-            latent-space plotting; SSL training itself only uses background.
-    """
-
-    if max_events is not None:
-        df = df.head(max_events)
-
-    node_tensors: List[torch.Tensor] = []
-    labels: List[int] = []
-
-    for i in tqdm(range(len(df)), desc="Loading node tensors"):
-        try:
-            x = row_to_node_tensor(
-                row=df.iloc[i],
-                node_feature_names=node_feature_names,
-                min_nodes=min_nodes,
-            )
-            node_tensors.append(x)
-            labels.append(label)
-        except Exception as exc:
-            print(f"Skipping event {i} due to error: {exc}")
-
-    return node_tensors, labels
+def parse_csv_list(value: str) -> List[str]:
+    """Parse a comma-separated CLI list while preserving item order."""
+    items = [item.strip() for item in value.split(",") if item.strip()]
+    if not items:
+        raise ValueError("Expected at least one comma-separated item.")
+    return items
 
 
-class JetNodeDataset(Dataset):
-    """
-    Dataset wrapping variable-length jet node tensors.
-
-    Each item is:
-        x: (N_i, F)
-        y: scalar label
-    """
-
-    def __init__(self, node_tensors: Sequence[torch.Tensor], labels: Sequence[int]):
-        if len(node_tensors) != len(labels):
-            raise ValueError("node_tensors and labels must have the same length.")
-        self.node_tensors = list(node_tensors)
-        self.labels = list(labels)
-
-    def __len__(self) -> int:
-        return len(self.node_tensors)
-
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
-        return self.node_tensors[index], self.labels[index]
+def unique_preserving_order(items: Sequence[str]) -> List[str]:
+    return list(dict.fromkeys(items))
 
 
-def collate_node_tensors(batch: Sequence[Tuple[torch.Tensor, int]]) -> Dict[str, torch.Tensor]:
-    """
-    Pad variable-length node tensors into a dense batch.
-
-    Returns:
-        x:
-            (B, N_max, F)
-
-        padding_mask:
-            (B, N_max), bool. True means padded node.
-
-        y:
-            (B,)
-    """
-
-    xs, labels = zip(*batch)
-    batch_size = len(xs)
-    max_nodes = max(x.size(0) for x in xs)
-    feature_dim = xs[0].size(1)
-
-    padded = torch.zeros(batch_size, max_nodes, feature_dim, dtype=torch.float32)
-    padding_mask = torch.ones(batch_size, max_nodes, dtype=torch.bool)
-
-    for i, x in enumerate(xs):
-        num_nodes = x.size(0)
-        padded[i, :num_nodes] = x
-        padding_mask[i, :num_nodes] = False
-
-    y = torch.tensor(labels, dtype=torch.long)
-
-    return {
-        "x": padded,
-        "padding_mask": padding_mask,
-        "y": y,
-    }
+def _torch_load_checkpoint(path: str, device: torch.device):
+    """Load checkpoints on old and new PyTorch versions."""
+    try:
+        return torch.load(path, map_location=device, weights_only=False)
+    except TypeError:
+        return torch.load(path, map_location=device)
 
 
-def compute_feature_stats(node_tensors: Sequence[torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Compute node-feature mean/std over a list of variable-length tensors.
-
-    This is provided for diagnostics. Feature normalization is disabled by
-    default because the pairwise physics bias expects physical eta/phi/pt/mass.
-    """
-
-    all_nodes = torch.cat(list(node_tensors), dim=0)
-    mean = all_nodes.mean(dim=0)
-    std = all_nodes.std(dim=0)
-    std[std == 0] = 1.0
-    return mean, std
-
-
-def apply_feature_normalization(
-    node_tensors: Sequence[torch.Tensor],
-    mean: torch.Tensor,
-    std: torch.Tensor,
-) -> List[torch.Tensor]:
-    """
-    Normalize node tensors using provided feature statistics.
-
-    Use with caution: normalizing eta/phi/pt/mass changes the physical meaning
-    of the pairwise attention bias.
-    """
-
-    return [(x - mean) / std for x in node_tensors]
-
+def _strip_state_dict_prefixes(state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    cleaned = dict(state_dict)
+    for prefix in ("module.", "model."):
+        if cleaned and all(key.startswith(prefix) for key in cleaned):
+            cleaned = {key.removeprefix(prefix): value for key, value in cleaned.items()}
+    return cleaned
 
 def make_warmup_cosine_scheduler(
     optimizer: torch.optim.Optimizer,
@@ -348,512 +247,391 @@ def autocast_enabled_for_precision(precision: str) -> bool:
 
 
 class TrainLeJEPAParticleTransformer:
-    """
-    Shared driver for LeJEPA ParticleTransformer SSL pretraining.
+    """Training driver for the single supported semi-supervised triplet model."""
+    
+    def _prepare_labels_for_model(self, y: torch.Tensor) -> torch.Tensor:
+        """Project the dataset one-hot axis to the selected background order."""
 
-    Supported models:
-        triplet:
-            LeJEPA + SIGReg + corrupted-negative triplet loss
+        indices = [
+            self.dataset_label_axis.index(label)
+            for label in self.background_labels
+        ]
+        return y[:, indices]
+    
+    def _seed_rank_rng(self) -> None:
+        """Create independent stochastic streams on each DDP rank."""
 
-        mahalanobis:
-            LeJEPA + SIGReg + corrupted-negative Mahalanobis objective
-            with EMA normal-distribution statistics
+        rank_seed = (
+            self.base_seed
+            + self.rank
+        )
 
-        semi-sup-triplet:
-            LeJEPA + SIGReg + triplet + multiclass CE over background classes
-    """
+        random.seed(rank_seed)
+        np.random.seed(rank_seed)
+        torch.manual_seed(rank_seed)
 
-    TRAIN_SPLIT = 0.8
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(
+                rank_seed
+            )
 
     def __init__(self):
         self.args = parser.parse_args()
-        
-        self.model_name = self.args.model
 
-        if self.model_name == "triplet":
-            self.ssl_metric_keys = [
-                "total_loss",
-                "invariant_loss",
-                "sigreg_loss",
-                "triplet_loss",
-                "triplet_pos_distance",
-                "triplet_neg_distance",
-            ]
+        self.world_size = int(os.environ.get("WORLD_SIZE", "1"))
+        self.rank = int(os.environ.get("RANK", "0"))
+        self.local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+        self.distributed = self.world_size > 1
 
-        elif self.model_name == "mahalanobis":
-            self.ssl_metric_keys = [
-                "total_loss",
-                "invariant_loss",
-                "sigreg_loss",
-                "mahalanobis_loss",
-                "negative_mahalanobis_mean",
-                "negative_outside_radius_fraction",
-            ]
-        
-        elif self.model_name == "lejepa":
-            self.ssl_metric_keys = [
-                "total_loss",
-                "invariant_loss",
-                "sigreg_loss",
-            ]
-
-        elif self.model_name == "semi-sup-triplet":
-            self.ssl_metric_keys = [
-                "total_loss",
-                "invariant_loss",
-                "sigreg_loss",
-                "triplet_loss",
-                "triplet_pos_distance",
-                "triplet_neg_distance",
-                "classification_loss",
-            ]
-
+        if self.distributed:
+            if not torch.cuda.is_available():
+                raise RuntimeError("DDP multi-GPU training requires CUDA.")
+            torch.cuda.set_device(self.local_rank)
+            dist.init_process_group(backend="nccl", init_method="env://")
+            self.device = torch.device("cuda", self.local_rank)
+            global DEVICE
+            DEVICE = self.device
         else:
+            self.device = DEVICE
+        self.is_main_process = self.rank == 0
+
+        if self.args.batch_size % self.world_size != 0:
             raise ValueError(
-                f"Unsupported model {self.model_name!r}."
+                "--batch-size must be divisible by "
+                f"world_size={self.world_size}, got {self.args.batch_size}."
             )
+        self.per_rank_batch_size = self.args.batch_size // self.world_size
 
-        self.background_dirs = parse_csv_list(self.args.background_dirs)
-        self.background_names = parse_csv_list(self.args.background_names)
-        if self.background_dirs:
-            if not self.background_names:
-                self.background_names = [
-                    helpers_main.trim_name(path)
-                    for path in self.background_dirs
-                ]
-            if len(self.background_names) != len(self.background_dirs):
-                raise ValueError(
-                    "--background-names must have the same length as --background-dirs."
-                )
-            self.bg_file = ",".join(self.background_dirs)
-            self.bg_name = "+".join(self.background_names)
+        self.model_name = self.args.model
+        if self.model_name != ONLY_MODEL_NAME:
+            raise ValueError(
+                f"Only --model {ONLY_MODEL_NAME!r} is supported, got "
+                f"{self.model_name!r}."
+            )
+        self.ssl_metric_keys = [
+            "total_loss",
+            "invariant_loss",
+            "sigreg_loss",
+            "triplet_loss",
+            "triplet_pos_distance",
+            "triplet_neg_distance",
+            "classification_loss",
+        ]
+
+        self.dataset_name = self.args.dataset
+        self.dataset_root = self.args.dataset_root
+        if self.args.background_labels is None:
+            default_backgrounds = {
+                "jetclass": "label_QCD,label_Hbb,label_Hcc",
+                "cms": "label_QCD,label_Hbb",
+            }
+            self.background_labels = parse_csv_list(default_backgrounds[self.dataset_name])
         else:
-            self.bg_file = self.args.background
-            self.bg_name = helpers_main.trim_name(self.bg_file)
-            self.background_dirs = [self.bg_file]
-            self.background_names = [self.bg_name]
+            self.background_labels = parse_csv_list(self.args.background_labels)
+        if self.args.signal_labels is None:
+            self.signal_labels = ["label_Wqq"]
+        else:
+            self.signal_labels = parse_csv_list(self.args.signal_labels)
 
-        self.sg_file = self.args.signal
-        self.sg_name = (
-            self.args.signal_name
-            if self.args.signal_name
-            else helpers_main.trim_name(self.sg_file)
+        self.background_display_name = "+".join(
+            label.removeprefix("label_") for label in self.background_labels
         )
-        self.background_display_name = "+".join(self.background_names)
-        self.signal_display_name = self.sg_name
-        self.num_background_classes = len(self.background_dirs)
-        self.use_stream = bool(getattr(self.args, "stream", False))
-        if self.use_stream and self.model_name == "semi-sup-triplet" and self.num_background_classes < 2:
-            raise ValueError("Streaming semi-sup-triplet needs >=2 --background-dirs.")
+        self.signal_display_name = "+".join(
+            label.removeprefix("label_") for label in self.signal_labels
+        )
+        if self.dataset_name == "jetclass":
+            dataset_features = list(DEFAULT_PARTICLE_FEATURES)
+            dataset_normalized_features = list(
+                JETCLASS_BATCH_NORMALIZED_FEATURES
+            )
+        elif self.dataset_name == "cms":
+            dataset_features = list(CMS_PARTICLE_FEATURES)
+            dataset_normalized_features = list(
+                CMS_BATCH_NORMALIZED_FEATURES
+            )
+        else:
+            raise ValueError(f"Unsupported dataset {self.dataset_name!r}.")
 
+        if self.args.particle_features is not None:
+            requested_features = parse_csv_list(self.args.particle_features)
+            if requested_features != dataset_features:
+                raise ValueError(
+                    "--particle-features must exactly match the selected dataset's "
+                    "native ordered schema. "
+                    f"dataset={self.dataset_name}, expected={dataset_features}, "
+                    f"got={requested_features}."
+                )
 
-        self.node_feature_names = parse_node_features(self.args.node_features)
-        self.pt_index = self.node_feature_names.index("pt")
+        self.particle_feature_names = dataset_features
+        self.batch_normalized_feature_names = dataset_normalized_features
+        validate_four_vector_prefix(
+            self.particle_feature_names,
+            source=f"{self.dataset_name} dataset feature schema",
+        )
+        self.pt_index = self.particle_feature_names.index("part_pt")
+
+        all_requested_labels = unique_preserving_order(
+            self.background_labels + self.signal_labels
+        )
+        if self.dataset_name == "jetclass":
+            self.dataset_label_axis = list(JETCLASS_LABELS)
+            validate_jetclass_labels(all_requested_labels)
+            self.collate_fn = collate_jetclass_tensors
+            self.train_dir = os.path.join(self.dataset_root, "train_100M")
+            self.val_dir = os.path.join(self.dataset_root, "val_5M")
+            self.test_dir = os.path.join(self.dataset_root, "test_20M")
+            for split_dir in (self.train_dir, self.val_dir, self.test_dir):
+                if not os.path.isdir(split_dir):
+                    raise FileNotFoundError(
+                        f"Missing JetClass split directory: {split_dir}"
+                    )
+            self.cms_splits = None
+            self.cms_manifest = None
+        elif self.dataset_name == "cms":
+            self.dataset_label_axis = list(CMS_LABELS)
+            validate_cms_labels(all_requested_labels)
+            self.collate_fn = collate_cms_tensors
+            discovered = discover_cms_files_by_label_family(
+                self.dataset_root,
+                all_requested_labels,
+            )
+            self.cms_splits = split_cms_files_by_family(
+                discovered,
+                val_fraction=self.args.cms_val_fraction,
+                test_fraction=self.args.cms_test_fraction,
+                seed=self.args.cms_split_seed,
+            )
+            self.cms_manifest = cms_split_manifest(self.cms_splits)
+        else:
+            raise ValueError(f"Unsupported dataset {self.dataset_name!r}.")
+
+        overlap = sorted(set(self.background_labels) & set(self.signal_labels))
+        if overlap:
+            raise ValueError(
+                f"Background and signal labels must be disjoint, got overlap: {overlap}."
+            )
 
         self.output_dir = self.args.output_dir
         self.feature_plot_dir = os.path.join(self.output_dir, "features")
         self.latent_plot_dir = os.path.join(self.output_dir, "latent_space")
-        self.augmentation_plot_dir = os.path.join(self.output_dir, "augmentation_views")
-
+        self.augmentation_plot_dir = os.path.join(
+            self.output_dir, "augmentation_views"
+        )
         os.makedirs(self.output_dir, exist_ok=True)
         os.makedirs(self.feature_plot_dir, exist_ok=True)
         os.makedirs(self.latent_plot_dir, exist_ok=True)
         os.makedirs(self.augmentation_plot_dir, exist_ok=True)
 
-        random.seed(self.args.seed)
-        np.random.seed(self.args.seed)
-        torch.manual_seed(self.args.seed)
+        if self.is_main_process and self.cms_manifest is not None:
+            manifest_path = os.path.join(self.output_dir, "cms_split_manifest.json")
+            with open(manifest_path + ".tmp", "w") as handle:
+                json.dump(self.cms_manifest, handle, indent=2)
+            os.replace(manifest_path + ".tmp", manifest_path)
+
+        self.base_seed = int(self.args.seed)
+        random.seed(self.base_seed)
+        np.random.seed(self.base_seed)
+        torch.manual_seed(self.base_seed)
         if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(self.args.seed)
+            torch.cuda.manual_seed_all(self.base_seed)
 
-        self.session_name = os.path.join(
-            self.output_dir,
-            f"train_lejepa_part_{self.bg_name}_{self.sg_name}_{helpers_main.curr_time()}.log",
-        )
-        helpers_main.log_config(self.session_name)
-
-    def _is_root_source(self, path: str) -> bool:
-        if path.endswith(".root"):
-            return True
-        if os.path.isdir(path):
-            for root, _, files in os.walk(path):
-                if any(f.endswith(".root") for f in files):
-                    return True
-        return False
-
-
-    def _setup_streaming_datasets(self) -> None:
-        """Discover ROOT shards and build infinite/finite CMS iterable datasets."""
-        print("Streaming mode: discovering ROOT shards (no full in-memory load).")
-        files_by_class = discover_cms_files_by_class(self.background_dirs)
-        for class_id, files in files_by_class.items():
-            name = (
-                self.background_names[class_id]
-                if class_id < len(self.background_names)
-                else str(class_id)
-            )
-            print(f"  class {class_id} ({name}): {len(files)} ROOT files")
-
-        train_files, val_files = split_files_train_val(
-            files_by_class,
-            val_fraction=self.args.stream_val_fraction,
-            seed=self.args.seed,
-        )
-        for class_id in sorted(train_files):
-            name = (
-                self.background_names[class_id]
-                if class_id < len(self.background_names)
-                else str(class_id)
-            )
-            print(
-                f"  split {name}: train_files={len(train_files[class_id])} "
-                f"val_files={len(val_files[class_id])}"
-            )
-
-        common = dict(
-            particle_features=self.node_feature_names,
-            max_num_particles=self.args.max_num_particles,
-            min_nodes=self.args.min_nodes,
-            lowerpt=self.args.lowerpt,
-            upperpt=self.args.upperpt,
-            num_classes=self.num_background_classes,
-            seed=self.args.seed,
-            shuffle_active_shards=self.args.shuffle_active_shards,
-        )
-        self.bg_train_dataset = CMSIterableDataset(
-            files_by_class=train_files,
-            shuffle_files=True,
-            infinite=True,
-            max_events=None,
-            **common,
-        )
-        self.bg_val_dataset = CMSIterableDataset(
-            files_by_class=val_files,
-            shuffle_files=True,
-            infinite=True,
-            max_events=None,
-            **common,
-        )
-
-        signal_files = {
-            0: collect_root_files(self.sg_file),
+        self.checkpoint_payload = None
+        self.checkpoint_metadata: Dict[str, object] = {}
+        self.checkpoint_load_info: Dict[str, object] = {
+            "path": self.args.checkpoint,
+            "loaded": False,
+            "feature_schema_changed": False,
+            "normalization_schema_changed": False,
+            "node_embedding_reset": False,
+            "feature_normalization_state_reset": False,
+            "classification_head_reset": False,
         }
-        if not signal_files[0]:
-            raise FileNotFoundError(f"No signal ROOT files in {self.sg_file}")
-        print(f"  signal ({self.signal_display_name}): {len(signal_files[0])} ROOT files")
-        self.sg_dataset = CMSIterableDataset(
-            files_by_class=signal_files,
-            particle_features=self.node_feature_names,
-            max_num_particles=self.args.max_num_particles,
-            min_nodes=self.args.min_nodes,
-            lowerpt=self.args.lowerpt,
-            upperpt=self.args.upperpt,
-            num_classes=1,
-            max_events=None,
-            shuffle_files=True,
-            infinite=True,
-            seed=self.args.seed,
-            shuffle_active_shards=1,
-        )
-        # Placeholders for summary / legacy plot paths.
-        self.bg_train_nodes = []
-        self.bg_val_nodes = []
-        self.sg_nodes = []
-        self.feature_mean = None
-        self.feature_std = None
-        self.data_source = "root-stream"
-        print(
-            f"Streaming configured: steps_per_epoch={self.args.steps_per_epoch}, "
-            f"val_steps={self.args.val_steps}, eval_steps={self.args.eval_steps}"
-        )
 
     def load(self) -> None:
-
-        """
-        Load background and signal once per run.
-
-        Supports:
-        - DeepNTuplizer ROOT file / directory via JetClass-style ``read_file``
-        - Multiple background ROOT dirs for ``semi-sup-triplet``
-        - Legacy processed ``.pkl`` DataFrames
-        """
-
-        if self.use_stream:
-            print(f"Streaming backgrounds from {self.bg_file}")
-            print(f"Streaming signal from {self.sg_file}")
-            print(f"Node feature names: {self.node_feature_names}")
-            self._setup_streaming_datasets()
-            return
-
-        print(f"Loading background from {self.bg_file}")
-        print(f"Loading signal from {self.sg_file}")
-        print(f"Node feature names: {self.node_feature_names}")
-        if self.model_name == "semi-sup-triplet":
+        """Construct lazy streaming datasets for the selected backend."""
+        if self.is_main_process:
+            print(f"Dataset: {self.dataset_name}")
+            print(f"Dataset root: {self.dataset_root}")
+            print(f"Background labels: {self.background_labels}")
+            print(f"Signal labels: {self.signal_labels}")
+            print(f"Particle features: {self.particle_feature_names}")
             print(
-                "Background classes: "
-                + ", ".join(
-                    f"{name}@{path}"
-                    for name, path in zip(
-                        self.background_names,
-                        self.background_dirs,
-                    )
-                )
+                "Batch-normalized particle features: "
+                f"{self.batch_normalized_feature_names}"
             )
 
-        self.bg_data = None
-        self.sg_data = None
-        self.bg_x_particles = None
-        self.sg_x_particles = None
-        self.bg_class_labels: Optional[np.ndarray] = None
-        self.data_source = "pickle"
-
-        multi_root = all(
-            self._is_root_source(path) for path in self.background_dirs
-        )
-        if multi_root or self._is_root_source(self.sg_file):
-            if not (multi_root and self._is_root_source(self.sg_file)):
-                raise ValueError(
-                    "Background and signal must both be ROOT sources (file or directory) "
-                    "or both be .pkl files."
-                )
-            self.data_source = "root"
-            print(
-                "Using JetClass-style dataloader.read_file on DeepNTuplizer ROOT "
-                f"(pt >= {self.args.lowerpt}"
-                + (f", pt <= {self.args.upperpt}" if self.args.upperpt is not None else "")
-                + f", max_num_particles={self.args.max_num_particles})"
+        if self.dataset_name == "jetclass":
+            dataset_kwargs = {
+                "particle_features": self.particle_feature_names,
+                "max_num_particles": self.args.max_num_particles,
+                "shuffle_active_shards": self.args.shuffle_active_shards,
+                "shuffle_files": True,
+                "seed": self.args.seed,
+                "rank": self.rank,
+                "world_size": self.world_size,
+            }
+            self.bg_train_dataset = JetClassIterableDataset(
+                split_dir=self.train_dir,
+                labels_to_load=self.background_labels,
+                max_events=self.args.max_train_events,
+                infinite=True,
+                **dataset_kwargs,
             )
-
-            max_per_class = self.args.max_events_per_class
-            if max_per_class is None and len(self.background_dirs) == 1:
-                max_per_class = self.args.max_background_events
-
-            bg_parts = []
-            bg_jets = []
-            bg_labels = []
-            for class_index, bg_path in enumerate(self.background_dirs):
-                x_p, x_j, _ = read_files(
-                    bg_path,
-                    max_num_particles=self.args.max_num_particles,
-                    particle_features=self.node_feature_names,
-                    lowerpt=self.args.lowerpt,
-                    upperpt=self.args.upperpt,
-                    class_index=class_index,
-                    num_classes=max(
-                        self.num_background_classes,
-                        self.args.num_classes,
-                    ),
-                    max_files=self.args.max_root_files,
-                    max_jets=max_per_class,
-                )
-                print(
-                    f"  [{self.background_names[class_index]}] jets: "
-                    f"{x_p.shape[0]}  x_particles={tuple(x_p.shape)}"
-                )
-                bg_parts.append(x_p)
-                bg_jets.append(x_j)
-                bg_labels.append(
-                    np.full((x_p.shape[0],), class_index, dtype=np.int64)
-                )
-
-            self.bg_x_particles = np.concatenate(bg_parts, axis=0)
-            self.bg_x_jets = np.concatenate(bg_jets, axis=0)
-            self.bg_class_labels = np.concatenate(bg_labels, axis=0)
-
-            self.sg_x_particles, self.sg_x_jets, self.sg_y = read_files(
-                self.sg_file,
-                max_num_particles=self.args.max_num_particles,
-                particle_features=self.node_feature_names,
-                lowerpt=self.args.lowerpt,
-                upperpt=self.args.upperpt,
-                class_index=self.args.signal_class_index,
-                num_classes=max(
-                    self.num_background_classes,
-                    self.args.num_classes,
-                ),
-                max_files=self.args.max_root_files,
-                max_jets=self.args.max_signal_events,
+            self.bg_train_eval_dataset = JetClassIterableDataset(
+                split_dir=self.train_dir,
+                labels_to_load=self.background_labels,
+                max_events=self.args.max_val_events,
+                infinite=True,
+                **dataset_kwargs,
             )
-            print(
-                f"Background jets (all classes): {self.bg_x_particles.shape[0]}  "
-                f"x_particles={tuple(self.bg_x_particles.shape)}"
+            self.bg_val_dataset = JetClassIterableDataset(
+                split_dir=self.val_dir,
+                labels_to_load=self.background_labels,
+                max_events=self.args.max_val_events,
+                infinite=True,
+                **dataset_kwargs,
             )
-            print(
-                f"Signal jets: {self.sg_x_particles.shape[0]}  "
-                f"x_particles={tuple(self.sg_x_particles.shape)}"
+            self.bg_test_dataset = JetClassIterableDataset(
+                split_dir=self.test_dir,
+                labels_to_load=self.background_labels,
+                max_events=self.args.max_test_background_events,
+                infinite=True,
+                **dataset_kwargs,
+            )
+            self.sg_dataset = JetClassIterableDataset(
+                split_dir=self.test_dir,
+                labels_to_load=self.signal_labels,
+                max_events=self.args.max_test_signal_events,
+                **dataset_kwargs,
             )
         else:
-            if len(self.background_dirs) != 1:
-                raise ValueError(
-                    "Multi-directory background loading is only supported for ROOT sources."
+            assert self.cms_splits is not None
+
+            def make_cms_dataset(
+                split_name: str,
+                labels: Sequence[str],
+                max_events: Optional[int],
+                seed_offset: int,
+            ) -> CMSIterableDataset:
+                return CMSIterableDataset(
+                    files_by_label_family=self.cms_splits[split_name],
+                    labels_to_load=labels,
+                    label_axis=self.dataset_label_axis,
+                    particle_features=self.particle_feature_names,
+                    max_num_particles=self.args.max_num_particles,
+                    min_nodes=self.args.min_nodes,
+                    lowerpt=self.args.cms_pt_min,
+                    upperpt=self.args.cms_pt_max,
+                    max_events=max_events,
+                    shuffle_files=True,
+                    shuffle_active_shards=self.args.shuffle_active_shards,
+                    min_active_families_per_class=(
+                        self.args.cms_min_active_families_per_class
+                    ),
+                    family_sampling=self.args.cms_family_sampling,
+                    infinite=True,
+                    seed=self.args.seed + seed_offset,
+                    rank=self.rank,
+                    world_size=self.world_size,
                 )
-            self.bg_data = pd.read_pickle(self.bg_file)
-            self.sg_data = pd.read_pickle(self.sg_file)
 
-            if self.args.max_background_events is not None:
-                self.bg_data = self.bg_data.head(self.args.max_background_events)
-            if self.args.max_signal_events is not None:
-                self.sg_data = self.sg_data.head(self.args.max_signal_events)
+            self.bg_train_dataset = make_cms_dataset(
+                "train", self.background_labels, self.args.max_train_events, 0
+            )
+            self.bg_train_eval_dataset = make_cms_dataset(
+                "train", self.background_labels, self.args.max_val_events, 101
+            )
+            self.bg_val_dataset = make_cms_dataset(
+                "val", self.background_labels, self.args.max_val_events, 202
+            )
+            self.bg_test_dataset = make_cms_dataset(
+                "test",
+                self.background_labels,
+                self.args.max_test_background_events,
+                303,
+            )
+            self.sg_dataset = make_cms_dataset(
+                "test", self.signal_labels, self.args.max_test_signal_events, 404
+            )
 
-            print(f"Background rows: {len(self.bg_data)}")
-            print(f"Signal rows: {len(self.sg_data)}")
-            print(f"Background columns: {self.bg_data.columns.tolist()}")
-            print(f"Signal columns: {self.sg_data.columns.tolist()}")
+        datasets = [
+            self.bg_train_dataset,
+            self.bg_train_eval_dataset,
+            self.bg_val_dataset,
+            self.bg_test_dataset,
+            self.sg_dataset,
+        ]
+        feature_lists = [list(dataset.feature_names) for dataset in datasets]
+        normalized_lists = [
+            list(dataset.batch_normalized_feature_names) for dataset in datasets
+        ]
+        if any(names != feature_lists[0] for names in feature_lists[1:]):
+            raise RuntimeError(
+                f"Dataset objects disagree on feature order: {feature_lists}"
+            )
+        if any(names != normalized_lists[0] for names in normalized_lists[1:]):
+            raise RuntimeError(
+                "Dataset objects disagree on batch-normalized features: "
+                f"{normalized_lists}"
+            )
+        self.particle_feature_names = feature_lists[0]
+        self.batch_normalized_feature_names = normalized_lists[0]
+        validate_four_vector_prefix(
+            self.particle_feature_names,
+            source=f"{self.dataset_name} dataset object",
+        )
+        self.pt_index = self.particle_feature_names.index("part_pt")
 
     def build_node_datasets(self) -> None:
-        """
-        Convert loaded data into variable-length node tensor datasets.
+        """Report lazy dataset metadata without materializing any events."""
 
-        Called once per training run (after ``load``).
-        """
-
-        if self.use_stream:
-            print("Streaming datasets already prepared in load(); skipping RAM materialization.")
+        if not self.is_main_process:
             return
-
-        print("Loading background node tensors...")
-        if self.data_source == "root":
-            pt_index = (
-                self.node_feature_names.index("pt")
-                if "pt" in self.node_feature_names
-                else 0
-            )
-            bg_nodes: List[torch.Tensor] = []
-            bg_labels: List[int] = []
-            # Preserve class ids assigned during load() for multiclass CE.
-            class_labels = (
-                self.bg_class_labels
-                if self.bg_class_labels is not None
-                else np.zeros(
-                    self.bg_x_particles.shape[0],
-                    dtype=np.int64,
-                )
-            )
-            for class_index in range(int(class_labels.max()) + 1):
-                mask = class_labels == class_index
-                if not np.any(mask):
-                    continue
-                nodes_i, labels_i = particles_to_node_tensors(
-                    self.bg_x_particles[mask],
-                    min_nodes=self.args.min_nodes,
-                    pt_feature_index=pt_index,
-                    label=int(class_index),
-                )
-                bg_nodes.extend(nodes_i)
-                bg_labels.extend(labels_i)
-                print(
-                    f"  class {class_index} "
-                    f"({self.background_names[class_index] if class_index < len(self.background_names) else class_index}): "
-                    f"{len(nodes_i)} jets"
-                )
-            print("Loading signal node tensors...")
-            sg_nodes, sg_labels = particles_to_node_tensors(
-                self.sg_x_particles,
-                min_nodes=self.args.min_nodes,
-                pt_feature_index=pt_index,
-                label=1,
-            )
-        else:
-            bg_nodes, bg_labels = dataframe_to_node_tensors(
-                df=self.bg_data,
-                node_feature_names=self.node_feature_names,
-                label=0,
-                min_nodes=self.args.min_nodes,
-                max_events=None,
-            )
-            print("Loading signal node tensors...")
-            sg_nodes, sg_labels = dataframe_to_node_tensors(
-                df=self.sg_data,
-                node_feature_names=self.node_feature_names,
-                label=1,
-                min_nodes=self.args.min_nodes,
-                max_events=None,
-            )
-
-        if len(bg_nodes) == 0:
-            raise ValueError("No valid background events were loaded.")
-        if len(sg_nodes) == 0:
-            raise ValueError("No valid signal events were loaded.")
-
-        # Stratified 80/20 split keeps each background class represented in val.
-        train_nodes: List[torch.Tensor] = []
-        train_labels: List[int] = []
-        val_nodes: List[torch.Tensor] = []
-        val_labels: List[int] = []
-        unique_classes = sorted(set(bg_labels))
-        for class_index in unique_classes:
-            indices = [i for i, lab in enumerate(bg_labels) if lab == class_index]
-            random.shuffle(indices)
-            if len(indices) == 1:
-                train_idx, val_idx = indices, []
-            else:
-                split = int(self.TRAIN_SPLIT * len(indices))
-                split = max(1, min(split, len(indices) - 1))
-                train_idx = indices[:split]
-                val_idx = indices[split:]
-            train_nodes.extend(bg_nodes[i] for i in train_idx)
-            train_labels.extend(bg_labels[i] for i in train_idx)
-            val_nodes.extend(bg_nodes[i] for i in val_idx)
-            val_labels.extend(bg_labels[i] for i in val_idx)
-
-        # Shuffle train after concatenating classes.
-        train_order = list(range(len(train_nodes)))
-        random.shuffle(train_order)
-        self.bg_train_nodes = [train_nodes[i] for i in train_order]
-        self.bg_train_labels = [train_labels[i] for i in train_order]
-        self.bg_val_nodes = val_nodes
-        self.bg_val_labels = val_labels
-        self.sg_nodes = sg_nodes
-        self.sg_labels = sg_labels
-
-        if self.args.normalize_features:
+        print(
+            f"Lazy {self.dataset_name} datasets ready; no full split has been "
+            "loaded into RAM."
+        )
+        print(f"Background train ROOT shards: {len(self.bg_train_dataset.filepaths)}")
+        print(f"Background val ROOT shards: {len(self.bg_val_dataset.filepaths)}")
+        print(f"Background test ROOT shards: {len(self.bg_test_dataset.filepaths)}")
+        print(f"Signal test ROOT shards: {len(self.sg_dataset.filepaths)}")
+        print(
+            "Per-event particle shape: "
+            f"({self.args.max_num_particles}, {len(self.particle_feature_names)})"
+        )
+        if self.dataset_name == "cms":
             print(
-                "Warning: Feature normalization is enabled. This changes eta/phi/pt/mass "
-                "before pairwise physics bias computation. Use only if intended."
+                "CMS active shards per worker: requested="
+                f"{self.args.shuffle_active_shards}, effective="
+                f"{self.bg_train_dataset.effective_active_shards}; minimum family "
+                f"coverage={self.bg_train_dataset.minimum_active_shards}."
             )
-            self.feature_mean, self.feature_std = compute_feature_stats(self.bg_train_nodes)
-            self.bg_train_nodes = apply_feature_normalization(
-                self.bg_train_nodes,
-                self.feature_mean,
-                self.feature_std,
-            )
-            self.bg_val_nodes = apply_feature_normalization(
-                self.bg_val_nodes,
-                self.feature_mean,
-                self.feature_std,
-            )
-            self.sg_nodes = apply_feature_normalization(
-                self.sg_nodes,
-                self.feature_mean,
-                self.feature_std,
-            )
-        else:
-            self.feature_mean, self.feature_std = compute_feature_stats(self.bg_train_nodes)
-
-        self.bg_train_dataset = JetNodeDataset(self.bg_train_nodes, self.bg_train_labels)
-        self.bg_val_dataset = JetNodeDataset(self.bg_val_nodes, self.bg_val_labels)
-        self.sg_dataset = JetNodeDataset(self.sg_nodes, self.sg_labels)
-
-        print(f"Loaded background train events: {len(self.bg_train_dataset)}")
-        print(f"Loaded background val events: {len(self.bg_val_dataset)}")
-        print(f"Loaded signal events: {len(self.sg_dataset)}")
-        print(f"Feature mean: {self.feature_mean}")
-        print(f"Feature std: {self.feature_std}")
-        print(f"Example node tensor shape: {self.bg_train_nodes[0].shape}")
 
     def plot_features(self) -> None:
-        """
-        Plot background training feature distributions for sanity checks.
-        """
-
-        if self.use_stream:
-            print("Skipping feature plots in streaming mode.")
+        """Plot particle features from a bounded streaming training sample."""
+        if not self.is_main_process:
             return
 
         os.makedirs(self.feature_plot_dir, exist_ok=True)
-        all_features = torch.cat(self.bg_train_nodes, dim=0).numpy()
+        sampled_rows: List[np.ndarray] = []
+        sampled_events = 0
 
-        for i, name in enumerate(self.node_feature_names):
+        for event_x, _ in self.bg_train_dataset:
+            valid = ~event_x.eq(0).all(dim=-1)
+            if valid.any():
+                sampled_rows.append(event_x[valid].numpy())
+
+            sampled_events += 1
+            if sampled_events >= self.args.feature_plot_events:
+                break
+
+        if not sampled_rows:
+            print("Warning: no valid particles found for feature plots.")
+            return
+
+        all_features = np.concatenate(sampled_rows, axis=0)
+
+        for i, name in enumerate(self.particle_feature_names):
             fig, ax = plt.subplots(figsize=(6, 4))
             ax.hist(
                 all_features[:, i],
@@ -867,322 +645,47 @@ class TrainLeJEPAParticleTransformer:
             ax.set_ylabel("Density")
             ax.grid(False)
             fig.tight_layout()
-
-            safe_name = name.replace("/", "_")
             fig.savefig(
-                os.path.join(self.feature_plot_dir, f"feature_{i}_{safe_name}.png")
+                os.path.join(self.feature_plot_dir, f"feature_{i}_{name}.png")
             )
             plt.close(fig)
 
-    def plot_augmentation_samples(self, train_loader: DataLoader) -> None:
-        """
-        Plot original background jets and their augmented views before training.
-
-        Augmentations are generated from the actual training DataLoader batches,
-        so visualization uses the same batch size, shuffling, collation, and
-        padding behavior as training. This is important for batch_mix, which
-        requires multiple events in the same batch to provide donor jets.
-
-        Each saved figure corresponds to one event selected from a real training
-        batch. The subplots show:
-            - original full jet
-            - all global pt-drop views
-            - all local pt-drop views
-            - all negative views
-
-        Plot convention:
-            x-axis: phi
-            y-axis: eta
-            color: pt
-        """
-
-        if not hasattr(self, "model"):
-            raise RuntimeError("Model must be built before plotting augmentation samples.")
-
-        os.makedirs(self.augmentation_plot_dir, exist_ok=True)
-
-        dataset_len = (
-            self.args.num_augmentation_plot_samples
-            if isinstance(self.bg_train_dataset, IterableDataset)
-            else len(self.bg_train_dataset)
-        )
-        num_samples = min(
-            self.args.num_augmentation_plot_samples,
-            dataset_len,
-        )
-        if num_samples <= 0:
-            return
-
-        self.model.eval()
-        num_plotted = 0
-        # Augmentation plots are diagnostics only — keep them on CPU so a
-        # transient CUDA fault here cannot abort the full training run.
-        plot_device = torch.device("cpu")
-
-        with torch.no_grad():
-            for batch_idx, batch in enumerate(train_loader):
-                x_batch = batch["x"].to(plot_device)
-                padding_mask_batch = batch["padding_mask"].to(plot_device)
-
-                try:
-                    views, view_padding_masks, view_types = self.model.augmentation(
-                        x=x_batch,
-                        padding_mask=padding_mask_batch,
-                        return_types=True,
-                    )
-                except Exception as exc:
-                    print(
-                        f"Warning: skipping augmentation plots after error: {exc}"
-                    )
-                    return
-                
-                if self.model_name != "lejepa":
-                    negative_views, negative_padding_masks, negative_types = (
-                        self.model.negative_augmentation(
-                            x=x_batch,
-                            padding_mask=padding_mask_batch,
-                            return_types=True,
-                        )
-                    )
-
-                remaining = num_samples - num_plotted
-                if remaining <= 0:
-                    break
-
-                rows_this_batch = min(remaining, x_batch.size(0))
-                selected_rows = random.sample(
-                    range(x_batch.size(0)),
-                    k=rows_this_batch,
-                )
-
-                for row_idx in selected_rows:
-                    panels = [
-                        (
-                            x_batch[row_idx],
-                            padding_mask_batch[row_idx],
-                            "original",
-                        )
-                    ]
-
-                    for view_i, (view_x, view_mask, view_type) in enumerate(
-                        zip(views, view_padding_masks, view_types),
-                        start=1,
-                    ):
-                        panels.append(
-                            (
-                                view_x[row_idx],
-                                view_mask[row_idx],
-                                f"{view_i}: {view_type}",
-                            )
-                        )
-
-                    if self.model_name != "lejepa":
-                        for neg_i, (neg_x, neg_mask, neg_types_for_view) in enumerate(
-                            zip(negative_views, negative_padding_masks, negative_types),
-                            start=1,
-                        ):
-                            event_neg_type = neg_types_for_view[row_idx]
-                            panels.append(
-                                (
-                                    neg_x[row_idx],
-                                    neg_mask[row_idx],
-                                    f"neg {neg_i}: {event_neg_type}",
-                                )
-                            )
-
-                    output_path = os.path.join(
-                        self.augmentation_plot_dir,
-                        f"augmentation_sample_{num_plotted + 1:02d}_"
-                        f"batch_{batch_idx:04d}_row_{row_idx:03d}.png",
-                    )
-
-                    self._plot_single_augmentation_panel(
-                        panels=panels,
-                        output_path=output_path,
-                        title=(
-                            f"Training batch {batch_idx}, row {row_idx}: "
-                            "original and augmented views"
-                        ),
-                    )
-
-                    num_plotted += 1
-                    if num_plotted >= num_samples:
-                        break
-
-                if num_plotted >= num_samples:
-                    break
-
-        if num_plotted < num_samples:
-            print(
-                f"Warning: Requested {num_samples} augmentation plots but only produced {num_plotted}."
-            )
-
-    def _plot_single_augmentation_panel(
+    def make_dataloaders(
         self,
-        panels: Sequence[Tuple[torch.Tensor, torch.Tensor, str]],
-        output_path: str,
-        title: str,
-    ) -> None:
-        """
-        Plot one event's original jet and augmented views as eta-phi subplots.
-        """
+    ) -> Tuple[DataLoader, DataLoader, DataLoader, DataLoader, DataLoader]:
+        train_kwargs = {
+            "batch_size": self.per_rank_batch_size,
+            "num_workers": self.args.num_workers,
+            "pin_memory": self.args.pin_memory,
+            "collate_fn": self.collate_fn,
+            "persistent_workers": self.args.num_workers > 0,
+            "drop_last": True,
+        }
 
-        eta_index = self.node_feature_names.index("eta")
-        phi_index = self.node_feature_names.index("phi")
-        pt_index = self.node_feature_names.index("pt")
+        eval_kwargs = {
+            "batch_size": self.per_rank_batch_size,
+            "num_workers": 1,
+            "pin_memory": self.args.pin_memory,
+            "collate_fn": self.collate_fn,
+            "persistent_workers": True,
+            "drop_last": True,
+        }
 
-        num_panels = len(panels)
-        num_cols = min(3, num_panels)
-        num_rows = int(np.ceil(num_panels / num_cols))
+        if self.args.num_workers > 0:
+            train_kwargs["prefetch_factor"] = self.args.prefetch_factor
 
-        valid_pts = []
-        valid_etas = []
-        valid_phis = []
+        eval_kwargs["prefetch_factor"] = 1
 
-        for x_panel, mask_panel, _ in panels:
-            valid = ~mask_panel.bool()
-            if valid.any():
-                valid_pts.append(x_panel[valid, pt_index].detach().cpu().numpy())
-                valid_etas.append(x_panel[valid, eta_index].detach().cpu().numpy())
-                valid_phis.append(x_panel[valid, phi_index].detach().cpu().numpy())
+        # IterableDataset owns sample order; DataLoader shuffle is invalid here.
+        train_loader = DataLoader(self.bg_train_dataset, **train_kwargs)
+        # train_eval_loader is used for collecting train set representations only
+        # it has the same data as train_loader
+        train_eval_loader = DataLoader(self.bg_train_eval_dataset, **eval_kwargs)
+        bg_val_loader = DataLoader(self.bg_val_dataset, **eval_kwargs)
+        bg_test_loader = DataLoader(self.bg_test_dataset, **eval_kwargs)
+        signal_loader = DataLoader(self.sg_dataset, **eval_kwargs)
 
-        if len(valid_pts) == 0:
-            print(f"Warning: Skipping augmentation plot with no valid nodes: {output_path}")
-            return
-
-        all_pt = np.concatenate(valid_pts)
-        all_eta = np.concatenate(valid_etas)
-        all_phi = np.concatenate(valid_phis)
-
-        pt_min = float(np.nanmin(all_pt))
-        pt_max = float(np.nanmax(all_pt))
-        if not np.isfinite(pt_min) or not np.isfinite(pt_max) or pt_min == pt_max:
-            pt_min, pt_max = 0.0, 1.0
-
-        eta_min = float(np.nanmin(all_eta))
-        eta_max = float(np.nanmax(all_eta))
-        phi_min = float(np.nanmin(all_phi))
-        phi_max = float(np.nanmax(all_phi))
-
-        eta_pad = max(0.05, 0.05 * (eta_max - eta_min + 1e-8))
-        phi_pad = max(0.05, 0.05 * (phi_max - phi_min + 1e-8))
-
-        shared_eta_min = eta_min - eta_pad
-        shared_eta_max = eta_max + eta_pad
-        shared_phi_min = phi_min - phi_pad
-        shared_phi_max = phi_max + phi_pad
-
-        fig, axes = plt.subplots(
-            num_rows,
-            num_cols,
-            figsize=(5 * num_cols, 5 * num_rows),
-            squeeze=False,
-        )
-        axes_flat = axes.flatten()
-
-        last_scatter = None
-
-        for ax, (x_panel, mask_panel, panel_title) in zip(axes_flat, panels):
-            valid = ~mask_panel.bool()
-            x_np = x_panel.detach().cpu().numpy()
-            valid_np = valid.detach().cpu().numpy()
-
-            eta = x_np[valid_np, eta_index]
-            phi = x_np[valid_np, phi_index]
-            pt = x_np[valid_np, pt_index]
-
-            last_scatter = ax.scatter(
-                phi,
-                eta,
-                c=pt,
-                cmap="viridis",
-                s=16,
-                alpha=0.8,
-                vmin=pt_min,
-                vmax=pt_max,
-            )
-            ax.set_title(f"{panel_title} ({len(pt)} nodes)")
-            ax.set_xlabel("Phi")
-            ax.set_ylabel("Eta")
-            ax.set_xlim(shared_phi_min, shared_phi_max)
-            ax.set_ylim(shared_eta_min, shared_eta_max)
-            ax.set_box_aspect(1)
-            ax.grid(False)
-
-        for ax in axes_flat[num_panels:]:
-            ax.axis("off")
-
-        fig.suptitle(title)
-        fig.tight_layout(rect=[0.0, 0.0, 0.92, 0.96])
-
-        if last_scatter is not None:
-            colorbar_ax = fig.add_axes([0.94, 0.10, 0.018, 0.80])
-            fig.colorbar(last_scatter, cax=colorbar_ax, label="pt")
-
-        fig.savefig(output_path)
-        plt.close(fig)
-
-    def make_dataloaders(self) -> Tuple[DataLoader, DataLoader, DataLoader]:
-        if self.use_stream:
-            # IterableDataset owns ordering; DataLoader shuffle is invalid.
-            common = dict(
-                batch_size=self.args.batch_size,
-                num_workers=self.args.num_workers,
-                pin_memory=self.args.pin_memory,
-                collate_fn=collate_node_tensors,
-                persistent_workers=self.args.num_workers > 0,
-            )
-            train_loader = DataLoader(
-                self.bg_train_dataset,
-                shuffle=False,
-                drop_last=True,
-                **common,
-            )
-            bg_val_loader = DataLoader(
-                self.bg_val_dataset,
-                shuffle=False,
-                drop_last=False,
-                **common,
-            )
-            signal_loader = DataLoader(
-                self.sg_dataset,
-                shuffle=False,
-                drop_last=False,
-                **common,
-            )
-            return train_loader, bg_val_loader, signal_loader
-
-        train_loader = DataLoader(
-            self.bg_train_dataset,
-            batch_size=self.args.batch_size,
-            shuffle=True,
-            num_workers=self.args.num_workers,
-            pin_memory=self.args.pin_memory,
-            collate_fn=collate_node_tensors,
-            persistent_workers=self.args.num_workers > 0,
-        )
-
-        bg_val_loader = DataLoader(
-            self.bg_val_dataset,
-            batch_size=self.args.batch_size,
-            shuffle=False,
-            num_workers=self.args.num_workers,
-            pin_memory=self.args.pin_memory,
-            collate_fn=collate_node_tensors,
-            persistent_workers=self.args.num_workers > 0,
-        )
-
-        signal_loader = DataLoader(
-            self.sg_dataset,
-            batch_size=self.args.batch_size,
-            shuffle=False,
-            num_workers=self.args.num_workers,
-            pin_memory=self.args.pin_memory,
-            collate_fn=collate_node_tensors,
-            persistent_workers=self.args.num_workers > 0,
-        )
-
-        return train_loader, bg_val_loader, signal_loader
+        return train_loader, train_eval_loader, bg_val_loader, bg_test_loader, signal_loader
 
     def _extract_ssl_metrics(
         self,
@@ -1204,88 +707,359 @@ class TrainLeJEPAParticleTransformer:
                 )
 
             metrics[key] = float(
-                output[key].detach().float().cpu()
+                self._distributed_mean(output[key]).cpu()
             )
 
         return metrics
+
+    def _distributed_mean(
+        self,
+        value: torch.Tensor,
+    ) -> torch.Tensor:
+        value = value.detach().float()
+
+        if not self.distributed:
+            return value
+
+        value = value.clone()
+        dist.all_reduce(
+            value,
+            op=dist.ReduceOp.SUM,
+        )
+        value /= self.world_size
+
+        return value
 
     def _progress_postfix(
         self,
         metrics: Dict[str, float],
     ) -> Dict[str, str]:
-        """
-        Compact tqdm postfix for the active SSL objective.
-        """
-
-        if self.model_name == "triplet":
-            return {
-                "total": f"{metrics['total_loss']:.4g}",
-                "inv": f"{metrics['invariant_loss']:.4g}",
-                "sig": f"{metrics['sigreg_loss']:.4g}",
-                "tri": f"{metrics['triplet_loss']:.4g}",
-                "d+": f"{metrics['triplet_pos_distance']:.4g}",
-                "d-": f"{metrics['triplet_neg_distance']:.4g}",
-            }
-
-        if self.model_name == "semi-sup-triplet":
-            return {
-                "total": f"{metrics['total_loss']:.4g}",
-                "inv": f"{metrics['invariant_loss']:.4g}",
-                "sig": f"{metrics['sigreg_loss']:.4g}",
-                "tri": f"{metrics['triplet_loss']:.4g}",
-                "cls": f"{metrics['classification_loss']:.4g}",
-            }
-
-        if self.model_name == "mahalanobis":
-            return {
-                "total": f"{metrics['total_loss']:.4g}",
-                "inv": f"{metrics['invariant_loss']:.4g}",
-                "sig": f"{metrics['sigreg_loss']:.4g}",
-                "maha": f"{metrics['mahalanobis_loss']:.4g}",
-                "frac": (
-                    f"{metrics['negative_outside_radius_fraction']:.4g}"
-                ),
-                "DM": (
-                    f"{metrics['negative_mahalanobis_mean']:.4g}"
-                ),
-            }
+        """Compact tqdm postfix for the single supported objective."""
+        return {
+            "total": f"{metrics['total_loss']:.4g}",
+            "inv": f"{metrics['invariant_loss']:.4g}",
+            "sig": f"{metrics['sigreg_loss']:.4g}",
+            "tri": f"{metrics['triplet_loss']:.4g}",
+            "d+": f"{metrics['triplet_pos_distance']:.4g}",
+            "d-": f"{metrics['triplet_neg_distance']:.4g}",
+            "cls": f"{metrics['classification_loss']:.4g}",
+        }
         
-        if self.model_name == "lejepa":
-            return {
-                "total": f"{metrics['total_loss']:.4g}",
-                "inv": f"{metrics['invariant_loss']:.4g}",
-                "sig": f"{metrics['sigreg_loss']:.4g}",
-            }
-
-        raise RuntimeError(
-            f"Unsupported model {self.model_name!r}."
-        )
-
-    def _forward_pretrain_batch(
+    def _all_gather_event_tensor(
         self,
-        batch: Dict[str, torch.Tensor],
-        normalize_output: bool,
-    ) -> Dict[str, torch.Tensor]:
-        """Call model.forward_pretrain, passing class labels when required."""
-        x = batch["x"].to(DEVICE, non_blocking=True)
-        padding_mask = batch["padding_mask"].to(DEVICE, non_blocking=True)
-        if self.model_name == "semi-sup-triplet":
-            y = batch["y"].to(DEVICE, non_blocking=True)
-            return self.model.forward_pretrain(
-                x,
-                y,
-                padding_mask=padding_mask,
-                normalize_output=normalize_output,
-            )
-        return self.model.forward_pretrain(
-            x,
-            padding_mask=padding_mask,
-            normalize_output=normalize_output,
+        tensor: torch.Tensor,
+        event_dim: int,
+    ) -> torch.Tensor:
+        if not self.distributed:
+            return tensor
+
+        tensor = tensor.to(
+            DEVICE,
+            non_blocking=True,
         )
+        tensor = tensor.movedim(
+            event_dim,
+            0,
+        ).contiguous()
+
+        local_size = torch.tensor(
+            [tensor.size(0)],
+            device=DEVICE,
+            dtype=torch.long,
+        )
+
+        sizes = [
+            torch.zeros_like(local_size)
+            for _ in range(self.world_size)
+        ]
+        dist.all_gather(
+            sizes,
+            local_size,
+        )
+
+        sizes_int = [
+            int(size.item())
+            for size in sizes
+        ]
+        max_size = max(sizes_int)
+
+        if tensor.size(0) < max_size:
+            pad_shape = (
+                max_size - tensor.size(0),
+                *tensor.shape[1:],
+            )
+            padding = torch.zeros(
+                pad_shape,
+                device=tensor.device,
+                dtype=tensor.dtype,
+            )
+            tensor = torch.cat(
+                [tensor, padding],
+                dim=0,
+            )
+
+        gathered = [
+            torch.empty_like(tensor)
+            for _ in range(self.world_size)
+        ]
+        dist.all_gather(
+            gathered,
+            tensor,
+        )
+
+        merged = torch.cat(
+            [
+                rank_tensor[:rank_size]
+                for rank_tensor, rank_size
+                in zip(gathered, sizes_int)
+            ],
+            dim=0,
+        )
+
+        return merged.movedim(
+            0,
+            event_dim,
+        ).cpu()
         
+    def _read_checkpoint(self) -> Tuple[Dict[str, torch.Tensor], Dict[str, object]]:
+        checkpoint_path = Path(self.args.checkpoint).expanduser().resolve()
+        if not checkpoint_path.is_file():
+            raise FileNotFoundError(f"Checkpoint does not exist: {checkpoint_path}")
+        payload = _torch_load_checkpoint(str(checkpoint_path), DEVICE)
+        self.checkpoint_payload = payload
+
+        if isinstance(payload, dict) and "model_state_dict" in payload:
+            state_dict = payload["model_state_dict"]
+        elif isinstance(payload, dict) and "state_dict" in payload:
+            state_dict = payload["state_dict"]
+        elif isinstance(payload, dict) and payload and all(
+            isinstance(value, torch.Tensor) for value in payload.values()
+        ):
+            state_dict = payload
+        else:
+            raise TypeError(
+                "Unsupported checkpoint format. Expected a raw state_dict or a "
+                "dictionary containing model_state_dict/state_dict."
+            )
+        state_dict = _strip_state_dict_prefixes(state_dict)
+
+        metadata: Dict[str, object] = {}
+        if isinstance(payload, dict) and isinstance(payload.get("metadata"), dict):
+            metadata.update(payload["metadata"])
+
+        if self.args.checkpoint_summary is not None:
+            summary_path = Path(self.args.checkpoint_summary).expanduser().resolve()
+        else:
+            summary_path = checkpoint_path.parent / "summary.json"
+        if summary_path.is_file():
+            with open(summary_path) as handle:
+                summary_metadata = json.load(handle)
+            summary_metadata.update(metadata)
+            metadata = summary_metadata
+        self.checkpoint_metadata = metadata
+        return state_dict, metadata
+
+    @staticmethod
+    def _classification_state_keys(model: torch.nn.Module) -> List[str]:
+        return [
+            key for key in model.state_dict()
+            if key.startswith("classification_head.")
+        ]
+
+    @staticmethod
+    def _node_embedding_state_keys(model: torch.nn.Module) -> List[str]:
+        return [
+            key for key in model.state_dict()
+            if key.startswith("node_embedding.")
+        ]
+
+    @staticmethod
+    def _feature_normalization_state_keys(model: torch.nn.Module) -> List[str]:
+        names = {
+            "_feature_running_mean",
+            "_feature_running_var",
+            "_feature_num_batches_tracked",
+        }
+        return [key for key in model.state_dict() if key in names]
+
+    def _load_checkpoint_into_model(self, core_model: torch.nn.Module) -> None:
+        if self.args.checkpoint is None:
+            return
+
+        state_dict, metadata = self._read_checkpoint()
+        source_dataset = metadata.get("dataset")
+        if source_dataset is None and metadata:
+            source_dataset = "jetclass"
+        source_features = metadata.get("particle_features")
+        source_model = metadata.get("model")
+        source_backgrounds = metadata.get("background_labels")
+        source_normalized_features = metadata.get(
+            "batch_standardized_particle_features"
+        )
+
+        if source_model is not None and str(source_model) != ONLY_MODEL_NAME:
+            raise ValueError(
+                f"Checkpoint model variant {source_model!r} is not the supported "
+                f"model {ONLY_MODEL_NAME!r}."
+            )
+
+        if source_features is not None:
+            source_features = list(source_features)
+            validate_four_vector_prefix(
+                source_features, source="checkpoint feature schema"
+            )
+        elif source_dataset is not None and str(source_dataset) != self.dataset_name:
+            raise ValueError(
+                "Cross-dataset checkpoint loading requires particle_features "
+                "metadata. Place summary.json beside the checkpoint or pass "
+                "--checkpoint-summary."
+            )
+
+        feature_schema_changed = (
+            source_features is not None
+            and source_features != self.particle_feature_names
+        )
+        normalization_schema_changed = (
+            source_normalized_features is not None
+            and list(source_normalized_features)
+            != self.batch_normalized_feature_names
+        )
+        dataset_changed = (
+            source_dataset is not None and str(source_dataset) != self.dataset_name
+        )
+        class_order_changed = (
+            source_backgrounds is not None
+            and list(source_backgrounds) != self.background_labels
+        )
+        reset_classification_head = (
+            dataset_changed
+            or class_order_changed
+            or self.args.reset_classification_head
+        )
+        reset_node_embedding = (
+            feature_schema_changed or normalization_schema_changed
+        )
+
+        classification_keys = self._classification_state_keys(core_model)
+        node_embedding_keys = self._node_embedding_state_keys(core_model)
+        feature_norm_keys = self._feature_normalization_state_keys(core_model)
+        if not classification_keys:
+            raise RuntimeError(
+                "Could not identify classification_head parameters in the model."
+            )
+        if not node_embedding_keys:
+            raise RuntimeError(
+                "Could not identify node_embedding parameters in the model."
+            )
+
+        reset_keys = set()
+        if reset_classification_head:
+            reset_keys.update(classification_keys)
+        if reset_node_embedding:
+            reset_keys.update(node_embedding_keys)
+            reset_keys.update(feature_norm_keys)
+
+        filtered_state = {
+            key: value for key, value in state_dict.items() if key not in reset_keys
+        }
+        current_state = core_model.state_dict()
+        shape_mismatches = [
+            (key, tuple(value.shape), tuple(current_state[key].shape))
+            for key, value in filtered_state.items()
+            if key in current_state and current_state[key].shape != value.shape
+        ]
+        if shape_mismatches:
+            raise ValueError(
+                "Checkpoint parameter shapes do not match after applying the "
+                f"requested resets: {shape_mismatches[:10]}"
+            )
+
+        load_result = core_model.load_state_dict(filtered_state, strict=False)
+        disallowed_missing = sorted(
+            set(load_result.missing_keys) - reset_keys
+        )
+        if disallowed_missing or load_result.unexpected_keys:
+            raise RuntimeError(
+                "Checkpoint load was not architecture-compatible. "
+                f"missing={disallowed_missing}, "
+                f"unexpected={load_result.unexpected_keys}."
+            )
+
+        if self.args.resume_training_state:
+            if reset_classification_head or reset_node_embedding:
+                raise ValueError(
+                    "--resume-training-state cannot be used when the "
+                    "classification head or node embedding is reinitialized. "
+                    "Use weight-only fine-tuning instead."
+                )
+            if not isinstance(self.checkpoint_payload, dict) or not all(
+                key in self.checkpoint_payload
+                for key in ("optimizer_state_dict", "scheduler_state_dict", "epoch")
+            ):
+                raise ValueError(
+                    "--resume-training-state requires a full training checkpoint "
+                    "created by this script."
+                )
+            if dataset_changed or class_order_changed:
+                raise ValueError(
+                    "Full optimizer/scheduler resume requires the same dataset "
+                    "and background class order."
+                )
+
+        self.checkpoint_load_info = {
+            "path": str(Path(self.args.checkpoint).expanduser().resolve()),
+            "loaded": True,
+            "source_dataset": source_dataset,
+            "source_background_labels": source_backgrounds,
+            "source_particle_features": source_features,
+            "source_batch_standardized_particle_features": (
+                list(source_normalized_features)
+                if source_normalized_features is not None
+                else None
+            ),
+            "feature_schema_changed": feature_schema_changed,
+            "normalization_schema_changed": normalization_schema_changed,
+            "node_embedding_reset": reset_node_embedding,
+            "feature_normalization_state_reset": reset_node_embedding,
+            "classification_head_reset": reset_classification_head,
+            "resume_training_state": bool(self.args.resume_training_state),
+        }
+        if self.is_main_process:
+            print(f"Loaded checkpoint: {self.checkpoint_load_info['path']}")
+            if reset_node_embedding:
+                print(
+                    "Checkpoint feature or normalization schema differs from the "
+                    "current dataset; node_embedding and running feature-"
+                    "normalization state remain "
+                    "at their new random/default initialization."
+                )
+            if reset_classification_head:
+                print(
+                    "Classification head remains at its new random initialization."
+                )
+
+    def _checkpoint_metadata_payload(self) -> Dict[str, object]:
+        return {
+            "dataset": self.dataset_name,
+            "dataset_root": self.dataset_root,
+            "model": ONLY_MODEL_NAME,
+            "background_labels": list(self.background_labels),
+            "signal_labels": list(self.signal_labels),
+            "dataset_label_axis": list(self.dataset_label_axis),
+            "feature_schema_version": FEATURE_SCHEMA_VERSION,
+            "particle_features": list(self.particle_feature_names),
+            "batch_standardized_particle_features": list(
+                self.batch_normalized_feature_names
+            ),
+        }
+
     def build_model(self) -> None:
         model_config = ParticleTransformerConfig(
-            input_dim=len(self.node_feature_names),
+            input_dim=len(self.particle_feature_names),
+            input_feature_names=tuple(self.particle_feature_names),
+            standardized_feature_names=tuple(
+                self.batch_normalized_feature_names
+            ),
             embed_dim=self.args.embed_dim,
             num_heads=self.args.num_heads,
             num_layers=self.args.num_layers,
@@ -1298,9 +1072,6 @@ class TrainLeJEPAParticleTransformer:
             compute_dtype=precision_to_dtype(self.args.precision),
             use_internal_autocast=False,
             eps=self.args.eps,
-            input_feature_names=tuple(self.node_feature_names),
-            standardized_feature_names=tuple(self.args.standardized_feature_names),
-            feature_norm_momentum=self.args.feature_norm_momentum,
         )
 
         augmentation_config = MultiViewAugmentationConfig(
@@ -1315,7 +1086,14 @@ class TrainLeJEPAParticleTransformer:
                 self.args.local_drop_pt_frac_max,
             ),
             min_nodes=self.args.min_nodes,
-            pt_index=self.pt_index,
+            px_index=self.particle_feature_names.index("part_px"),
+            py_index=self.particle_feature_names.index("part_py"),
+            pz_index=self.particle_feature_names.index("part_pz"),
+            energy_index=self.particle_feature_names.index("part_energy"),
+            pt_index=self.particle_feature_names.index("part_pt"),
+            log_pt_fraction_index=self.particle_feature_names.index(
+                "log_pt_fraction"
+            ),
             eps=self.args.eps,
             pt_drop_power=self.args.pt_drop_power,
             zero_dropped_features=not self.args.keep_dropped_features,
@@ -1323,32 +1101,32 @@ class TrainLeJEPAParticleTransformer:
 
         negative_augmentation_config = CorruptedNegativeAugmentationConfig(
             num_negative_views=self.args.num_negative_views,
-
             batch_mix_prob=self.args.batch_mix_prob,
             pt_resample_prob=self.args.pt_resample_prob,
-            node_eta_phi_rotation_prob=self.args.node_eta_phi_rotation_prob,
-            eta_phi_shuffle_prob=self.args.eta_phi_shuffle_prob,
+            node_deta_dphi_rotation_prob=(
+                self.args.node_deta_dphi_rotation_prob
+            ),
+            deta_dphi_shuffle_prob=self.args.deta_dphi_shuffle_prob,
             identity_shuffle_prob=self.args.identity_shuffle_prob,
-
             min_nodes=self.args.min_nodes,
             eps=self.args.eps,
-
-            eta_index=self.node_feature_names.index("eta"),
-            phi_index=self.node_feature_names.index("phi"),
-            pt_index=self.node_feature_names.index("pt"),
-            d0_index=self.node_feature_names.index("d0/d0Err"),
-            dz_index=self.node_feature_names.index("dz/dzErr"),
-            charge_index=self.node_feature_names.index("charge"),
-            mass_index=self.node_feature_names.index("mass"),
-            log_pt_index=self.node_feature_names.index("log_pt"),
-            pdg_start_index=self.node_feature_names.index("pdgId_-211"),
-            pdg_end_index=self.node_feature_names.index("pdgId_211") + 1,
-
+            deta_index=self.particle_feature_names.index("part_deta"),
+            dphi_index=self.particle_feature_names.index("part_dphi"),
+            pt_index=self.particle_feature_names.index("part_pt"),
+            log_pt_fraction_index=self.particle_feature_names.index(
+                "log_pt_fraction"
+            ),
+            charge_index=self.particle_feature_names.index("part_charge"),
+            identity_start_index=self.particle_feature_names.index(
+                "part_isChargedHadron"
+            ),
+            identity_end_index=self.particle_feature_names.index(
+                "part_isMuon"
+            ) + 1,
             corrupt_node_frac=self.args.corrupt_node_frac,
             batch_mix_anchor_frac_min=self.args.batch_mix_anchor_frac_min,
             batch_mix_anchor_frac_max=self.args.batch_mix_anchor_frac_max,
             renormalize_pt_sum=self.args.renormalize_negative_pt_sum,
-            renormalize_log_pt_stats=self.args.renormalize_negative_log_pt_stats,
         )
 
         loss_config = LeJEPALossConfig(
@@ -1356,119 +1134,51 @@ class TrainLeJEPAParticleTransformer:
             sigreg_weight=self.args.sigreg_weight,
             epps_pulley_num_points=self.args.epps_pulley_num_points,
             num_slices=self.args.num_slices,
-            normalize_representations_for_invariant=self.args.normalize_invariant_representations,
-            normalize_representations_for_sigreg=self.args.normalize_sigreg_representations,
+        )
+        triplet_loss_config = TripletLossConfig(
+            triplet_weight=self.args.triplet_weight,
+            triplet_margin=self.args.triplet_margin,
+            use_global_views_as_positives=(
+                not self.args.use_all_views_as_triplet_positives
+            ),
+        )
+        semi_supervised_loss_config = SemiSupervisedLossConfig(
+            classification_weight=self.args.classification_weight,
+            num_classes=len(self.background_labels),
         )
 
-        if self.model_name == "triplet":
-            triplet_loss_config = TripletLossConfig(
-                triplet_weight=self.args.triplet_weight,
-                triplet_margin=self.args.triplet_margin,
-                normalize_representations_for_triplet=(
-                    self.args.normalize_triplet_representations
-                ),
-                use_global_views_as_positives=(
-                    not self.args.use_all_views_as_triplet_positives
-                ),
-            )
+        core_model = LeJEPASemiSupervisedTripletParticleTransformerRepresentation(
+            model_config=model_config,
+            augmentation_config=augmentation_config,
+            negative_augmentation_config=negative_augmentation_config,
+            loss_config=loss_config,
+            triplet_loss_config=triplet_loss_config,
+            semi_supervised_config=semi_supervised_loss_config,
+        ).to(DEVICE)
 
-            self.model = (
-                LeJEPATripletParticleTransformerRepresentation(
-                    model_config=model_config,
-                    augmentation_config=augmentation_config,
-                    negative_augmentation_config=(
-                        negative_augmentation_config
-                    ),
-                    loss_config=loss_config,
-                    triplet_loss_config=triplet_loss_config,
-                )
-                .to(DEVICE)
-            )
+        self._load_checkpoint_into_model(core_model)
 
-        elif self.model_name == "semi-sup-triplet":
-            if self.num_background_classes < 2:
-                raise ValueError(
-                    "semi-sup-triplet requires at least 2 background classes "
-                    "(pass multiple dirs via --background-dirs)."
-                )
-            triplet_loss_config = TripletLossConfig(
-                triplet_weight=self.args.triplet_weight,
-                triplet_margin=self.args.triplet_margin,
-                normalize_representations_for_triplet=(
-                    self.args.normalize_triplet_representations
-                ),
-                use_global_views_as_positives=(
-                    not self.args.use_all_views_as_triplet_positives
-                ),
-            )
-            semi_supervised_config = SemiSupervisedLossConfig(
-                classification_weight=self.args.classification_weight,
-                num_classes=self.num_background_classes,
-            )
-            self.model = (
-                LeJEPASemiSupervisedTripletParticleTransformerRepresentation(
-                    model_config=model_config,
-                    augmentation_config=augmentation_config,
-                    negative_augmentation_config=(
-                        negative_augmentation_config
-                    ),
-                    loss_config=loss_config,
-                    triplet_loss_config=triplet_loss_config,
-                    semi_supervised_config=semi_supervised_config,
-                )
-                .to(DEVICE)
-            )
+        self.num_params = sum(
+            parameter.numel()
+            for parameter in core_model.parameters()
+            if parameter.requires_grad
+        )
+        if self.is_main_process:
+            print(f"Selected SSL model: {ONLY_MODEL_NAME}")
+            print(f"Number of trainable parameters: {self.num_params:,}")
 
-        elif self.model_name == "mahalanobis":
-            mahalanobis_loss_config = (
-                MahalanobisNegativeLossConfig(
-                    mahalanobis_weight=(
-                        self.args.mahalanobis_weight
-                    ),
-                    ema_decay=(
-                        self.args.mahalanobis_ema_decay
-                    ),
-                    target_radius=(
-                        self.args.mahalanobis_target_radius
-                    ),
-                )
+        self.model_core = core_model
+        adapter = PretrainForwardAdapter(core_model).to(DEVICE)
+        if self.distributed:
+            self.model = DDP(
+                adapter,
+                device_ids=[self.local_rank],
+                output_device=self.local_rank,
+                broadcast_buffers=False,
+                find_unused_parameters=False,
             )
-
-            self.model = (
-                LeJEPAMahalanobisParticleTransformerRepresentation(
-                    model_config=model_config,
-                    augmentation_config=augmentation_config,
-                    negative_augmentation_config=(
-                        negative_augmentation_config
-                    ),
-                    loss_config=loss_config,
-                    mahalanobis_loss_config=(
-                        mahalanobis_loss_config
-                    ),
-                )
-                .to(DEVICE)
-            )
-        
-        elif self.model_name == "lejepa":
-            self.model = (
-                LeJEPAParticleTransformerRepresentation(
-                    model_config=model_config,
-                    augmentation_config=augmentation_config,
-                    loss_config=loss_config,
-                )
-                .to(DEVICE)
-            )
-
         else:
-            raise ValueError(
-                f"Unsupported model {self.model_name!r}."
-            )
-
-        print(f"Selected SSL model: {self.model_name}")
-        print(f"Model summary:\n{self.model}")
-        
-        self.num_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
-        print(f"Number of trainable parameters: {self.num_params}")
+            self.model = adapter
 
     def plot_progress(
         self,
@@ -1481,10 +1191,7 @@ class TrainLeJEPAParticleTransformer:
     ) -> None:
         """
         Plot train/validation curves for total, invariant, SIGReg, triplet
-        losses/distances, plus Mahalanobis anomaly-detection AUC.
-
-        AUC values are plotted at the actual training steps where Mahalanobis
-        evaluation was performed.
+        losses/distances AUC.
         """
 
         if len(train_history["total_loss"]) == 0:
@@ -1494,27 +1201,13 @@ class TrainLeJEPAParticleTransformer:
             "total_loss": "Total Loss",
             "invariant_loss": "Invariant Loss",
             "sigreg_loss": "SIGReg Loss",
-
+            "classification_loss": "Classification Loss",
             "triplet_loss": "Triplet Loss",
             "triplet_pos_distance": (
                 "Triplet Positive Distance"
             ),
             "triplet_neg_distance": (
                 "Triplet Negative Distance"
-            ),
-            "classification_loss": "Classification Loss",
-
-            "mahalanobis_loss": (
-                "Negative Samples Mahalanobis Loss"
-            ),
-            "negative_outside_radius_fraction": (
-                "Fraction of Negative Samples Outside Target Radius"
-            ),
-            "negative_mahalanobis_mean": (
-                "Negative Samples Mean Mahalanobis Distance"
-            ),
-            "ema_mean_norm": (
-                "EMA Normal Mean Norm"
             ),
         }
 
@@ -1678,17 +1371,9 @@ class TrainLeJEPAParticleTransformer:
             top_ax.set_xticklabels(epoch_ids[::stride])
             top_ax.set_xlabel("Epoch")
 
-        model_title = {
-            "triplet": "LeJEPA + Triplet SSL",
-            "mahalanobis": (
-                "LeJEPA + Mahalanobis Negative SSL"
-            ),
-            "lejepa": "LeJEPA SSL",
-            "semi-sup-triplet": (
-                "LeJEPA + Triplet + Multiclass CE"
-            ),
-        }.get(self.model_name, self.model_name)
-        fig.suptitle(f"{model_title} Training Progress")
+        fig.suptitle(
+            "LeJEPA + Triplet + Semi-Supervised Classification Training Progress"
+        )
         fig.tight_layout()
         fig.savefig(os.path.join(self.output_dir, "loss.png"))
         plt.close(fig)
@@ -1697,21 +1382,31 @@ class TrainLeJEPAParticleTransformer:
     def collect_representations(
         self,
         loader: DataLoader,
-        max_batches: Optional[int] = None,
-    ) -> torch.Tensor:
+        return_labels: bool = False,
+    ):
         """
         Compute full-jet representations without augmentation/crop/drop.
+
+        When ``return_labels=True``, also return the original dataset one-hot
+        labels gathered in exactly the same event order as the latent tensor.
         """
 
         self.model.eval()
-        latents: List[np.ndarray] = []
+        latents: List[torch.Tensor] = []
+        labels: List[torch.Tensor] = []
         dtype = precision_to_dtype(self.args.precision)
         use_autocast = autocast_enabled_for_precision(self.args.precision)
 
-        for batch_idx, batch in enumerate(loader):
-            if max_batches is not None and batch_idx >= max_batches:
-                break
-            x = batch["x"].to(DEVICE, non_blocking=True)
+        loader_iter = iter(loader)
+
+        for batch_idx in tqdm(
+            range(self.args.eval_steps),
+            desc="Collecting representations",
+            leave=False,
+            disable=not self.is_main_process,
+        ):
+            batch = next(loader_iter)
+            x_particles = batch["x_particles"].to(DEVICE, non_blocking=True)
             padding_mask = batch["padding_mask"].to(DEVICE, non_blocking=True)
 
             with torch.autocast(
@@ -1719,22 +1414,38 @@ class TrainLeJEPAParticleTransformer:
                 dtype=dtype,
                 enabled=use_autocast,
             ):
-                z = self.model(
-                    x,
+                z = self.model_core(
+                    x_particles,
                     padding_mask=padding_mask,
-                    normalize_output=self.args.normalize_output_representations,
                 )
 
             latents.append(z.detach().float().cpu())
+            if return_labels:
+                labels.append(batch["y"].detach().cpu())
 
-        return torch.cat(latents, dim=0)
-    
+        latents = torch.cat(latents, dim=0)
+        latents = self._all_gather_event_tensor(
+            latents,
+            event_dim=0,
+        )
+
+        if not return_labels:
+            return latents
+
+        labels_tensor = torch.cat(labels, dim=0)
+        labels_tensor = self._all_gather_event_tensor(
+            labels_tensor,
+            event_dim=0,
+        )
+        return latents, labels_tensor
+
     @torch.no_grad()
     def collect_view_representations(
         self,
         dataloader,
-        which_view: Literal["view", "negative", "all"] = "view"
-    ) -> torch.Tensor:
+        which_view: Literal["view", "negative", "all"] = "view",
+        return_labels: bool = False,
+    ):
         """
         Collect augmented view representations for a full dataset.
 
@@ -1772,13 +1483,28 @@ class TrainLeJEPAParticleTransformer:
 
         collected_z_views = []
         collected_z_negatives = []
+        collected_labels = []
 
         with torch.no_grad():
-            for batch in tqdm(
-                dataloader,
-                desc="Collecting positive-view representations",
-                leave=False,
+            for batch_idx, batch in enumerate(
+                tqdm(
+                    dataloader,
+                    total=self.args.eval_steps,
+                    desc="Collecting positive-view representations",
+                    leave=False,
+                    disable=not self.is_main_process,
+                )
             ):
+                if batch_idx >= self.args.eval_steps:
+                    break
+                x_particles = batch["x_particles"].to(DEVICE, non_blocking=True)
+                raw_y = batch["y"]
+                if return_labels:
+                    collected_labels.append(raw_y.detach().cpu())
+                y = raw_y.to(DEVICE, non_blocking=True)
+                y = self._prepare_labels_for_model(y)
+                padding_mask = batch["padding_mask"].to(DEVICE, non_blocking=True)
+
                 dtype = precision_to_dtype(self.args.precision)
                 use_autocast = autocast_enabled_for_precision(self.args.precision)
         
@@ -1787,9 +1513,10 @@ class TrainLeJEPAParticleTransformer:
                     dtype=dtype,
                     enabled=use_autocast,
                 ):
-                    output = self._forward_pretrain_batch(
-                        batch,
-                        normalize_output=self.args.normalize_output_representations,
+                    output = self.model( # collect view representations
+                        x_particles,
+                        y,
+                        padding_mask=padding_mask,
                     )
                 
                 if which_view == "view" or which_view == "all":
@@ -1817,6 +1544,10 @@ class TrainLeJEPAParticleTransformer:
                 collected_z_views,
                 dim=1,
             )
+            z_views = self._all_gather_event_tensor(
+                z_views,
+                event_dim=1,
+            )
         if which_view == "negative" or which_view == "all":
             # Concatenate over event/batch dimension:
             #     list of (K, B_i, D)
@@ -1825,13 +1556,29 @@ class TrainLeJEPAParticleTransformer:
                 collected_z_negatives,
                 dim=1,
             )
+            z_negatives = self._all_gather_event_tensor(
+                z_negatives,
+                event_dim=1,
+            )
+
+        gathered_labels = None
+        if return_labels:
+            gathered_labels = torch.cat(collected_labels, dim=0)
+            gathered_labels = self._all_gather_event_tensor(
+                gathered_labels,
+                event_dim=0,
+            )
 
         if which_view == "view":
-            return z_views, None
+            result = (z_views, None)
         elif which_view == "negative":
-            return None, z_negatives
+            result = (None, z_negatives)
         else:  # which_view == "all"
-            return z_views, z_negatives
+            result = (z_views, z_negatives)
+
+        if return_labels:
+            return (*result, gathered_labels)
+        return result
 
     def fit_mahalanobis_background(
         self,
@@ -2007,7 +1754,7 @@ class TrainLeJEPAParticleTransformer:
         signal_loader,
         plot_latent: bool = False,
         epoch: Optional[int] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Compute downstream Mahalanobis anomaly scores.
         
@@ -2021,30 +1768,30 @@ class TrainLeJEPAParticleTransformer:
             signal_scores
         """
 
-        eval_batches = self.args.eval_steps if self.use_stream else None
         bg_train_latents = self.collect_representations(
-            background_train_loader,
-            max_batches=eval_batches,
+            background_train_loader
         )
 
-        bg_val_latents = self.collect_representations(
+        bg_val_latents, bg_val_labels = self.collect_representations(
             background_val_loader,
-            max_batches=eval_batches,
+            return_labels=True,
         )
 
-        signal_latents = self.collect_representations(
+        signal_latents, signal_labels = self.collect_representations(
             signal_loader,
-            max_batches=eval_batches,
+            return_labels=True,
         )
 
         # If plot_latent is True, plot the mean of global views for background validation and signal events.
-        if plot_latent:
+        if plot_latent and self.is_main_process:
             assert epoch is not None, "Epoch must be provided when plot_latent is True."
             self.plot_latent_space_for_epoch(
                 bg_val_latents.numpy(),
                 signal_latents.numpy(),
+                bg_val_labels=bg_val_labels.numpy(),
+                signal_labels=signal_labels.numpy(),
                 epoch=epoch,
-            ) 
+            )
             
         mean, precision = self.fit_mahalanobis_background(bg_train_latents.numpy())
 
@@ -2078,91 +1825,81 @@ class TrainLeJEPAParticleTransformer:
         signal_loader,
         plot_latent: bool = False,
         epoch: Optional[int] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+    ]:
         """
-        Compute event-wise local-global consistency anomaly scores.
-        
-        If plot_latent is True, also plot the mean of global views for 
-        background validation and signal events.
-        Epoch must be provided for plotting.
-
-        For every event:
-            1. Generate positive global and local views using the model's existing
-            MultiViewAugmentation configuration.
-            2. Encode all views with the same model.
-            3. Compute the event-specific anchor as the mean global representation.
-            4. Compute the mean local-to-anchor representation MSE.
-
-        No signal information is used for training or fitting.
-        No synthetic negative views enter the score definition.
-        
-        Important:
-            This process is repeated for self.args.local_global_eval_repeats times.
-            Each repeat independently resamples positive augmentations.
-            Final event score is averaged across repeats.
-
-        Returns:
-            background_train_scores
-            background_val_scores
-            signal_scores
+        Compute one stochastic local-global consistency score
+        per event from one positive-augmentation draw.
         """
 
-        num_repeats = self.args.local_global_eval_repeats
-        if num_repeats < 1:
-            raise ValueError(
-                f"local_global_eval_repeats must be >= 1, got {num_repeats}."
-            )
-        
-        background_train_scores_all = []
-        background_val_scores_all = []
-        signal_scores_all = []
-        
-        for i in range(num_repeats):
-            bg_train_latents, _ = self.collect_view_representations(
+        bg_train_latents, _ = (
+            self.collect_view_representations(
                 background_train_loader,
-                which_view="view"
+                which_view="view",
             )
-            bg_val_latents, _ = self.collect_view_representations(
+        )
+        bg_val_latents, _, bg_val_labels = (
+            self.collect_view_representations(
                 background_val_loader,
-                which_view="view"
+                which_view="view",
+                return_labels=True,
             )
-            signal_latents, _ = self.collect_view_representations(
+        )
+        signal_latents, _, signal_labels = (
+            self.collect_view_representations(
                 signal_loader,
-                which_view="view"
+                which_view="view",
+                return_labels=True,
             )
-            
-            # If plot_latent is True, plot the mean of global views for background validation and signal events.
-            if plot_latent and i == 0: # plot only for first run
-                assert epoch is not None, "Epoch must be provided when plot_latent is True."
-                bg_val_global_latents = bg_val_latents[:self.args.num_global_views].mean(dim=0)
-                signal_global_latents = signal_latents[:self.args.num_global_views].mean(dim=0)
-                self.plot_latent_space_for_epoch(
-                    bg_val_global_latents.numpy(),
-                    signal_global_latents.numpy(),
-                    epoch=epoch,
-                ) 
+        )
 
-            background_train_scores = self.local_global_consistency_scores(
-                bg_train_latents, 
+        if plot_latent and self.is_main_process:
+            if epoch is None:
+                raise ValueError(
+                    "epoch must be provided when "
+                    "plot_latent=True."
+                )
+
+            bg_val_global_latents = (
+                bg_val_latents[
+                    :self.args.num_global_views
+                ].mean(dim=0)
+            )
+            signal_global_latents = (
+                signal_latents[
+                    :self.args.num_global_views
+                ].mean(dim=0)
+            )
+
+            self.plot_latent_space_for_epoch(
+                bg_val_global_latents.numpy(),
+                signal_global_latents.numpy(),
+                bg_val_labels=bg_val_labels.numpy(),
+                signal_labels=signal_labels.numpy(),
+                epoch=epoch,
+            )
+
+        background_train_scores = (
+            self.local_global_consistency_scores(
+                bg_train_latents,
                 self.args.num_global_views,
             )
-            background_val_scores = self.local_global_consistency_scores(
+        )
+        background_val_scores = (
+            self.local_global_consistency_scores(
                 bg_val_latents,
                 self.args.num_global_views,
             )
-            signal_scores = self.local_global_consistency_scores(
+        )
+        signal_scores = (
+            self.local_global_consistency_scores(
                 signal_latents,
-                self.args.num_global_views
+                self.args.num_global_views,
             )
-
-            background_train_scores_all.append(background_train_scores)
-            background_val_scores_all.append(background_val_scores)
-            signal_scores_all.append(signal_scores)
-
-        # Average scores across repeats
-        background_train_scores = torch.stack(background_train_scores_all).mean(dim=0)
-        background_val_scores = torch.stack(background_val_scores_all).mean(dim=0)
-        signal_scores = torch.stack(signal_scores_all).mean(dim=0)
+        )
 
         return (
             background_train_scores,
@@ -2200,9 +1937,6 @@ class TrainLeJEPAParticleTransformer:
             auc_bgval_vs_signal: float
         """
 
-        eval_dir = os.path.join(self.output_dir, f"{score_name}_eval", f"epoch_{epoch:04d}")
-        os.makedirs(eval_dir, exist_ok=True)
-
         (
             background_train_scores,
             background_val_scores,
@@ -2215,147 +1949,226 @@ class TrainLeJEPAParticleTransformer:
             epoch=epoch,
         )
 
-        def _as_numpy(scores):
-            if isinstance(scores, np.ndarray):
-                return scores
-            if torch.is_tensor(scores):
-                return scores.detach().cpu().numpy()
-            return np.asarray(scores)
+        # latent-collection and score computation is done in DDP
+        # but we only keep history and plot in the main process
+        if not self.is_main_process: 
+            return 0.0, 0.0
+        
+        def scores_to_numpy(scores) -> np.ndarray:
+            """Accept score functions implemented with either Torch or NumPy."""
+            if isinstance(scores, torch.Tensor):
+                return scores.detach().float().cpu().numpy()
+            return np.asarray(scores, dtype=np.float64)
 
-        background_train_scores = _as_numpy(background_train_scores)
-        background_val_scores = _as_numpy(background_val_scores)
-        signal_scores = _as_numpy(signal_scores)
-
+        background_train_scores = scores_to_numpy(background_train_scores)
+        background_val_scores = scores_to_numpy(background_val_scores)
+        signal_scores = scores_to_numpy(signal_scores)
+        
         auc_bgtrain_vs_signal = self.compute_auc(background_train_scores, signal_scores)
         auc_bgval_vs_signal = self.compute_auc(background_val_scores, signal_scores)
 
-        metrics = {
-            "epoch": int(epoch),
-            "auc_bgtrain_vs_signal": float(auc_bgtrain_vs_signal),
-            "auc_bgval_vs_signal": float(auc_bgval_vs_signal),
-            "background_train_score_mean": float(np.mean(background_train_scores)),
-            "background_val_score_mean": float(np.mean(background_val_scores)),
-            "signal_score_mean": float(np.mean(signal_scores)),
-            "background_train_score_median": float(np.median(background_train_scores)),
-            "background_val_score_median": float(np.median(background_val_scores)),
-            "signal_score_median": float(np.median(signal_scores)),
-        }
+        # eval_dir = os.path.join(self.output_dir, f"{score_name}_eval", f"epoch_{epoch:04d}")
+        # os.makedirs(eval_dir, exist_ok=True)
 
-        metrics_path = os.path.join(eval_dir, f"{score_name}_metrics.json")
-        with open(metrics_path, "w") as f:
-            json.dump(metrics, f, indent=2)
+        # metrics = {
+        #     "epoch": int(epoch),
+        #     "auc_bgtrain_vs_signal": float(auc_bgtrain_vs_signal),
+        #     "auc_bgval_vs_signal": float(auc_bgval_vs_signal),
+        #     "background_train_score_mean": float(np.mean(background_train_scores)),
+        #     "background_val_score_mean": float(np.mean(background_val_scores)),
+        #     "signal_score_mean": float(np.mean(signal_scores)),
+        #     "background_train_score_median": float(np.median(background_train_scores)),
+        #     "background_val_score_median": float(np.median(background_val_scores)),
+        #     "signal_score_median": float(np.median(signal_scores)),
+        # }
 
-        plot_anomaly_score(
-            background_val_scores,
-            signal_scores,
-            background_label=f"{self.background_display_name} (Val)",
-            signal_label=self.signal_display_name,
-            save_path=os.path.join(eval_dir, "bgval-vs-signal-score.png"),
-        )
+        # metrics_path = os.path.join(eval_dir, f"{score_name}_metrics.json")
+        # with open(metrics_path, "w") as f:
+        #     json.dump(metrics, f, indent=2)
 
-        plot_anomaly_score(
-            background_train_scores,
-            signal_scores,
-            background_label=f"{self.background_display_name} (Train)",
-            signal_label=self.signal_display_name,
-            save_path=os.path.join(eval_dir, "bgtrain-vs-signal-score.png"),
-        )
+        # plot_anomaly_score(
+        #     background_val_scores,
+        #     signal_scores,
+        #     background_label=(f"{self.background_display_name} (Val)"),
+        #     signal_label=self.signal_display_name,
+        #     save_path=os.path.join(eval_dir, "bgval-vs-signal-score.png"),
+        # )
 
-        plot_roc_curve(
-            background_val_scores,
-            signal_scores,
-            background_label=f"{self.background_display_name} (Val)",
-            signal_label=self.signal_display_name,
-            savepath=os.path.join(eval_dir, "roc-bgval-vs-signal.png"),
-            examples=False,
-            loss_fn=torch.nn.MSELoss(reduction="mean"),
-        )
+        # plot_anomaly_score(
+        #     background_train_scores,
+        #     signal_scores,
+        #     background_label=(f"{self.background_display_name} (Train)"),
+        #     signal_label=self.signal_display_name,
+        #     save_path=os.path.join(eval_dir, "bgtrain-vs-signal-score.png"),
+        # )
 
-        plot_roc_curve(
-            background_train_scores,
-            signal_scores,
-            background_label=f"{self.background_display_name} (Train)",
-            signal_label=self.signal_display_name,
-            savepath=os.path.join(eval_dir, "roc-bgtrain-vs-signal.png"),
-            examples=False,
-            loss_fn=torch.nn.MSELoss(reduction="mean"),
-        )
+        # plot_roc_curve(
+        #     background_val_scores,
+        #     signal_scores,
+        #     background_label=(f"{self.background_display_name} (Val)"),
+        #     signal_label=self.signal_display_name,
+        #     savepath=os.path.join(eval_dir, "roc-bgval-vs-signal.png"),
+        #     examples=False,
+        #     loss_fn=None,
+        # )
 
-        latest_dir = os.path.join(self.output_dir, f"{score_name}_eval", "latest")
-        os.makedirs(latest_dir, exist_ok=True)
+        # plot_roc_curve(
+        #     background_train_scores,
+        #     signal_scores,
+        #     background_label=(f"{self.background_display_name} (Train)"),
+        #     signal_label=self.signal_display_name,
+        #     savepath=os.path.join(eval_dir, "roc-bgtrain-vs-signal.png"),
+        #     examples=False,
+        #     loss_fn=None,
+        # )
 
-        latest_metrics_path = os.path.join(latest_dir, f"{score_name}_metrics.json")
-        with open(latest_metrics_path, "w") as f:
-            json.dump(metrics, f, indent=2)
+        # latest_dir = os.path.join(self.output_dir, f"{score_name}_eval", "latest")
+        # os.makedirs(latest_dir, exist_ok=True)
 
-        print(f"{score_name.capitalize()} metrics saved to {metrics_path}")
-        print(
-            f"{score_name.capitalize()} AUC, "
-            f"{self.background_display_name} train vs {self.signal_display_name}: "
-            f"{auc_bgtrain_vs_signal:.6f}"
-        )
-        print(
-            f"{score_name.capitalize()} AUC, "
-            f"{self.background_display_name} val vs {self.signal_display_name}: "
-            f"{auc_bgval_vs_signal:.6f}"
-        )
+        # latest_metrics_path = os.path.join(latest_dir, f"{score_name}_metrics.json")
+        # with open(latest_metrics_path, "w") as f:
+        #     json.dump(metrics, f, indent=2)
+
+        # print(f"{score_name.capitalize()} metrics saved to {metrics_path}")
+        # print(f"{score_name.capitalize()} AUC, {self.background_display_name} train vs {self.signal_display_name}: {auc_bgtrain_vs_signal:.6f}")
+        # print(f"{score_name.capitalize()} AUC, {self.background_display_name} val vs {self.signal_display_name}: {auc_bgval_vs_signal:.6f}")
+
         return auc_bgtrain_vs_signal, auc_bgval_vs_signal
         
     def plot_latent_space_for_epoch(
         self,
         bg_val_latents: np.ndarray,
         signal_latents: np.ndarray,
+        bg_val_labels: np.ndarray,
+        signal_labels: np.ndarray,
         epoch: int,
     ) -> None:
         """
-        Plot background validation and signal full-jet representations from
-        already-collected latents.
+        Plot validation representations grouped by the original dataset class.
+
+        Background and signal events are reduced to 2D together, then split
+        again by their one-hot dataset labels. This preserves one common PCA/
+        reduction basis while making the composition of the background sample
+        visible.
         """
 
         bg_plot_latents = bg_val_latents
         sg_plot_latents = signal_latents
+        bg_plot_labels = bg_val_labels
+        sg_plot_labels = signal_labels
+
+        rng = np.random.default_rng(self.args.seed + int(epoch))
 
         if self.args.max_latent_plot_points is not None:
-            max_points = self.args.max_latent_plot_points
-            if len(bg_plot_latents) > max_points:
-                bg_indices = np.random.choice(len(bg_plot_latents), max_points, replace=False)
-                bg_plot_latents = bg_plot_latents[bg_indices]
-            if len(sg_plot_latents) > max_points:
-                sg_indices = np.random.choice(len(sg_plot_latents), max_points, replace=False)
-                sg_plot_latents = sg_plot_latents[sg_indices]
+            max_points = int(self.args.max_latent_plot_points)
 
-        bg_2d, sg_2d, x_label, y_label = reduce_to_2d(bg_plot_latents, sg_plot_latents)
+            if len(bg_plot_latents) > max_points:
+                bg_indices = rng.choice(
+                    len(bg_plot_latents),
+                    max_points,
+                    replace=False,
+                )
+                bg_plot_latents = bg_plot_latents[bg_indices]
+                bg_plot_labels = bg_plot_labels[bg_indices]
+
+            if len(sg_plot_latents) > max_points:
+                sg_indices = rng.choice(
+                    len(sg_plot_latents),
+                    max_points,
+                    replace=False,
+                )
+                sg_plot_latents = sg_plot_latents[sg_indices]
+                sg_plot_labels = sg_plot_labels[sg_indices]
+
+        bg_2d, sg_2d, x_label, y_label = reduce_to_2d(
+            bg_plot_latents,
+            sg_plot_latents,
+        )
+
+        def label_indices(y: np.ndarray) -> np.ndarray:
+            if y.ndim == 1:
+                return y.astype(np.int64, copy=False)
+            return np.argmax(y, axis=1).astype(np.int64, copy=False)
+
+        bg_class_indices = label_indices(bg_plot_labels)
+        sg_class_indices = label_indices(sg_plot_labels)
+
+        fig, ax = plt.subplots(figsize=(8, 7))
+
+        plotted_any = False
+
+        for class_index, full_label in enumerate(self.dataset_label_axis):
+            short_label = full_label.removeprefix("label_")
+
+            bg_mask = bg_class_indices == class_index
+            if np.any(bg_mask):
+                ax.scatter(
+                    bg_2d[bg_mask, 0],
+                    bg_2d[bg_mask, 1],
+                    s=10,
+                    alpha=0.45,
+                    marker="o",
+                    label=f"{short_label} (Background)",
+                )
+                plotted_any = True
+
+            sg_mask = sg_class_indices == class_index
+            if np.any(sg_mask):
+                ax.scatter(
+                    sg_2d[sg_mask, 0],
+                    sg_2d[sg_mask, 1],
+                    s=18,
+                    alpha=0.65,
+                    marker="x",
+                    label=f"{short_label} (Signal)",
+                )
+                plotted_any = True
+
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+        ax.set_title(
+            f"{self.dataset_name.upper()} validation latent space by class\n"
+            f"Epoch {epoch}"
+        )
+        ax.grid(alpha=0.2)
+
+        if plotted_any:
+            ax.legend(
+                loc="best",
+                fontsize=8,
+                frameon=True,
+                markerscale=1.3,
+            )
+
+        fig.tight_layout()
 
         output_path = os.path.join(
             self.latent_plot_dir,
             f"latent_epoch_{epoch:04d}.png",
         )
-
-        plot_latent_space(
-            bg_2d,
-            sg_2d,
-            background_label=f"{self.background_display_name} (Val)",
-            signal_label=self.signal_display_name,
-            output_path=output_path,
-            x_label=x_label,
-            y_label=y_label,
-        )
+        fig.savefig(output_path, dpi=200, bbox_inches="tight")
+        plt.close(fig)
 
     def train(self) -> None:
         os.makedirs(self.output_dir, exist_ok=True)
 
-        train_loader, bg_val_loader, signal_loader = self.make_dataloaders()
+        train_loader, train_eval_loader, bg_val_loader, bg_test_loader, signal_loader = self.make_dataloaders()
         self.build_model()
-        if self.use_stream or self.args.num_augmentation_plot_samples <= 0:
-            print("Skipping augmentation sample plots.")
-        else:
-            self.plot_augmentation_samples(train_loader)
 
         summary_path = os.path.join(self.output_dir, "summary.json")
 
         # Write a first summary of the run
         summary = {
-            "model": self.model_name,
+            "model": ONLY_MODEL_NAME,
+            "dataset": self.dataset_name,
+            "dataset_label_axis": self.dataset_label_axis,
+            "feature_schema_version": FEATURE_SCHEMA_VERSION,
+            "source_particle_features": list(self.particle_feature_names),
+            "checkpoint": self.checkpoint_load_info,
+            "best_model_path": os.path.join(self.output_dir, "best_model.pth"),
+            "last_model_path": os.path.join(self.output_dir, "last_model.pth"),
+            "best_checkpoint_path": os.path.join(self.output_dir, "best_checkpoint.pt"),
+            "last_checkpoint_path": os.path.join(self.output_dir, "last_checkpoint.pt"),
             
             # Run status.
             "status": "initialized",
@@ -2363,28 +2176,22 @@ class TrainLeJEPAParticleTransformer:
             "completed_epochs": 0,
 
             # Data.
-            "background": self.bg_file,
-            "background_dirs": self.background_dirs,
-            "background_names": self.background_names,
-            "signal": self.sg_file,
-            "signal_name": self.signal_display_name,
-            "node_features": self.node_feature_names,
-            "streaming": self.use_stream,
-            "background_train_events": (
-                None if self.use_stream else len(self.bg_train_dataset)
+            "dataset_root": self.dataset_root,
+            "background_labels": self.background_labels,
+            "signal_labels": self.signal_labels,
+            "particle_features": self.particle_feature_names,
+            "particle_feature_order_is_strict": True,
+            "batch_standardized_particle_features": list(
+                self.batch_normalized_feature_names
             ),
-            "background_val_events": (
-                None if self.use_stream else len(self.bg_val_dataset)
-            ),
-            "signal_events": (
-                None if self.use_stream else len(self.sg_dataset)
-            ),
-            "steps_per_epoch": (
-                self.args.steps_per_epoch if self.use_stream else None
-            ),
-            "val_steps": self.args.val_steps if self.use_stream else None,
-            "eval_steps": self.args.eval_steps if self.use_stream else None,
-            "num_background_classes": self.num_background_classes,
+            "background_train_root_shards": len(self.bg_train_dataset.filepaths),
+            "background_val_root_shards": len(self.bg_val_dataset.filepaths),
+            "background_test_root_shards": len(self.bg_test_dataset.filepaths),
+            "signal_test_root_shards": len(self.sg_dataset.filepaths),
+            "max_train_events": self.args.max_train_events,
+            "max_val_events": self.args.max_val_events,
+            "max_test_background_events": self.args.max_test_background_events,
+            "max_test_signal_events": self.args.max_test_signal_events,
 
             # Model.
             "batch_size": self.args.batch_size,
@@ -2395,6 +2202,12 @@ class TrainLeJEPAParticleTransformer:
             "ffn_mult": self.args.ffn_mult,
             "dropout": self.args.dropout,
             "num_trainable_parameters": int(self.num_params),
+            "use_pairwise_bias": not self.args.no_pairwise_bias,
+            "pairwise_hidden_dim": self.args.pairwise_hidden_dim,
+            "pairwise_num_features": self.args.pairwise_num_features,
+            "max_num_particles": self.args.max_num_particles,
+            "eps": self.args.eps,
+            "keep_dropped_features": self.args.keep_dropped_features,
 
             # Optimization.
             "epochs": self.args.epochs,
@@ -2425,13 +2238,8 @@ class TrainLeJEPAParticleTransformer:
 
             # Evaluation.
             "anomaly_score": self.args.anomaly_score,
-            "local_global_eval_repeats": self.args.local_global_eval_repeats,
 
-            # Misc.
-            "normalize_features": self.args.normalize_features,
-            "standardized_feature_names": list(self.args.standardized_feature_names),
-            "feature_norm_momentum": self.args.feature_norm_momentum,
-            "seed": self.args.seed,
+            "base_seed": self.args.seed,
             "device": str(DEVICE),
 
             # Fields populated during training.
@@ -2441,72 +2249,98 @@ class TrainLeJEPAParticleTransformer:
             "final_val_loss": None,
             "latest_train_losses": None,
             "latest_val_losses": None,
+            
+            "distributed": self.distributed,
+            "train_infinite_stream": True,
+            "world_size": self.world_size,
+            "global_batch_size": self.args.batch_size,
+            "per_rank_batch_size": self.per_rank_batch_size,
+            "steps_per_epoch": self.args.steps_per_epoch,
+            "val_steps": self.args.val_steps,
+            "eval_steps": self.args.eval_steps,
+            "num_workers": self.args.num_workers,
+            "prefetch_factor": self.args.prefetch_factor,
+            "shuffle_active_shards": self.args.shuffle_active_shards,
         }
-        
-        # Add info about negative augmentation only if the model uses it.
-        if self.model_name in ["triplet", "mahalanobis", "semi-sup-triplet"]:
+
+        if self.dataset_name == "cms":
             summary.update(
                 {
-                    # Negative augmentation.
+                    "cms_pt_min": self.args.cms_pt_min,
+                    "cms_pt_max": self.args.cms_pt_max,
+                    "cms_val_fraction": self.args.cms_val_fraction,
+                    "cms_test_fraction": self.args.cms_test_fraction,
+                    "cms_split_seed": self.args.cms_split_seed,
+                    "cms_split_manifest_sha256": self.cms_manifest["sha256"],
+                    "cms_split_root_shard_counts": {
+                        split_name: {
+                            label: {
+                                family: len(paths)
+                                for family, paths in families.items()
+                            }
+                            for label, families in label_map.items()
+                        }
+                        for split_name, label_map in self.cms_splits.items()
+                    },
+                    "cms_family_sampling": self.args.cms_family_sampling,
+                    "cms_min_active_families_per_class": (
+                        self.args.cms_min_active_families_per_class
+                    ),
+                    "cms_effective_active_shards": (
+                        self.bg_train_dataset.effective_active_shards
+                    ),
+                    "cms_feature_name_mapping": CMS_TO_JETCLASS_FEATURE_MAP,
+                    "cms_feature_sources": (
+                        CMS_FEATURE_SOURCES
+                    ),
+                }
+            )
+        
+        # Negative augmentation settings for the supported model.
+        summary.update(
+            {
+                # Negative augmentation.
                     "num_negative_views": self.args.num_negative_views,
                     "batch_mix_prob": self.args.batch_mix_prob,
                     "pt_resample_prob": self.args.pt_resample_prob,
-                    "node_eta_phi_rotation_prob":
-                        self.args.node_eta_phi_rotation_prob,
-                    "eta_phi_shuffle_prob": self.args.eta_phi_shuffle_prob,
+                    "node_deta_dphi_rotation_prob":
+                        self.args.node_deta_dphi_rotation_prob,
+                    "deta_dphi_shuffle_prob": self.args.deta_dphi_shuffle_prob,
                     "identity_shuffle_prob": self.args.identity_shuffle_prob,
                     "corrupt_node_frac": self.args.corrupt_node_frac,
                     "batch_mix_anchor_frac_min": self.args.batch_mix_anchor_frac_min,
                     "batch_mix_anchor_frac_max": self.args.batch_mix_anchor_frac_max,
-                    "renormalize_negative_pt_sum":
-                        self.args.renormalize_negative_pt_sum,
-                    "renormalize_negative_log_pt_stats":
-                        self.args.renormalize_negative_log_pt_stats,
-                }
-            )
-        # Add model-specific hyperparameters to the summary.
-        if self.model_name in {"triplet", "semi-sup-triplet"}:
-            summary.update(
-                {
-                    "triplet_weight": (
+                "renormalize_negative_pt_sum":
+                    self.args.renormalize_negative_pt_sum,
+            }
+        )
+        # Triplet settings for the supported model.
+        summary.update(
+            {
+                "triplet_weight": (
                         self.args.triplet_weight
                     ),
                     "triplet_margin": (
                         self.args.triplet_margin
                     ),
-                    "normalize_triplet_representations": (
-                        self.args.normalize_triplet_representations
-                    ),
-                    "use_all_views_as_triplet_positives": (
-                        self.args.use_all_views_as_triplet_positives
-                    ),
-                }
-            )
-        if self.model_name == "semi-sup-triplet":
-            summary.update(
-                {
-                    "classification_weight": (
-                        self.args.classification_weight
-                    ),
-                }
-            )
-        elif self.model_name == "mahalanobis":
-            summary.update(
-                {
-                    "mahalanobis_weight": (
-                        self.args.mahalanobis_weight
-                    ),
-                    "mahalanobis_ema_decay": (
-                        self.args.mahalanobis_ema_decay
-                    ),
-                    "mahalanobis_target_radius": (
-                        self.args.mahalanobis_target_radius
-                    ),
-                }
-            )
+                "use_all_views_as_triplet_positives": (
+                    self.args.use_all_views_as_triplet_positives
+                ),
+            }
+        )
+        
+        summary.update(
+            {
+                "classification_weight": self.args.classification_weight,
+                "num_classification_classes": len(self.background_labels),
+            }
+        )
+            
         
 
         def update_summary(**updates) -> None:
+            if not self.is_main_process:
+                return
             summary.update(updates)
 
             temp_path = summary_path + ".tmp"
@@ -2517,7 +2351,6 @@ class TrainLeJEPAParticleTransformer:
 
         # Write a partial summary immediately, before optimization starts.
         update_summary()
-        print(f"Initialized run summary at {summary_path}")
         
         optimizer = torch.optim.AdamW(
             self.model.parameters(),
@@ -2525,15 +2358,10 @@ class TrainLeJEPAParticleTransformer:
             weight_decay=self.args.weight_decay,
         )
 
-        if self.use_stream:
-            total_steps = self.args.epochs * max(1, self.args.steps_per_epoch)
-            steps_per_epoch = max(1, self.args.steps_per_epoch)
-        else:
-            total_steps = self.args.epochs * max(1, len(train_loader))
-            steps_per_epoch = max(1, len(train_loader))
+        total_steps = self.args.epochs * self.args.steps_per_epoch
         warmup_steps = self.args.warmup_steps
         if warmup_steps is None:
-            warmup_steps = self.args.warmup_epochs * steps_per_epoch
+            warmup_steps = self.args.warmup_epochs * self.args.steps_per_epoch
 
         scheduler = make_warmup_cosine_scheduler(
             optimizer=optimizer,
@@ -2552,14 +2380,8 @@ class TrainLeJEPAParticleTransformer:
         dtype = precision_to_dtype(self.args.precision)
         use_autocast = autocast_enabled_for_precision(self.args.precision)
 
-        train_history = {
-            key: []
-            for key in self.ssl_metric_keys
-        }
-        val_history = {
-            key: []
-            for key in self.ssl_metric_keys
-        }
+        train_history = {key: [] for key in self.ssl_metric_keys}
+        val_history = {key: [] for key in self.ssl_metric_keys}
         auc_history = {
             "auc_bgtrain_vs_signal": [],
             "auc_bgval_vs_signal": [],
@@ -2568,7 +2390,67 @@ class TrainLeJEPAParticleTransformer:
         roc_eval_steps: List[int] = []
 
         best_val_loss = float("inf")
+        start_epoch = 1
+        global_step = 0
+        if self.args.resume_training_state:
+            payload = self.checkpoint_payload
+            optimizer.load_state_dict(payload["optimizer_state_dict"])
+            scheduler.load_state_dict(payload["scheduler_state_dict"])
+            start_epoch = int(payload["epoch"]) + 1
+            global_step = int(
+                payload.get("global_step", int(payload["epoch"]) * self.args.steps_per_epoch)
+            )
+            best_val_loss = float(payload.get("best_val_loss", float("inf")))
+            saved_train_history = payload.get("train_history", {})
+            saved_val_history = payload.get("val_history", {})
+            for key in self.ssl_metric_keys:
+                train_history[key] = list(saved_train_history.get(key, []))
+                val_history[key] = list(saved_val_history.get(key, []))
+            saved_auc_history = payload.get("auc_history", {})
+            for key in auc_history:
+                auc_history[key] = list(saved_auc_history.get(key, []))
+            epoch_end_steps = list(payload.get("epoch_end_steps", []))
+            roc_eval_steps = list(payload.get("roc_eval_steps", []))
+            if start_epoch > self.args.epochs:
+                raise ValueError(
+                    f"Checkpoint completed epoch {start_epoch - 1}, but --epochs="
+                    f"{self.args.epochs}. Set --epochs to a larger total target."
+                )
+            if self.is_main_process:
+                print(
+                    f"Resuming optimizer/scheduler at epoch {start_epoch}; "
+                    f"global_step={global_step}."
+                )
+
         best_model_path = os.path.join(self.output_dir, "best_model.pth")
+        last_model_path = os.path.join(self.output_dir, "last_model.pth")
+        best_checkpoint_path = os.path.join(self.output_dir, "best_checkpoint.pt")
+        last_checkpoint_path = os.path.join(self.output_dir, "last_checkpoint.pt")
+
+        def save_full_checkpoint(path: str, epoch: int) -> None:
+            torch.save(
+                {
+                    "format_version": 1,
+                    "model_state_dict": self.model_core.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "scheduler_state_dict": scheduler.state_dict(),
+                    "epoch": int(epoch),
+                    "global_step": int(global_step),
+                    "best_val_loss": float(best_val_loss),
+                    "train_history": train_history,
+                    "val_history": val_history,
+                    "auc_history": auc_history,
+                    "epoch_end_steps": epoch_end_steps,
+                    "roc_eval_steps": roc_eval_steps,
+                    "metadata": self._checkpoint_metadata_payload(),
+                },
+                path,
+            )
+
+        update_summary(
+            resumed_from_epoch=int(start_epoch - 1),
+            current_learning_rate=float(optimizer.param_groups[0]["lr"]),
+        )
 
         profiler_schedule = schedule(
             wait=2,
@@ -2576,11 +2458,11 @@ class TrainLeJEPAParticleTransformer:
             active=5,
             repeat=1,
         )
-        train_iter = iter(train_loader) if self.use_stream else None
-
-        for epoch in range(1, self.args.epochs + 1):
-            print(f"\nEpoch [{epoch}/{self.args.epochs}]")
-            print(f"Learning rate: {optimizer.param_groups[0]['lr']:.8g}")
+        train_iter = iter(train_loader) # infinite stream of training batches
+        
+        for epoch in range(start_epoch, self.args.epochs + 1):
+            if self.is_main_process:
+                print(f"\nEpoch [{epoch}/{self.args.epochs}]")
 
             self.model.train()
 
@@ -2589,20 +2471,15 @@ class TrainLeJEPAParticleTransformer:
                 for key in self.ssl_metric_keys
             }
 
-            if self.use_stream:
-                pbar = tqdm(
-                    range(self.args.steps_per_epoch),
-                    total=self.args.steps_per_epoch,
-                    desc=f"Train Epoch {epoch}/{self.args.epochs}",
-                )
-            else:
-                pbar = tqdm(
-                    train_loader,
-                    desc=f"Train Epoch {epoch}/{self.args.epochs}",
-                )
+            pbar = tqdm(
+                range(self.args.steps_per_epoch),
+                total=self.args.steps_per_epoch,
+                desc=f"Train Epoch {epoch}/{self.args.epochs}",
+                disable=not self.is_main_process,
+            )
 
             # Profile only the first epoch.
-            should_profile = self.args.profile and epoch == 1
+            should_profile = self.args.profile and epoch == start_epoch
 
             profiler_context = (
                 profile(
@@ -2620,14 +2497,22 @@ class TrainLeJEPAParticleTransformer:
             )
 
             with profiler_context as prof:
-                train_enumerator = (
-                    enumerate(pbar) if self.use_stream else enumerate(pbar)
-                )
-                for step, batch_or_step in train_enumerator:
-                    if self.use_stream:
-                        batch = next(train_iter)
-                    else:
-                        batch = batch_or_step
+                for step in range(self.args.steps_per_epoch):
+                    batch = next(train_iter)
+                    x_particles = batch["x_particles"].to(
+                        DEVICE,
+                        non_blocking=True,
+                    )
+                    y = batch["y"].to(
+                        DEVICE,
+                        non_blocking=True,
+                    )
+                    y = self._prepare_labels_for_model(y)
+                    padding_mask = batch["padding_mask"].to(
+                        DEVICE,
+                        non_blocking=True,
+                    )
+
                     optimizer.zero_grad(set_to_none=True)
 
                     with record_function("training_forward"):
@@ -2636,11 +2521,10 @@ class TrainLeJEPAParticleTransformer:
                             dtype=dtype,
                             enabled=use_autocast,
                         ):
-                            output = self._forward_pretrain_batch(
-                                batch,
-                                normalize_output=(
-                                    self.args.normalize_output_representations
-                                ),
+                            output = self.model( # train forward
+                                x_particles,
+                                y,
+                                padding_mask=padding_mask,
                             )
                             loss = output["total_loss"]
 
@@ -2659,6 +2543,7 @@ class TrainLeJEPAParticleTransformer:
 
                     with record_function("scheduler_step"):
                         scheduler.step()
+                    global_step += 1
 
                     with record_function("metrics_to_cpu"):
                         step_losses = self._extract_ssl_metrics(
@@ -2670,17 +2555,23 @@ class TrainLeJEPAParticleTransformer:
                         epoch_train[key].append(step_losses[key])
 
                     with record_function("progress_bar_update"):
-                        if step % 10 == 0:
+                        if (step+1) % 50 == 0 or step == 0:
                             pbar.set_postfix(
-                                self._progress_postfix(
-                                    step_losses
-                                )
+                                self._progress_postfix(step_losses),
+                                refresh=False,
                             )
+                            if step == 0:
+                                pbar.update(1)
+                            elif step == self.args.steps_per_epoch - 1:
+                                pbar.update(49)
+                            else:
+                                pbar.update(50)
                     # Advance profiler state once per training iteration.
                     if should_profile:
                         prof.step()
+                pbar.close()    
 
-            if should_profile:
+            if should_profile and self.is_main_process:
                 print(
                     prof.key_averages().table(
                         sort_by="cuda_time_total",
@@ -2701,50 +2592,63 @@ class TrainLeJEPAParticleTransformer:
                 for key, values in epoch_train.items()
             }
 
-            self.model.eval()
+            self.model.eval() # val stage
             epoch_val = {
                 key: []
                 for key in self.ssl_metric_keys
             }
 
             with torch.no_grad():
-                if self.use_stream:
-                    val_iter = iter(bg_val_loader)
-                    n_val = max(1, self.args.val_steps)
-                    pbar = tqdm(
-                        range(n_val),
-                        total=n_val,
-                        desc=f"Val Epoch {epoch}/{self.args.epochs}",
-                    )
-                    val_batches = ((step, next(val_iter)) for step in pbar)
-                else:
-                    pbar = tqdm(bg_val_loader, desc=f"Val Epoch {epoch}/{self.args.epochs}")
-                    val_batches = enumerate(pbar)
+                val_iter = iter(bg_val_loader)
 
-                for _, batch in val_batches:
-                    with torch.autocast(
-                        device_type=DEVICE.type,
-                        dtype=dtype,
-                        enabled=use_autocast,
-                    ):
-                        output = self._forward_pretrain_batch(
-                            batch,
-                            normalize_output=self.args.normalize_output_representations,
+                pbar = tqdm(
+                    range(self.args.val_steps),
+                    total=self.args.val_steps,
+                    desc=f"Val Epoch {epoch}/{self.args.epochs}",
+                    disable=not self.is_main_process,
+                )
+
+                with torch.no_grad():
+                    for val_step in range(self.args.val_steps):
+                        batch = next(val_iter)
+                        x_particles = batch["x_particles"].to(DEVICE, non_blocking=True)
+                        y = batch["y"].to(DEVICE, non_blocking=True)
+                        y = self._prepare_labels_for_model(y)
+                        padding_mask = batch["padding_mask"].to(DEVICE, non_blocking=True)
+
+                        with torch.autocast(
+                            device_type=DEVICE.type,
+                            dtype=dtype,
+                            enabled=use_autocast,
+                        ):
+                            output = self.model( # validation forward
+                                x_particles,
+                                y,
+                                padding_mask=padding_mask,
+                            )
+
+                        step_losses = (
+                            self._extract_ssl_metrics(output)
                         )
 
-                    step_losses = (
-                        self._extract_ssl_metrics(output)
-                    )
-
-                    for key in epoch_val:
-                        epoch_val[key].append(step_losses[key])
-
-                    pbar.set_postfix(
-                        self._progress_postfix(
-                            step_losses
-                        )
-                    )
-
+                        for key in epoch_val:
+                            epoch_val[key].append(step_losses[key])
+                        
+                        if (val_step+1) % 5 == 0 or val_step == 0:
+                            pbar.set_postfix(
+                                self._progress_postfix(
+                                    step_losses
+                                ),
+                                refresh=False,
+                            )
+                            if val_step == 0:
+                                pbar.update(1)
+                            elif val_step == self.args.val_steps - 1:
+                                pbar.update(4)
+                            else:
+                                pbar.update(5)
+                    pbar.close()
+            
             mean_val = {
                 key: float(np.nanmean(values))
                 for key, values in epoch_val.items()
@@ -2755,26 +2659,19 @@ class TrainLeJEPAParticleTransformer:
 
             epoch_end_steps.append(len(train_history["total_loss"]))
 
-            if mean_val["total_loss"] < best_val_loss:
+            is_new_best = mean_val["total_loss"] < best_val_loss
+            if is_new_best:
                 best_val_loss = mean_val["total_loss"]
-                # Save state_dict only — full-module pickling can fail on
-                # torch._C.Generator held by augmentation modules.
-                torch.save(self.model.state_dict(), best_model_path)
-                print(f"Saved new best model state_dict to {best_model_path}")
-
-            last_model_path = os.path.join(self.output_dir, "last_model.pth")
-            torch.save(self.model.state_dict(), last_model_path)
-            print(f"Saved last model state_dict to {last_model_path}")
 
             if ( # Plot latent space and evaluate ROC only at specified intervals or at the final epoch.
                 self.args.roc_eval_every > 0
                 and (epoch % self.args.roc_eval_every == 0 or epoch == self.args.epochs)
             ):
-                    (
+                    ( # eval stage
                         auc_bgtrain_vs_signal,
                         auc_bgval_vs_signal,
                     ) = self.evaluate_anomaly_score_for_epoch(
-                        bg_train_loader=train_loader,
+                        bg_train_loader=train_eval_loader, # use a separate loader to avoid messing up the iterator state
                         bg_val_loader=bg_val_loader,
                         sg_loader=signal_loader,
                         epoch=epoch,
@@ -2798,23 +2695,48 @@ class TrainLeJEPAParticleTransformer:
                         len(train_history["total_loss"])
                     )
 
-            self.plot_progress(
-                train_history=train_history,
-                val_history=val_history,
-                epoch_end_steps=epoch_end_steps,
-                best_val_loss=best_val_loss,
-                auc_history=auc_history,
-                roc_eval_steps=roc_eval_steps,
-            )
-            
-            print(f"Epoch {epoch} train losses: {mean_train}")
-            print(f"Epoch {epoch} val losses: {mean_val}")
-            
+            # Save full checkpoints after epoch-level ROC bookkeeping so a
+            # resumed run restores all histories through this epoch.
+            if self.is_main_process:
+                if is_new_best:
+                    torch.save(
+                        self.model_core.state_dict(),
+                        best_model_path,
+                    )
+                    save_full_checkpoint(best_checkpoint_path, epoch)
+                    print(
+                        "Saved new best model state_dict/full checkpoint to "
+                        f"{best_model_path} and {best_checkpoint_path}"
+                    )
+
+                torch.save(
+                    self.model_core.state_dict(),
+                    last_model_path,
+                )
+                save_full_checkpoint(last_checkpoint_path, epoch)
+                print(
+                    "Saved last model state_dict/full checkpoint to "
+                    f"{last_model_path} and {last_checkpoint_path}"
+                )
+
+                self.plot_progress(
+                    train_history=train_history,
+                    val_history=val_history,
+                    epoch_end_steps=epoch_end_steps,
+                    best_val_loss=best_val_loss,
+                    auc_history=auc_history,
+                    roc_eval_steps=roc_eval_steps,
+                )
+                
+                print(f"Epoch {epoch} train losses: {mean_train}")
+                print(f"Epoch {epoch} val losses: {mean_val}")
+
             update_summary(
                 status="training",
                 current_epoch=int(epoch),
                 completed_epochs=int(epoch),
                 current_learning_rate=float(optimizer.param_groups[0]["lr"]),
+                global_step=int(global_step),
                 best_val_loss=float(best_val_loss),
                 final_val_loss=float(mean_val["total_loss"]),
                 latest_train_losses={
@@ -2853,32 +2775,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog="Train LeJEPA ParticleTransformer Representation",
         description=(
-            "Train a ParticleTransformer representation model with "
-            "LeJEPA + SIGReg and selectable corrupted-negative SSL objective."
+            "Train the LeJEPA + SIGReg + corrupted-negative triplet + "
+            "semi-supervised ParticleTransformer representation model."
         ),
     )
     # SSL model.
     parser.add_argument(
         "--model",
         type=str,
-        choices=[
-            "triplet",
-            "mahalanobis",
-            "lejepa",
-            "semi-sup-triplet",
-        ],
-        default="triplet",
+        choices=[ONLY_MODEL_NAME],
+        default=ONLY_MODEL_NAME,
         help=(
-            "SSL objective/model variant. "
-            "'triplet' uses LeJEPA + SIGReg + corrupted-negative "
-            "triplet loss. "
-            "'mahalanobis' uses LeJEPA + SIGReg + EMA normal "
-            "distribution statistics and corrupted-negative "
-            "Mahalanobis loss. "
-            "'lejepa' uses LeJEPA + SIGReg only, without any corrupted-negative loss. "
-            "'semi-sup-triplet' adds multiclass CE over background classes "
-            "on top of LeJEPA + triplet. "
-            "Default: triplet."
+            "Only semi-sup-triplet"
+            "is supported."
         ),
     )
     # Anomaly score function.
@@ -2900,17 +2809,6 @@ if __name__ == "__main__":
             "Default: mahalanobis."
         ),
     )
-    parser.add_argument(
-        "--local-global-eval-repeats",
-        type=int,
-        default=1,
-        help=(
-            "Number of independent positive-augmentation draws used for "
-            "local-global consistency evaluation. Event scores are averaged "
-            "over repeats. Used only with --anomaly-score local-global. "
-            "Default: 1."
-        ),
-    )
     # Profile
     parser.add_argument(
         "--profile",
@@ -2920,114 +2818,100 @@ if __name__ == "__main__":
     )
     # Data.
     parser.add_argument(
-        "--background",
-        "-b",
-        type=str,
-        default=bg_file,
+        "--dataset",
+        choices=["jetclass", "cms"],
+        default="jetclass",
         help=(
-            "Background dataset: DeepNTuplizer ROOT file/directory (preferred) "
-            "or legacy processed .pkl. Defaults to config.yaml. "
-            "For multiclass, prefer --background-dirs."
+            "Dataset backend. JetClass uses official split directories; CMS "
+            "uses deterministic class × production-family file splits."
         ),
     )
     parser.add_argument(
-        "--background-dirs",
+        "--dataset-root",
         type=str,
-        default=None,
+        default="/HEP/export/home/lwang223/JetClass/JetClass/Pythia",
         help=(
-            "Comma-separated background ROOT dirs for multiclass training "
-            "(e.g. qcd,wjets,zjets,ttbar). Overrides --background when set."
+            "Dataset root. For JetClass this contains train_100M, val_5M, and "
+            "test_20M. For CMS this contains hbb/qcd/ttbar/wjets/zjets."
         ),
     )
     parser.add_argument(
-        "--background-names",
+        "--background-labels",
         type=str,
         default=None,
         help=(
-            "Comma-separated display names matching --background-dirs "
-            "(e.g. QCD,WJets,ZJets,TTbar)."
+            "Comma-separated canonical labels used as normal/background classes. "
+            "Defaults: JetClass=QCD,Hbb,Hcc; CMS=QCD,Hbb."
         ),
     )
     parser.add_argument(
-        "--signal",
-        "-s",
-        type=str,
-        default=sg_file,
-        help=(
-            "Signal dataset: DeepNTuplizer ROOT file/directory (preferred) "
-            "or legacy processed .pkl. Defaults to config.yaml."
-        ),
-    )
-    parser.add_argument(
-        "--signal-name",
+        "--signal-labels",
         type=str,
         default=None,
-        help="Display name for the held-out anomaly signal (e.g. WJets).",
-    )
-    parser.add_argument(
-        "--max-events-per-class",
-        type=int,
-        default=None,
         help=(
-            "Optional per-background-class jet cap when loading ROOT "
-            "(used with --background-dirs). Default: None."
+            "Comma-separated canonical labels used only as anomaly signals. "
+            "Default: label_Wqq."
         ),
     )
     parser.add_argument(
-        "--lowerpt",
-        type=float,
-        default=150.0,
-        help="Minimum AK8 jet pT [GeV] when reading ROOT. Default: 150.",
-    )
-    parser.add_argument(
-        "--upperpt",
-        type=float,
+        "--particle-features",
+        type=str,
         default=None,
-        help="Optional maximum AK8 jet pT [GeV] when reading ROOT. Default: None.",
+        help=(
+            "Optional explicit feature-order assertion. When supplied, it must "
+            "exactly match the selected dataset's native feature list."
+        ),
     )
     parser.add_argument(
         "--max-num-particles",
         type=int,
         default=128,
-        help="Pad/truncate constituents per jet (JetClass-style). Default: 128.",
+        help="Maximum particles per jet; shorter jets are zero-padded by read_file.",
     )
     parser.add_argument(
-        "--max-root-files",
+        "--max-train-events",
         type=int,
         default=None,
-        help="Optional cap on ROOT files read per sample (smoke tests).",
-    )
-    parser.add_argument(
-        "--num-classes",
-        type=int,
-        default=4,
-        help="One-hot label axis length for read_file (QCD/W/Z/ttbar). Default: 4.",
-    )
-    parser.add_argument(
-        "--background-class-index",
-        type=int,
-        default=0,
-        help="class_index passed to read_file for background (QCD=0). Default: 0.",
-    )
-    parser.add_argument(
-        "--signal-class-index",
-        type=int,
-        default=1,
-        help="class_index passed to read_file for signal (W=1,Z=2,tt=3). Default: 1.",
-    )
-    parser.add_argument(
-        "--node-features",
-        type=str,
-        default=(
-            "eta,phi,pt,d0/d0Err,dz/dzErr,charge,mass,log_pt,"
-            "pdgId_-211,pdgId_-13,pdgId_-11,pdgId_11,"
-            "pdgId_13,pdgId_22,pdgId_130,pdgId_211"
-        ),
         help=(
-            "Comma-separated node feature list. Default: eta,phi,pt,d0/d0Err,dz/dzErr,"
-            "charge,mass,log_pt,pdgId_-211,pdgId_-13,pdgId_-11,pdgId_11,"
-            "pdgId_13,pdgId_22,pdgId_130,pdgId_211."
+            "Optional global event cap per training-stream pass. "
+            "With the infinite training stream, the capped subset is "
+            "reshuffled and reused across passes."
+        )
+    )
+    parser.add_argument(
+        "--max-val-events",
+        type=int,
+        default=None,
+        help="Optional cap on loaded background validation events.",
+    )
+    parser.add_argument(
+        "--max-test-background-events",
+        type=int,
+        default=None,
+        help="Optional cap on loaded background test events.",
+    )
+    parser.add_argument(
+        "--max-test-signal-events",
+        type=int,
+        default=None,
+        help="Optional cap on loaded signal test events.",
+    )
+    parser.add_argument(
+        "--shuffle-active-shards",
+        type=int,
+        default=3,
+        help=(
+            "Requested number of preprocessed ROOT shards kept active per "
+            "DataLoader worker. CMS may raise this to satisfy minimum per-class "
+            "production-family coverage. Higher values improve mixing but use "
+            "more CPU RAM. Default: 3."
         ),
+    )
+    parser.add_argument(
+        "--feature-plot-events",
+        type=int,
+        default=10000,
+        help="Maximum streamed training events used for feature histograms. Default: 10000.",
     )
     parser.add_argument(
         "--min-nodes",
@@ -3036,24 +2920,58 @@ if __name__ == "__main__":
         help="Minimum number of valid nodes per event and per augmented view. Default: 4.",
     )
     parser.add_argument(
-        "--max-background-events",
-        type=int,
+        "--cms-pt-min",
+        type=float,
         default=None,
-        help="Optional background row limit for smoke tests.",
-    )
-    parser.add_argument(
-        "--max-signal-events",
-        type=int,
-        default=None,
-        help="Optional signal row limit for smoke tests.",
-    )
-    parser.add_argument(
-        "--normalize-features",
-        action=argparse.BooleanOptionalAction,
-        default=False,
         help=(
-            "Normalize node features using background-training statistics. "
-            "Default: False because pairwise physics bias expects physical eta/phi/pt/mass."
+            "Optional event-level lower cut on the actual CMS jet_pt branch in GeV. "
+            "No filename-based pT slicing is performed."
+        ),
+    )
+    parser.add_argument(
+        "--cms-pt-max",
+        type=float,
+        default=None,
+        help=(
+            "Optional exclusive event-level upper cut on the actual CMS jet_pt "
+            "branch in GeV."
+        ),
+    )
+    parser.add_argument(
+        "--cms-val-fraction",
+        type=float,
+        default=0.1,
+        help="CMS ROOT-shard validation fraction inside every class × family.",
+    )
+    parser.add_argument(
+        "--cms-test-fraction",
+        type=float,
+        default=0.1,
+        help="CMS ROOT-shard test fraction inside every class × family.",
+    )
+    parser.add_argument(
+        "--cms-split-seed",
+        type=int,
+        default=42,
+        help="Seed for deterministic CMS class × family train/val/test splits.",
+    )
+    parser.add_argument(
+        "--cms-min-active-families-per-class",
+        type=int,
+        default=2,
+        help=(
+            "Minimum number of distinct active production families per CMS class "
+            "when that class has enough families. Default: 2."
+        ),
+    )
+    parser.add_argument(
+        "--cms-family-sampling",
+        choices=["uniform", "proportional"],
+        default="proportional",
+        help=(
+            "How replacement families are chosen inside a CMS class. "
+            "'proportional' approximately preserves family shard abundance; "
+            "'uniform' gives every family equal selection weight."
         ),
     )
 
@@ -3177,8 +3095,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sigreg-weight",
         type=float,
-        default=0.02,
-        help="Weight for SIGReg loss, matching LeJEPA lambda by default. Default: 0.02.",
+        default=0.05,
+        help="Weight for SIGReg loss, matching LeJEPA lambda by default. Default: 0.05.",
     )
     parser.add_argument(
         "--epps-pulley-num-points",
@@ -3193,19 +3111,10 @@ if __name__ == "__main__":
         help="Number of random slices for multivariate SIGReg. Default: 1024.",
     )
     parser.add_argument(
-        "--normalize-invariant-representations",
-        action="store_true",
-        help="L2-normalize representations before invariant loss.",
-    )
-    parser.add_argument(
-        "--normalize-sigreg-representations",
-        action="store_true",
-        help="L2-normalize representations before SIGReg.",
-    )
-    parser.add_argument(
-        "--normalize-output-representations",
-        action="store_true",
-        help="L2-normalize representations returned by the encoder.",
+        "--classification-weight",
+        type=float,
+        default=0.1,
+        help="Weight for classification loss. Default: 0.1.",
     )
 
     # Triplet / corrupted-negative objective.
@@ -3220,19 +3129,6 @@ if __name__ == "__main__":
         type=float,
         default=1.0,
         help="Margin in ReLU(d_pos - d_neg + margin). Default: 1.0.",
-    )
-    parser.add_argument(
-        "--classification-weight",
-        type=float,
-        default=0.05,
-        help=(
-            "Weight for multiclass CE in semi-sup-triplet. Default: 0.05."
-        ),
-    )
-    parser.add_argument(
-        "--normalize-triplet-representations",
-        action="store_true",
-        help="L2-normalize representations before triplet distance computation.",
     )
     parser.add_argument(
         "--use-all-views-as-triplet-positives",
@@ -3258,16 +3154,16 @@ if __name__ == "__main__":
         help="Probability of sampling pt_resample for a negative view. Default: 0.25.",
     )
     parser.add_argument(
-        "--node-eta-phi-rotation-prob",
+        "--node-deta-dphi-rotation-prob",
         type=float,
         default=0.20,
-        help="Probability of sampling independent node-level eta-phi rotation. Default: 0.20.",
+        help="Probability of sampling independent node-level deta-dphi rotation. Default: 0.20.",
     )
     parser.add_argument(
-        "--eta-phi-shuffle-prob",
+        "--deta-dphi-shuffle-prob",
         type=float,
         default=0.05,
-        help="Probability of sampling eta_phi_shuffle for a negative view. Default: 0.05.",
+        help="Probability of sampling deta_dphi_shuffle for a negative view. Default: 0.05.",
     )
     parser.add_argument(
         "--identity-shuffle-prob",
@@ -3297,55 +3193,40 @@ if __name__ == "__main__":
         "--renormalize-negative-pt-sum",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Renormalize corrupted negative pt sums to the original event pt sum. Default: True.",
-    )
-    parser.add_argument(
-        "--renormalize-negative-log-pt-stats",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Match corrupted negative log_pt mean/std to the original event. Default: True.",
+        help="Renormalize corrupted negative sample's pt sums to the original event pt sum. Default: True.",
     )
     
-    # Mahalanobis corrupted-negative objective.
-    parser.add_argument(
-        "--mahalanobis-weight",
-        type=float,
-        default=0.1,
-        help=(
-            "Weight for the corrupted-negative Mahalanobis loss. "
-            "Used only with --model mahalanobis. "
-            "Default: 0.1."
-        ),
-    )
-
-    parser.add_argument(
-        "--mahalanobis-ema-decay",
-        type=float,
-        default=0.99,
-        help=(
-            "EMA decay for running normal representation mean "
-            "and raw second moment. "
-            "Used only with --model mahalanobis. "
-            "Default: 0.99."
-        ),
-    )
-
-    parser.add_argument(
-        "--mahalanobis-target-radius",
-        type=float,
-        default=5.0,
-        help=(
-            "Target radius for the Mahalanobis loss. Used only with --model mahalanobis. "
-            "Default: 5.0."
-        ),
-    )
-
     # Optimization.
     parser.add_argument(
         "--batch-size",
         type=int,
         default=config["model"]["batch_size"],
         help="Training batch size. Defaults to config model.batch_size.",
+    )
+    parser.add_argument(
+        "--steps-per-epoch",
+        type=int,
+        default=10000,
+        help=(
+            "Number of streamed training batches per epoch. Required for lazy "
+            "IterableDataset training because the full dataset length is not materialized. "
+            "Default: 10000."
+        ),
+    )
+    parser.add_argument(
+        "--val-steps",
+        type=int,
+        default=500,
+        help="Maximum streamed validation batches per epoch. Default: 500.",
+    )
+    parser.add_argument(
+        "--eval-steps",
+        type=int,
+        default=500,
+        help=(
+            "Maximum streamed batches collected per dataset for latent-space "
+            "and anomaly-score evaluation. Default: 500."
+        ),
     )
     parser.add_argument(
         "--epochs",
@@ -3367,7 +3248,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--precision",
-        choices=["bf16", "fp16", "fp32"],
+        choices=["bf16", "fp32"],
         default="bf16",
         help="Mixed precision mode. Default: bf16.",
     )
@@ -3396,6 +3277,42 @@ if __name__ == "__main__":
         help="Optional gradient clipping max norm.",
     )
 
+    # Checkpoint initialization / resume.
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default=None,
+        help=(
+            "Optional raw model state_dict or full checkpoint. Cross-dataset "
+            "loads automatically discard the old classification head."
+        ),
+    )
+    parser.add_argument(
+        "--checkpoint-summary",
+        type=str,
+        default=None,
+        help=(
+            "Optional summary.json associated with --checkpoint. By default the "
+            "script looks beside the checkpoint."
+        ),
+    )
+    parser.add_argument(
+        "--reset-classification-head",
+        action="store_true",
+        help=(
+            "Force a fresh semi-supervised classification head even on the same "
+            "dataset. Dataset or class-order changes reset it automatically."
+        ),
+    )
+    parser.add_argument(
+        "--resume-training-state",
+        action="store_true",
+        help=(
+            "Resume optimizer, scheduler, epoch, and histories from a full "
+            "*_checkpoint.pt file. Requires the same dataset and class order."
+        ),
+    )
+
     # Runtime / output.
     parser.add_argument(
         "--seed",
@@ -3414,6 +3331,15 @@ if __name__ == "__main__":
         type=int,
         default=4,
         help="DataLoader workers. Default: 4.",
+    )
+    parser.add_argument(
+        "--prefetch-factor",
+        type=int,
+        default=2,
+        help=(
+            "Number of batches prefetched by each DataLoader worker. Used only "
+            "when --num-workers > 0. Default: 2."
+        ),
     )
     parser.add_argument(
         "--pin-memory",
@@ -3446,70 +3372,10 @@ if __name__ == "__main__":
         help="Maximum points per class in latent-space plots. Use no value by editing to None. Default: 5000.",
     )
 
-
-    parser.add_argument(
-        "--stream",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help=(
-            "Stream CMS ROOT shards lazily (JetClass-style). "
-            "Epochs use --steps-per-epoch instead of a full dataset pass."
-        ),
-    )
-    parser.add_argument(
-        "--steps-per-epoch",
-        type=int,
-        default=1000,
-        help="Optimizer steps per epoch in --stream mode. Default: 1000.",
-    )
-    parser.add_argument(
-        "--val-steps",
-        type=int,
-        default=100,
-        help="Validation batches per epoch in --stream mode. Default: 100.",
-    )
-    parser.add_argument(
-        "--eval-steps",
-        type=int,
-        default=100,
-        help="Anomaly-eval batches per loader in --stream mode. Default: 100.",
-    )
-    parser.add_argument(
-        "--max-val-events",
-        type=int,
-        default=None,
-        help="Optional event cap for finite streaming val datasets.",
-    )
-    parser.add_argument(
-        "--stream-val-fraction",
-        type=float,
-        default=0.1,
-        help="Per-class ROOT-file fraction reserved for val in --stream mode. Default: 0.1.",
-    )
-    parser.add_argument(
-        "--shuffle-active-shards",
-        type=int,
-        default=4,
-        help="Active ROOT shards in the streaming mixer. Default: 4.",
-    )
-    parser.add_argument(
-        "--standardized-feature-names",
-        nargs="+",
-        default=["log_pt", "d0/d0Err", "dz/dzErr"],
-        help=(
-            "Node features to batch-normalize online (train batch stats; "
-            "running stats at eval). Default: log_pt d0/d0Err dz/dzErr."
-        ),
-    )
-    parser.add_argument(
-        "--feature-norm-momentum",
-        type=float,
-        default=0.1,
-        help="EMA momentum for feature BN running stats. Default: 0.1.",
-    )
-
     trainer = TrainLeJEPAParticleTransformer()
     trainer.load()
     trainer.build_node_datasets()
     trainer.plot_features()
     trainer.train()
+    if trainer.distributed:
+        dist.destroy_process_group()

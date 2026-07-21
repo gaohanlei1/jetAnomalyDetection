@@ -32,10 +32,7 @@ from typing import Dict, List, Sequence, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import torch.nn.functional as F
-from sklearn.cluster import KMeans
 from sklearn.metrics import roc_auc_score, roc_curve
-from sklearn.neighbors import NearestNeighbors
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -70,7 +67,6 @@ from models.part_jetclass import (
     SemiSupervisedLossConfig,
     TripletLossConfig,
 )
-from visualize.plot_metrics import plot_roc_curve
 
 
 def parse_args() -> argparse.Namespace:
@@ -151,9 +147,6 @@ def seed_everything(seed: int) -> None:
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
-
-
-JETCLASS_PIPELINE_VERSION = "relative16-no-eta-phi-v2"
 
 def precision_to_dtype(precision: str) -> torch.dtype:
     return {
@@ -475,12 +468,12 @@ def collect_interleaved_full_latents(
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Forward background and signal events together, then return labels.
 
-    The model batch-standardizes selected particle features inside ``forward``.
-    Consequently, separately forwarding a mixed-background batch and a
-    signal-only batch produces representations under different normalization
-    contexts. This collector fixes that diagnostic mismatch by constructing one
-    combined batch, randomly interleaving its events, forwarding it once, and
-    retaining the original one-hot labels for regrouping afterward.
+    This interleaved collection path is retained for compatibility with older
+    model versions whose evaluation-time feature standardization depended on
+    the current batch composition. The current model uses frozen normalization
+    statistics in ``eval`` mode, so interleaving background and signal events is
+    no longer required for correctness. It is kept here to preserve the sampling
+    and evaluation behavior of earlier diagnostic runs.
 
     The combined batch budget is split in proportion to the number of requested
     background and signal jet classes. Because both source datasets already
@@ -570,236 +563,6 @@ def collect_interleaved_full_latents(
     return torch.cat(zs).numpy(), torch.cat(ys).numpy()
 
 
-def project_labels(
-    y: torch.Tensor, model_name: str, background_labels: Sequence[str]
-) -> torch.Tensor:
-    if model_name not in {"semi-sup", "semi-sup-triplet"}:
-        return y
-    indices = [JETCLASS_LABELS.index(label) for label in background_labels]
-    return y[:, indices]
-
-
-def local_global_metrics(
-    z_views: torch.Tensor,
-    num_global_views: int,
-    eps: float = 1e-12,
-) -> Dict[str, torch.Tensor]:
-    """Compute several event-level local/global view diagnostics.
-
-    z_views has shape (V, B, D). The first G views are global and the
-    remaining views are local. Every returned tensor has shape (B,).
-
-    normalized_mse is the MSE after L2-normalizing both vectors. Therefore it
-    is a constant rescaling of cosine distance for fixed latent dimension:
-
-        normalized_mse = 2 * cosine_distance / D.
-    """
-
-    if z_views.ndim != 3 or not 1 <= num_global_views < z_views.size(0):
-        raise ValueError(
-            f"Invalid z_views/G: shape={tuple(z_views.shape)}, "
-            f"G={num_global_views}."
-        )
-
-    z_views = z_views.float()
-    global_views = z_views[:num_global_views]
-    local_views = z_views[num_global_views:]
-    anchor = global_views.mean(dim=0)
-    anchor_expanded = anchor.unsqueeze(0).expand_as(local_views)
-
-    mse = (local_views - anchor_expanded).square().mean(dim=-1).mean(dim=0)
-
-    cosine_distance = (
-        1.0
-        - F.cosine_similarity(
-            local_views,
-            anchor_expanded,
-            dim=-1,
-            eps=eps,
-        )
-    ).mean(dim=0)
-
-    local_unit = F.normalize(local_views, p=2, dim=-1, eps=eps)
-    anchor_unit = F.normalize(anchor, p=2, dim=-1, eps=eps)
-    normalized_mse = (
-        local_unit - anchor_unit.unsqueeze(0)
-    ).square().mean(dim=-1).mean(dim=0)
-
-    return {
-        "mse": mse,
-        "cosine_distance": cosine_distance,
-        "normalized_mse": normalized_mse,
-        "global_anchor_norm": anchor.norm(p=2, dim=-1),
-        "mean_global_view_norm": global_views.norm(p=2, dim=-1).mean(dim=0),
-        "mean_local_view_norm": local_views.norm(p=2, dim=-1).mean(dim=0),
-        "mean_all_view_norm": z_views.norm(p=2, dim=-1).mean(dim=0),
-    }
-
-
-@torch.no_grad()
-def collect_local_global_metrics(
-    model: torch.nn.Module,
-    loader: DataLoader,
-    steps: int,
-    device: torch.device,
-    precision: str,
-    model_name: str,
-    background_labels: Sequence[str],
-    num_global_views: int,
-    description: str,
-) -> Dict[str, np.ndarray]:
-    model.eval()
-    collected: Dict[str, List[torch.Tensor]] = {}
-    iterator = iter(loader)
-
-    for _ in tqdm(range(steps), desc=description):
-        batch = next(iterator)
-        x = batch["x_particles"].to(device, non_blocking=True)
-        mask = batch["padding_mask"].to(device, non_blocking=True)
-        y = project_labels(
-            batch["y"].to(device, non_blocking=True),
-            model_name,
-            background_labels,
-        )
-        with autocast_context(device, precision):
-            output = model.forward_pretrain(x, y, padding_mask=mask)
-
-        metrics = local_global_metrics(
-            output["z_views"],
-            num_global_views,
-        )
-        for key, value in metrics.items():
-            collected.setdefault(key, []).append(value.detach().float().cpu())
-
-    return {
-        key: torch.cat(values).numpy().astype(np.float64)
-        for key, values in collected.items()
-    }
-
-
-
-def triplet_response_metrics(
-    z_views: torch.Tensor,
-    z_negatives: torch.Tensor,
-    num_global_views: int,
-    margin: float,
-    use_global_views_as_positives: bool,
-    normalize: bool = False,
-) -> Dict[str, torch.Tensor]:
-    """Event-level diagnostics matching the triplet training geometry.
-
-    Returns shape-(B,) tensors. Larger `margin_score` or `hinge_violation`
-    means the event violates the learned positive-vs-negative separation more.
-    """
-
-    if z_views.ndim != 3 or z_negatives.ndim != 3:
-        raise ValueError(
-            f"Expected z_views/z_negatives as (V,B,D)/(K,B,D), got "
-            f"{tuple(z_views.shape)} and {tuple(z_negatives.shape)}."
-        )
-    if not 1 <= num_global_views <= z_views.size(0):
-        raise ValueError(
-            f"Invalid num_global_views={num_global_views} for z_views={tuple(z_views.shape)}."
-        )
-
-    z_views = z_views.float()
-    z_negatives = z_negatives.float()
-    if normalize:
-        z_views = F.normalize(z_views, p=2, dim=-1)
-        z_negatives = F.normalize(z_negatives, p=2, dim=-1)
-
-    anchor = z_views[:num_global_views].mean(dim=0)
-    positives = z_views[:num_global_views] if use_global_views_as_positives else z_views
-
-    d_pos = (positives - anchor.unsqueeze(0)).square().mean(dim=-1)  # (P, B)
-    d_neg = (z_negatives - anchor.unsqueeze(0)).square().mean(dim=-1)  # (K, B)
-
-    # Per-event average distances.
-    d_pos_mean = d_pos.mean(dim=0)
-    d_neg_mean = d_neg.mean(dim=0)
-
-    # AUC is invariant under adding the constant margin, but keeping it makes
-    # the number directly interpretable as a margin violation before ReLU.
-    margin_score = d_pos_mean - d_neg_mean + float(margin)
-
-    # Exact event-wise analogue of the training triplet loss before batch mean.
-    hinge_violation = F.relu(
-        d_pos.unsqueeze(0) - d_neg.unsqueeze(1) + float(margin)
-    ).mean(dim=(0, 1))
-
-    cosine_pos = (
-        1.0
-        - F.cosine_similarity(positives, anchor.unsqueeze(0), dim=-1, eps=1e-12)
-    ).mean(dim=0)
-    cosine_neg = (
-        1.0
-        - F.cosine_similarity(z_negatives, anchor.unsqueeze(0), dim=-1, eps=1e-12)
-    ).mean(dim=0)
-    cosine_margin_score = cosine_pos - cosine_neg + float(margin)
-
-    return {
-        "triplet_pos_distance": d_pos_mean,
-        "triplet_neg_distance": d_neg_mean,
-        "triplet_distance_gap": d_neg_mean - d_pos_mean,
-        "triplet_margin_score": margin_score,
-        "triplet_hinge_violation": hinge_violation,
-        "triplet_pos_cosine_distance": cosine_pos,
-        "triplet_neg_cosine_distance": cosine_neg,
-        "triplet_cosine_margin_score": cosine_margin_score,
-    }
-
-
-@torch.no_grad()
-def collect_triplet_metrics(
-    model: torch.nn.Module,
-    loader: DataLoader,
-    steps: int,
-    device: torch.device,
-    precision: str,
-    model_name: str,
-    background_labels: Sequence[str],
-    num_global_views: int,
-    margin: float,
-    use_global_views_as_positives: bool,
-    normalize: bool,
-    description: str,
-) -> Dict[str, np.ndarray]:
-    model.eval()
-    collected: Dict[str, List[torch.Tensor]] = {}
-    iterator = iter(loader)
-
-    for _ in tqdm(range(steps), desc=description):
-        batch = next(iterator)
-        x = batch["x_particles"].to(device, non_blocking=True)
-        mask = batch["padding_mask"].to(device, non_blocking=True)
-        y = project_labels(
-            batch["y"].to(device, non_blocking=True),
-            model_name,
-            background_labels,
-        )
-        with autocast_context(device, precision):
-            output = model.forward_pretrain(x, y, padding_mask=mask)
-
-        if "z_negatives" not in output:
-            raise RuntimeError(
-                "The loaded model did not return z_negatives. "
-                "Triplet diagnostics require model='triplet' or 'semi-sup-triplet'."
-            )
-        metrics = triplet_response_metrics(
-            output["z_views"],
-            output["z_negatives"],
-            num_global_views=num_global_views,
-            margin=margin,
-            use_global_views_as_positives=use_global_views_as_positives,
-            normalize=normalize,
-        )
-        for key, value in metrics.items():
-            collected.setdefault(key, []).append(value.detach().float().cpu())
-
-    return {
-        key: torch.cat(values).numpy().astype(np.float64)
-        for key, values in collected.items()
-    }
 
 def label_ids(y: np.ndarray) -> np.ndarray:
     if y.ndim != 2 or y.shape[1] != len(JETCLASS_LABELS):
@@ -879,387 +642,6 @@ def mahalanobis_scores(
 ) -> np.ndarray:
     centered = np.asarray(latents, dtype=np.float64) - mean
     return np.einsum("ni,ij,nj->n", centered, precision, centered)
-
-
-def fit_multi_gaussian_mahalanobis(
-    latents: np.ndarray,
-    num_gaussians: int,
-    cov_eps: float,
-    seed: int,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Dict[str, object]]:
-    """
-    Partition train latents with KMeans and fit one full-covariance Gaussian
-    inside each cluster.
-
-    This is intentionally a nearest-ellipsoid diagnostic rather than a true
-    Gaussian-mixture negative log likelihood. Component weights and
-    log-determinant terms are not included in the final anomaly score.
-    """
-
-    x = np.asarray(latents, dtype=np.float64)
-
-    if x.ndim != 2:
-        raise ValueError(f"Expected latents shape (N, D), got {x.shape}.")
-    if num_gaussians < 1:
-        raise ValueError("--num-gaussians must be at least 1.")
-    if num_gaussians > len(x):
-        raise ValueError(
-            f"--num-gaussians={num_gaussians} exceeds fit events={len(x)}."
-        )
-
-    kmeans = KMeans(
-        n_clusters=num_gaussians,
-        random_state=seed,
-        n_init=20,
-        algorithm="lloyd",
-    )
-    assignments = kmeans.fit_predict(x)
-
-    means: List[np.ndarray] = []
-    precisions: List[np.ndarray] = []
-    components: List[Dict[str, object]] = []
-
-    for component_idx in range(num_gaussians):
-        component = x[assignments == component_idx]
-
-        if len(component) < 2:
-            raise RuntimeError(
-                "A KMeans component contains fewer than two events: "
-                f"component={component_idx}, count={len(component)}. "
-                "Reduce --num-gaussians or collect more train events."
-            )
-
-        mean, precision, covariance_diag = fit_mahalanobis(
-            component,
-            cov_eps,
-        )
-        means.append(mean)
-        precisions.append(precision)
-
-        components.append(
-            {
-                "component": int(component_idx),
-                "count": int(len(component)),
-                "fraction": float(len(component) / len(x)),
-                "kmeans_center_l2_norm": float(
-                    np.linalg.norm(kmeans.cluster_centers_[component_idx])
-                ),
-                "covariance": covariance_diag,
-            }
-        )
-
-    diagnostics: Dict[str, object] = {
-        "num_gaussians": int(num_gaussians),
-        "num_fit_events": int(len(x)),
-        "kmeans_inertia": float(kmeans.inertia_),
-        "kmeans_iterations": int(kmeans.n_iter_),
-        "components": components,
-    }
-
-    return (
-        np.stack(means, axis=0),
-        np.stack(precisions, axis=0),
-        assignments.astype(np.int64),
-        diagnostics,
-    )
-
-
-def nearest_gaussian_mahalanobis_scores(
-    latents: np.ndarray,
-    means: np.ndarray,
-    precisions: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Score each event by its minimum squared Mahalanobis distance to any
-    fitted Gaussian component.
-
-    Returns:
-        scores:
-            Shape (N,), minimum component distance.
-        nearest_components:
-            Shape (N,), index of the nearest component.
-    """
-
-    x = np.asarray(latents, dtype=np.float64)
-    means = np.asarray(means, dtype=np.float64)
-    precisions = np.asarray(precisions, dtype=np.float64)
-
-    if x.ndim != 2:
-        raise ValueError(f"Expected latents shape (N, D), got {x.shape}.")
-    if means.ndim != 2:
-        raise ValueError(f"Expected means shape (K, D), got {means.shape}.")
-    if precisions.ndim != 3:
-        raise ValueError(
-            f"Expected precisions shape (K, D, D), got {precisions.shape}."
-        )
-    if means.shape[0] != precisions.shape[0]:
-        raise ValueError(
-            "Component count differs between means and precisions: "
-            f"{means.shape[0]} vs {precisions.shape[0]}."
-        )
-    if x.shape[1] != means.shape[1]:
-        raise ValueError(
-            f"Latent dimension mismatch: x={x.shape}, means={means.shape}."
-        )
-
-    centered = x[:, None, :] - means[None, :, :]
-    all_scores = np.einsum(
-        "nki,kij,nkj->nk",
-        centered,
-        precisions,
-        centered,
-        optimize=True,
-    )
-
-    nearest = np.argmin(all_scores, axis=1)
-    scores = all_scores[np.arange(len(x)), nearest]
-
-    return scores.astype(np.float64), nearest.astype(np.int64)
-
-
-def component_counts(assignments: np.ndarray, num_components: int) -> List[int]:
-    return np.bincount(
-        np.asarray(assignments, dtype=np.int64),
-        minlength=num_components,
-    ).astype(np.int64).tolist()
-
-
-
-def fit_latent_standardizer(
-    reference: np.ndarray,
-    eps: float = 1e-12,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Fit per-dimension mean/std using only train-fit background latents."""
-
-    x = np.asarray(reference, dtype=np.float64)
-    if x.ndim != 2:
-        raise ValueError(f"Expected reference shape (N, D), got {x.shape}.")
-
-    mean = x.mean(axis=0)
-    scale = x.std(axis=0)
-    scale = np.where(scale > eps, scale, 1.0)
-    return mean, scale
-
-
-def standardize_latents(
-    latents: np.ndarray,
-    mean: np.ndarray,
-    scale: np.ndarray,
-) -> np.ndarray:
-    return (np.asarray(latents, dtype=np.float64) - mean) / scale
-
-
-def fit_knn_reference(
-    reference: np.ndarray,
-    requested_k: int,
-) -> Tuple[NearestNeighbors, int]:
-    """Fit a Euclidean kNN index on standardized train-fit latents."""
-
-    x = np.asarray(reference, dtype=np.float64)
-    if requested_k < 1:
-        raise ValueError("--knn-k must be at least 1.")
-    if len(x) < 2:
-        raise ValueError("At least two train-fit events are required for kNN.")
-
-    effective_k = min(int(requested_k), len(x) - 1)
-    model = NearestNeighbors(
-        n_neighbors=effective_k + 1,
-        metric="euclidean",
-        algorithm="auto",
-        n_jobs=-1,
-    )
-    model.fit(x)
-    return model, effective_k
-
-
-def knn_distance_scores(
-    model: NearestNeighbors,
-    latents: np.ndarray,
-    k: int,
-    reference_query: bool = False,
-) -> np.ndarray:
-    """
-    Average Euclidean distance to the k nearest train-fit background events.
-
-    For the train-fit reference itself, request k+1 neighbors and remove the
-    self-match. Held-out/validation/signal queries use the nearest k directly.
-    """
-
-    x = np.asarray(latents, dtype=np.float64)
-    n_neighbors = k + 1 if reference_query else k
-    distances, _ = model.kneighbors(x, n_neighbors=n_neighbors)
-    if reference_query:
-        distances = distances[:, 1:]
-    return distances.mean(axis=1).astype(np.float64)
-
-
-def fit_gaussian_density_component(
-    latents: np.ndarray,
-    cov_eps: float,
-) -> Tuple[np.ndarray, np.ndarray, float, Dict[str, float]]:
-    """Fit one regularized full-covariance Gaussian and its log determinant."""
-
-    x = np.asarray(latents, dtype=np.float64)
-    mean, precision, diagnostics = fit_mahalanobis(x, cov_eps)
-    centered = x - mean
-    cov = np.asarray(np.cov(centered, rowvar=False), dtype=np.float64)
-    if cov.ndim == 0:
-        cov = np.asarray([[float(cov)]], dtype=np.float64)
-    reg_cov = cov + cov_eps * np.eye(cov.shape[0], dtype=np.float64)
-    sign, logdet = np.linalg.slogdet(reg_cov)
-    if sign <= 0 or not np.isfinite(logdet):
-        raise RuntimeError(
-            "Regularized covariance is not positive definite enough for "
-            f"Gaussian likelihood; sign={sign}, logdet={logdet}."
-        )
-    return mean, precision, float(logdet), diagnostics
-
-
-def fit_class_conditional_gaussian_mixture(
-    train_z: np.ndarray,
-    train_y: np.ndarray,
-    fit_idx: np.ndarray,
-    labels: Sequence[str],
-    cov_eps: float,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, Dict[str, object]]:
-    """
-    Fit one Gaussian per known background class and empirical class priors.
-
-    This is a supervised density model only with respect to the known
-    background subclasses; The configured signal sample is never used during fitting.
-    """
-
-    ids = label_ids(train_y)
-    means: List[np.ndarray] = []
-    precisions: List[np.ndarray] = []
-    logdets: List[float] = []
-    counts: List[int] = []
-    components: List[Dict[str, object]] = []
-
-    for label in labels:
-        label_id = JETCLASS_LABELS.index(label)
-        class_fit_idx = fit_idx[ids[fit_idx] == label_id]
-        if len(class_fit_idx) < 2:
-            raise RuntimeError(
-                f"Only {len(class_fit_idx)} train-fit events found for {label}."
-            )
-
-        mean, precision, logdet, covariance_diag = (
-            fit_gaussian_density_component(train_z[class_fit_idx], cov_eps)
-        )
-        means.append(mean)
-        precisions.append(precision)
-        logdets.append(logdet)
-        counts.append(int(len(class_fit_idx)))
-        components.append(
-            {
-                "label": label,
-                "count": int(len(class_fit_idx)),
-                "log_determinant": float(logdet),
-                "covariance": covariance_diag,
-            }
-        )
-
-    counts_array = np.asarray(counts, dtype=np.float64)
-    priors = counts_array / counts_array.sum()
-    for component, prior in zip(components, priors):
-        component["prior"] = float(prior)
-
-    diagnostics: Dict[str, object] = {
-        "num_components": int(len(labels)),
-        "components": components,
-    }
-    return (
-        np.stack(means, axis=0),
-        np.stack(precisions, axis=0),
-        np.asarray(logdets, dtype=np.float64),
-        priors,
-        diagnostics,
-    )
-
-
-def stable_logsumexp(values: np.ndarray, axis: int) -> np.ndarray:
-    maximum = np.max(values, axis=axis, keepdims=True)
-    result = maximum + np.log(
-        np.sum(np.exp(values - maximum), axis=axis, keepdims=True)
-    )
-    return np.squeeze(result, axis=axis)
-
-
-def class_conditional_gaussian_mixture_nll(
-    latents: np.ndarray,
-    means: np.ndarray,
-    precisions: np.ndarray,
-    logdets: np.ndarray,
-    priors: np.ndarray,
-) -> np.ndarray:
-    """Negative log density under the QCD/Hbb/Hcc Gaussian mixture."""
-
-    x = np.asarray(latents, dtype=np.float64)
-    centered = x[:, None, :] - means[None, :, :]
-    quadratic = np.einsum(
-        "nki,kij,nkj->nk",
-        centered,
-        precisions,
-        centered,
-        optimize=True,
-    )
-    dimension = x.shape[1]
-    component_log_prob = -0.5 * (
-        dimension * np.log(2.0 * np.pi)
-        + logdets[None, :]
-        + quadratic
-    )
-    mixture_log_prob = stable_logsumexp(
-        component_log_prob + np.log(priors)[None, :],
-        axis=1,
-    )
-    return (-mixture_log_prob).astype(np.float64)
-
-
-def random_split_indices(
-    n: int,
-    fit_fraction: float,
-    seed: int,
-) -> Tuple[np.ndarray, np.ndarray]:
-    if n < 4:
-        raise ValueError("At least four events are required for a fit/held-out split.")
-    if not 0.0 < fit_fraction < 1.0:
-        raise ValueError("--fit-fraction must lie strictly between 0 and 1.")
-
-    rng = np.random.default_rng(seed)
-    indices = rng.permutation(n)
-    cut = min(max(int(round(n * fit_fraction)), 2), n - 2)
-    return indices[:cut], indices[cut:]
-
-
-def empirical_two_sided_scores(
-    reference: np.ndarray,
-    values: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Convert a scalar diagnostic into a two-sided background-tail anomaly score.
-
-    For value x, compute lower and upper empirical tail probabilities against
-    train-fit background, use p_two = min(1, 2 * min(p_lower, p_upper)), and
-    return -log(p_two). Both unusually small and unusually large values score
-    as anomalous.
-    """
-
-    ref = np.sort(np.asarray(reference, dtype=np.float64))
-    x = np.asarray(values, dtype=np.float64)
-    n = len(ref)
-    if n < 2:
-        raise ValueError("At least two reference scores are required.")
-
-    num_le = np.searchsorted(ref, x, side="right")
-    num_ge = n - np.searchsorted(ref, x, side="left")
-
-    p_lower = (num_le + 1.0) / (n + 1.0)
-    p_upper = (num_ge + 1.0) / (n + 1.0)
-    p_two = np.minimum(1.0, 2.0 * np.minimum(p_lower, p_upper))
-    anomaly = -np.log(np.maximum(p_two, np.finfo(np.float64).tiny))
-    return anomaly.astype(np.float64), p_two.astype(np.float64)
 
 
 def auc(background: np.ndarray, signal: np.ndarray) -> float:
@@ -1378,22 +760,147 @@ def plot_pair_latent_space(
     fig.savefig(path, dpi=200, bbox_inches="tight")
     plt.close(fig)
 
-def plot_one_roc(
+
+def plot_pair_lda_residual_pca_space(
     background: np.ndarray,
     signal: np.ndarray,
     background_label: str,
+    signal_label: str,
     path: Path,
+    seed: int,
+    cov_eps: float,
+    max_points: int | None = None,
 ) -> None:
-    plot_roc_curve(
-        background,
-        signal,
-        background_label=background_label,
-        signal_label="signal",
-        savepath=str(path),
-        examples=False,
-        loss_fn=None,
+    """Plot Fisher LDA1 against PCA1 of the residual orthogonal subspace.
+
+    The Fisher direction is fitted on the displayed background-signal pair.
+    After Euclidean projection onto the unit LDA direction, that component is
+    removed from every centered latent. PCA is then fitted to the residuals,
+    and its leading component supplies the second visualization axis.
+    """
+
+    background = np.asarray(background, dtype=np.float64)
+    signal = np.asarray(signal, dtype=np.float64)
+
+    if background.ndim != 2 or signal.ndim != 2:
+        raise ValueError(
+            "Expected background and signal latents with shape (N, D), got "
+            f"{background.shape} and {signal.shape}."
+        )
+    if background.shape[1] != signal.shape[1]:
+        raise ValueError(
+            "Background and signal latent dimensions differ: "
+            f"{background.shape[1]} vs {signal.shape[1]}."
+        )
+    if background.shape[1] < 2:
+        raise ValueError(
+            "LDA1 + residual PCA1 plotting requires latent dimension >= 2."
+        )
+    if len(background) < 2 or len(signal) < 2:
+        raise ValueError(
+            "At least two events per class are required for pairwise LDA: "
+            f"background={len(background)}, signal={len(signal)}."
+        )
+
+    rng = np.random.default_rng(seed)
+    background_plot = background
+    signal_plot = signal
+
+    if max_points is not None:
+        max_points = int(max_points)
+        if max_points < 1:
+            raise ValueError("max_points must be positive when provided.")
+        if len(background_plot) > max_points:
+            indices = rng.choice(len(background_plot), max_points, replace=False)
+            background_plot = background_plot[indices]
+        if len(signal_plot) > max_points:
+            indices = rng.choice(len(signal_plot), max_points, replace=False)
+            signal_plot = signal_plot[indices]
+
+    mean_background = background_plot.mean(axis=0)
+    mean_signal = signal_plot.mean(axis=0)
+    centered_background = background_plot - mean_background
+    centered_signal = signal_plot - mean_signal
+
+    cov_background = np.atleast_2d(
+        np.cov(centered_background, rowvar=False)
+    ).astype(np.float64, copy=False)
+    cov_signal = np.atleast_2d(
+        np.cov(centered_signal, rowvar=False)
+    ).astype(np.float64, copy=False)
+    pooled_cov = (
+        (len(background_plot) - 1) * cov_background
+        + (len(signal_plot) - 1) * cov_signal
+    ) / (len(background_plot) + len(signal_plot) - 2)
+    regularized_cov = pooled_cov + float(cov_eps) * np.eye(
+        pooled_cov.shape[0], dtype=np.float64
     )
 
+    mean_difference = mean_signal - mean_background
+    lda_direction = np.linalg.pinv(regularized_cov) @ mean_difference
+    lda_norm = np.linalg.norm(lda_direction)
+    if not np.isfinite(lda_norm) or lda_norm <= np.finfo(np.float64).eps:
+        raise RuntimeError(
+            f"Degenerate Fisher direction for {background_label} vs {signal_label}."
+        )
+    lda_direction /= lda_norm
+
+    combined = np.concatenate([background_plot, signal_plot], axis=0)
+    center = combined.mean(axis=0, keepdims=True)
+    centered = combined - center
+    lda_scores = centered @ lda_direction
+    residuals = centered - lda_scores[:, None] * lda_direction[None, :]
+
+    _, residual_singular_values, residual_vh = np.linalg.svd(
+        residuals, full_matrices=False
+    )
+    residual_pc1 = residual_vh[0]
+    residual_pc1 -= np.dot(residual_pc1, lda_direction) * lda_direction
+    residual_pc1_norm = np.linalg.norm(residual_pc1)
+    if residual_pc1_norm <= np.finfo(np.float64).eps:
+        raise RuntimeError(
+            f"Degenerate residual PCA direction for {background_label} vs {signal_label}."
+        )
+    residual_pc1 /= residual_pc1_norm
+    residual_pc1_scores = residuals @ residual_pc1
+
+    residual_total_variance = np.square(residual_singular_values).sum()
+    residual_explained_ratio = (
+        float(np.square(residual_singular_values[0]) / residual_total_variance)
+        if residual_total_variance > 0.0
+        else 0.0
+    )
+
+    num_background = len(background_plot)
+    fig, ax = plt.subplots(figsize=(8, 7))
+    ax.scatter(
+        lda_scores[:num_background],
+        residual_pc1_scores[:num_background],
+        s=10,
+        alpha=0.45,
+        marker="o",
+        label=f"{background_label} (Background)",
+    )
+    ax.scatter(
+        lda_scores[num_background:],
+        residual_pc1_scores[num_background:],
+        s=18,
+        alpha=0.65,
+        marker="x",
+        label=f"{signal_label} (Signal)",
+    )
+    ax.set_xlabel("Fisher LDA1")
+    ax.set_ylabel(
+        f"Residual PC1 ({100.0 * residual_explained_ratio:.1f}% residual variance)"
+    )
+    ax.set_title(
+        f"Pairwise validation LDA latent space: {background_label} vs {signal_label}"
+    )
+    ax.grid(alpha=0.2)
+    ax.legend(loc="best", fontsize=8, frameon=True, markerscale=1.3)
+    fig.tight_layout()
+    fig.savefig(path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
 
 def plot_score_distribution(
     background: np.ndarray,
@@ -1569,13 +1076,44 @@ def main() -> None:
     print(f"Background labels: {background_display_name}")
     print(f"Signal labels: {signal_display_name}")
     print(
-        "Full-jet latent collection will interleave background and signal events "
-        "inside every forward pass, then regroup representations by their "
-        "original labels. This gives all Mahalanobis and per-class comparisons "
-        "a shared batch-standardization context."
+        "Full-jet latent collection retains the interleaved background-signal "
+        "path for compatibility with older models; current eval-mode "
+        "normalization uses frozen statistics."
     )
     model = build_model(summary, device)
-    model.load_state_dict(read_state_dict(checkpoint_path, device), strict=True)
+
+    state_dict = read_state_dict(checkpoint_path, device)
+    load_result = model.load_state_dict(state_dict, strict=False)
+    feature_stats_keys = { # old models don't have frozen running stats for eval
+        "_feature_running_mean",
+        "_feature_running_var",
+        "_feature_num_batches_tracked",
+    }
+    missing_feature_stats = not feature_stats_keys.issubset(state_dict.keys())
+    unexpected_missing = [
+        key
+        for key in load_result.missing_keys 
+        if key not in feature_stats_keys
+    ]
+    if unexpected_missing:
+        raise RuntimeError(
+            "Checkpoint is missing unexpected model params: "
+            f"{unexpected_missing}"
+        )
+    if load_result.unexpected_keys:
+        raise RuntimeError(
+            "Checkpoint contains unexpected model params: "
+            f"{load_result.unexpected_keys}"
+        )
+    if missing_feature_stats:
+        model._use_frozen_feature_stats_in_eval = False 
+        print(
+            "Legacy checkpoint detected: feature running stats are absent. "
+            "Evaluation will use per-batch feature stats."
+        )
+    else:
+        model._use_frozen_feature_stats_in_eval = True
+    
     model.eval()
 
     common = {
@@ -1587,7 +1125,7 @@ def main() -> None:
         "pin_memory": device.type == "cuda",
     }
 
-    print("\n[1/8] Unaugmented full-jet Mahalanobis diagnostic")
+    print("\nCollecting latents for full-events from train, val, and signals...")
 
     train_mixed_z, train_mixed_y = collect_interleaved_full_latents(
         model=model,
@@ -1642,6 +1180,7 @@ def main() -> None:
         background_pair_z = validation_mixed_z[
             labels_mask(validation_mixed_y, [background])
         ]
+        max_pair_points = int(summary.get("max_latent_plot_points", 5000))
         plot_pair_latent_space(
             background=background_pair_z,
             signal=signal_z,
@@ -1649,11 +1188,25 @@ def main() -> None:
             signal_label=signal_display_name,
             path=(
                 output_dir
-                / f"00_pairwise_latent_{background_name.lower()}_vs_"
+                / f"01_pairwise_pca_{background_name.lower()}_vs_"
                 f"{signal_display_name.lower()}.png"
             ),
             seed=seed + 450 + background_index,
-            max_points=int(summary.get("max_latent_plot_points", 5000)),
+            max_points=max_pair_points,
+        )
+        plot_pair_lda_residual_pca_space(
+            background=background_pair_z,
+            signal=signal_z,
+            background_label=background_name,
+            signal_label=signal_display_name,
+            path=(
+                output_dir
+                / f"02_pairwise_lda_residual_pca_{background_name.lower()}_vs_"
+                f"{signal_display_name.lower()}.png"
+            ),
+            seed=seed + 550 + background_index,
+            cov_eps=cov_eps,
+            max_points=max_pair_points,
         )
 
     if len(train_z) == 0 or len(val_z) == 0 or len(signal_z) == 0:
@@ -1688,25 +1241,13 @@ def main() -> None:
         "signal_scores": score_stats(signal_score),
         "covariance": cov_diag,
     }
-    plot_one_roc(
-        heldout_score,
-        signal_score,
-        f"{background_display_name} (held-out train)",
-        output_dir / "01_mahalanobis_heldout_train_vs_signal.png",
-    )
-    plot_one_roc(
-        val_score,
-        signal_score,
-        f"{background_display_name} (validation)",
-        output_dir / "01_mahalanobis_validation_vs_signal.png",
-    )
     plot_comparison(
         [
             ("Held-out train", heldout_score, signal_score),
             ("Validation", val_score, signal_score),
         ],
         "Mahalanobis ROC from a train-fit background Gaussian",
-        output_dir / "01_mahalanobis_comparison.png",
+        output_dir / "03_combined_mahalanobis_comparison.png",
     )
     print(
         f"AUC fit={combined['auc_fit_subset_vs_signal']:.6f}, "
@@ -1714,372 +1255,9 @@ def main() -> None:
         f"validation={combined['auc_validation_vs_signal']:.6f}"
     )
 
-    print("\n[2/8] Full-jet latent norm diagnostic")
-    train_full_norm = np.linalg.norm(train_z, axis=1)
-    val_full_norm = np.linalg.norm(val_z, axis=1)
-    signal_full_norm = np.linalg.norm(signal_z, axis=1)
-    latent_norms = {
-        "background_train": score_stats(train_full_norm),
-        "background_validation": score_stats(val_full_norm),
-        "signal": score_stats(signal_full_norm),
-    }
-    plot_score_distribution(
-        val_full_norm,
-        signal_full_norm,
-        "Full-jet latent norm distribution",
-        r"$\|z\|_2$",
-        output_dir / "02_full_latent_norm_distribution.png",
-    )
-    print(
-        "Full latent norm mean/median: "
-        f"train bg={train_full_norm.mean():.6f}/{np.median(train_full_norm):.6f}, "
-        f"val bg={val_full_norm.mean():.6f}/{np.median(val_full_norm):.6f}, "
-        f"signal={signal_full_norm.mean():.6f}/{np.median(signal_full_norm):.6f}"
-    )
-
-    print("\n[3/8] Augmented local-global diagnostics")
-    train_lg_metrics = collect_local_global_metrics(
-        model,
-        make_loader(train_dir, backgrounds, seed=seed + 101, **common),
-        steps,
-        device,
-        precision,
-        model_name,
-        backgrounds,
-        num_global_views,
-        "Local-global: background train",
-    )
-    val_lg_metrics = collect_local_global_metrics(
-        model,
-        make_loader(val_dir, backgrounds, seed=seed + 202, **common),
-        steps,
-        device,
-        precision,
-        model_name,
-        backgrounds,
-        num_global_views,
-        "Local-global: background validation",
-    )
-    signal_lg_metrics = collect_local_global_metrics(
-        model,
-        make_loader(test_dir, signals, seed=seed + 303, **common),
-        steps,
-        device,
-        precision,
-        model_name,
-        backgrounds,
-        num_global_views,
-        f"Local-global: {signal_display_name}",
-    )
-
-    train_lg = train_lg_metrics["mse"]
-    val_lg = val_lg_metrics["mse"]
-    signal_lg = signal_lg_metrics["mse"]
-    train_lg_cos = train_lg_metrics["cosine_distance"]
-    val_lg_cos = val_lg_metrics["cosine_distance"]
-    signal_lg_cos = signal_lg_metrics["cosine_distance"]
-    train_lg_nmse = train_lg_metrics["normalized_mse"]
-    val_lg_nmse = val_lg_metrics["normalized_mse"]
-    signal_lg_nmse = signal_lg_metrics["normalized_mse"]
-
-    local_global = {
-        "definition": "mean local-to-global-anchor MSE in raw latent coordinates",
-        "auc_train_vs_signal": auc(train_lg, signal_lg),
-        "auc_validation_vs_signal": auc(val_lg, signal_lg),
-        "train_background_scores": score_stats(train_lg),
-        "validation_background_scores": score_stats(val_lg),
-        "signal_scores": score_stats(signal_lg),
-    }
-    local_global_cosine = {
-        "definition": "mean 1-cosine-similarity from local views to the global anchor",
-        "auc_train_vs_signal": auc(train_lg_cos, signal_lg_cos),
-        "auc_validation_vs_signal": auc(val_lg_cos, signal_lg_cos),
-        "train_background_scores": score_stats(train_lg_cos),
-        "validation_background_scores": score_stats(val_lg_cos),
-        "signal_scores": score_stats(signal_lg_cos),
-    }
-    local_global_normalized_mse = {
-        "definition": (
-            "mean MSE after L2-normalizing local views and the global anchor; "
-            "equal to 2*cosine_distance/latent_dim up to floating-point error"
-        ),
-        "auc_train_vs_signal": auc(train_lg_nmse, signal_lg_nmse),
-        "auc_validation_vs_signal": auc(val_lg_nmse, signal_lg_nmse),
-        "train_background_scores": score_stats(train_lg_nmse),
-        "validation_background_scores": score_stats(val_lg_nmse),
-        "signal_scores": score_stats(signal_lg_nmse),
-    }
-
-    augmented_latent_norms = {
-        "background_train": {
-            key: score_stats(train_lg_metrics[key])
-            for key in (
-                "global_anchor_norm",
-                "mean_global_view_norm",
-                "mean_local_view_norm",
-                "mean_all_view_norm",
-            )
-        },
-        "background_validation": {
-            key: score_stats(val_lg_metrics[key])
-            for key in (
-                "global_anchor_norm",
-                "mean_global_view_norm",
-                "mean_local_view_norm",
-                "mean_all_view_norm",
-            )
-        },
-        "signal": {
-            key: score_stats(signal_lg_metrics[key])
-            for key in (
-                "global_anchor_norm",
-                "mean_global_view_norm",
-                "mean_local_view_norm",
-                "mean_all_view_norm",
-            )
-        },
-    }
-
-    plot_one_roc(
-        train_lg,
-        signal_lg,
-        f"{background_display_name} (train)",
-        output_dir / "03_local_global_mse_train_vs_signal.png",
-    )
-    plot_one_roc(
-        val_lg,
-        signal_lg,
-        f"{background_display_name} (validation)",
-        output_dir / "03_local_global_mse_validation_vs_signal.png",
-    )
-    plot_comparison(
-        [("Train", train_lg, signal_lg), ("Validation", val_lg, signal_lg)],
-        "Raw local-global MSE ROC",
-        output_dir / "03_local_global_mse_comparison.png",
-    )
-    plot_score_distribution(
-        val_lg,
-        signal_lg,
-        "Raw local-global MSE distribution",
-        "Mean local-to-global MSE",
-        output_dir / "03_local_global_mse_distribution.png",
-    )
-
-    plot_one_roc(
-        val_lg_cos,
-        signal_lg_cos,
-        f"{background_display_name} (validation, cosine distance)",
-        output_dir / "09_local_global_cosine_validation_vs_signal.png",
-    )
-    plot_score_distribution(
-        val_lg_cos,
-        signal_lg_cos,
-        "Local-global cosine-distance distribution",
-        "Mean 1 - cosine similarity",
-        output_dir / "09_local_global_cosine_distribution.png",
-    )
-
-    plot_one_roc(
-        val_lg_nmse,
-        signal_lg_nmse,
-        f"{background_display_name} (validation, unit-normalized MSE)",
-        output_dir / "10_local_global_normalized_mse_validation_vs_signal.png",
-    )
-    plot_score_distribution(
-        val_lg_nmse,
-        signal_lg_nmse,
-        "Unit-normalized local-global MSE distribution",
-        "Mean MSE after L2 normalization",
-        output_dir / "10_local_global_normalized_mse_distribution.png",
-    )
-
-    plot_score_distribution(
-        val_lg_metrics["global_anchor_norm"],
-        signal_lg_metrics["global_anchor_norm"],
-        "Augmented global-anchor latent norm distribution",
-        r"$\|z_{global\ anchor}\|_2$",
-        output_dir / "10_augmented_global_anchor_norm_distribution.png",
-    )
-
-    print(
-        f"Raw MSE AUC train={local_global['auc_train_vs_signal']:.6f}, "
-        f"validation={local_global['auc_validation_vs_signal']:.6f}"
-    )
-    print(
-        f"Cosine AUC train={local_global_cosine['auc_train_vs_signal']:.6f}, "
-        f"validation={local_global_cosine['auc_validation_vs_signal']:.6f}"
-    )
-    print(
-        "Normalized-MSE AUC "
-        f"train={local_global_normalized_mse['auc_train_vs_signal']:.6f}, "
-        f"validation={local_global_normalized_mse['auc_validation_vs_signal']:.6f}"
-    )
-    print(
-        "Global-anchor norm mean/median: "
-        f"train bg={train_lg_metrics['global_anchor_norm'].mean():.6f}/"
-        f"{np.median(train_lg_metrics['global_anchor_norm']):.6f}, "
-        f"val bg={val_lg_metrics['global_anchor_norm'].mean():.6f}/"
-        f"{np.median(val_lg_metrics['global_anchor_norm']):.6f}, "
-        f"{signal_display_name}={signal_lg_metrics['global_anchor_norm'].mean():.6f}/"
-        f"{np.median(signal_lg_metrics['global_anchor_norm']):.6f}"
-    )
-
-
-
-    triplet_response = None
-    triplet_metric_arrays: Dict[str, Dict[str, np.ndarray]] = {}
-    if model_name in {"triplet", "semi-sup-triplet"}:
-        print("\n[4/9] Triplet positive-vs-corrupted-negative response diagnostic")
-        triplet_margin = float(summary.get("triplet_margin", 1.0))
-        triplet_use_global_positives = not bool(
-            summary.get("use_all_views_as_triplet_positives", False)
-        )
-        triplet_normalize = bool(
-            summary.get("normalize_representations_for_triplet", False)
-        )
-
-        train_triplet_metrics = collect_triplet_metrics(
-            model,
-            make_loader(train_dir, backgrounds, seed=seed + 101, **common),
-            steps,
-            device,
-            precision,
-            model_name,
-            backgrounds,
-            num_global_views,
-            triplet_margin,
-            triplet_use_global_positives,
-            triplet_normalize,
-            "Triplet response: background train",
-        )
-        val_triplet_metrics = collect_triplet_metrics(
-            model,
-            make_loader(val_dir, backgrounds, seed=seed + 202, **common),
-            steps,
-            device,
-            precision,
-            model_name,
-            backgrounds,
-            num_global_views,
-            triplet_margin,
-            triplet_use_global_positives,
-            triplet_normalize,
-            "Triplet response: background validation",
-        )
-        signal_triplet_metrics = collect_triplet_metrics(
-            model,
-            make_loader(test_dir, signals, seed=seed + 303, **common),
-            steps,
-            device,
-            precision,
-            model_name,
-            backgrounds,
-            num_global_views,
-            triplet_margin,
-            triplet_use_global_positives,
-            triplet_normalize,
-            f"Triplet response: {signal_display_name}",
-        )
-
-        triplet_metric_arrays = {
-            "train": train_triplet_metrics,
-            "validation": val_triplet_metrics,
-            "signal": signal_triplet_metrics,
-        }
-
-        triplet_response = {
-            "definition": (
-                "event-level triplet response from generated positive views and "
-                "corrupted negative views; larger margin/hinge scores indicate "
-                "weaker learned separation"
-            ),
-            "triplet_margin": triplet_margin,
-            "use_global_views_as_positives": triplet_use_global_positives,
-            "normalize_representations_for_triplet": triplet_normalize,
-            "metrics": {},
-        }
-        for key in (
-            "triplet_margin_score",
-            "triplet_hinge_violation",
-            "triplet_distance_gap",
-            "triplet_pos_distance",
-            "triplet_neg_distance",
-            "triplet_cosine_margin_score",
-            "triplet_pos_cosine_distance",
-            "triplet_neg_cosine_distance",
-        ):
-            train_values = train_triplet_metrics[key]
-            val_values = val_triplet_metrics[key]
-            signal_values = signal_triplet_metrics[key]
-            # For distance_gap, normal events should usually have larger
-            # negative-positive gap, so use the sign that makes larger=anomaly.
-            if key == "triplet_distance_gap":
-                train_score_for_auc = -train_values
-                val_score_for_auc = -val_values
-                signal_score_for_auc = -signal_values
-                score_description = "negative distance gap, i.e. d_pos - d_neg"
-            else:
-                train_score_for_auc = train_values
-                val_score_for_auc = val_values
-                signal_score_for_auc = signal_values
-                score_description = key
-
-            triplet_response["metrics"][key] = {
-                "score_used_for_auc": score_description,
-                "auc_train_vs_signal": auc(train_score_for_auc, signal_score_for_auc),
-                "auc_validation_vs_signal": auc(val_score_for_auc, signal_score_for_auc),
-                "train_background_scores": score_stats(train_values),
-                "validation_background_scores": score_stats(val_values),
-                "signal_scores": score_stats(signal_values),
-            }
-
-        triplet_margin_train = train_triplet_metrics["triplet_margin_score"]
-        triplet_margin_val = val_triplet_metrics["triplet_margin_score"]
-        triplet_margin_signal = signal_triplet_metrics["triplet_margin_score"]
-        triplet_hinge_train = train_triplet_metrics["triplet_hinge_violation"]
-        triplet_hinge_val = val_triplet_metrics["triplet_hinge_violation"]
-        triplet_hinge_signal = signal_triplet_metrics["triplet_hinge_violation"]
-
-        plot_one_roc(
-            triplet_margin_val,
-            triplet_margin_signal,
-            f"{background_display_name} (validation, triplet margin score)",
-            output_dir / "11_triplet_margin_score_validation_vs_signal.png",
-        )
-        plot_score_distribution(
-            triplet_margin_val,
-            triplet_margin_signal,
-            "Triplet margin-score distribution",
-            r"$d_+ - d_- + m$",
-            output_dir / "11_triplet_margin_score_distribution.png",
-        )
-        plot_one_roc(
-            triplet_hinge_val,
-            triplet_hinge_signal,
-            f"{background_display_name} (validation, triplet hinge violation)",
-            output_dir / "12_triplet_hinge_violation_validation_vs_signal.png",
-        )
-        plot_score_distribution(
-            triplet_hinge_val,
-            triplet_hinge_signal,
-            "Triplet hinge-violation distribution",
-            r"mean ReLU$(d_+ - d_- + m)$",
-            output_dir / "12_triplet_hinge_violation_distribution.png",
-        )
-
-        print(
-            "Triplet margin score: "
-            f"AUC train={triplet_response['metrics']['triplet_margin_score']['auc_train_vs_signal']:.6f}, "
-            f"validation={triplet_response['metrics']['triplet_margin_score']['auc_validation_vs_signal']:.6f}"
-        )
-        print(
-            "Triplet hinge violation: "
-            f"AUC train={triplet_response['metrics']['triplet_hinge_violation']['auc_train_vs_signal']:.6f}, "
-            f"validation={triplet_response['metrics']['triplet_hinge_violation']['auc_validation_vs_signal']:.6f}"
-        )
-
-    print("\n[5/9] Per-class centroid and Mahalanobis diagnostic")
+    print("\nPer-class centroid and Mahalanobis diagnostic")
     per_class: Dict[str, Dict[str, object]] = {}
+    train_curves = []
     validation_curves = []
     for label in backgrounds:
         name = label.removeprefix("label_")
@@ -2124,17 +1302,16 @@ def main() -> None:
         )
         per_class[label] = result
 
-        plot_one_roc(
-            class_heldout_score,
-            class_signal_score,
-            f"{name} (held-out train)",
-            output_dir / f"03_{name.lower()}_heldout_train_vs_signal.png",
+        plot_comparison(
+            [
+                ("Held-out train", class_heldout_score, class_signal_score),
+                ("Validation", class_val_score, class_signal_score),
+            ],
+            f"{name}-specific Mahalanobis ROC",
+            output_dir / f"04_{name.lower()}_train_validation_comparison.png",
         )
-        plot_one_roc(
-            class_val_score,
-            class_signal_score,
-            f"{name} (validation)",
-            output_dir / f"03_{name.lower()}_validation_vs_signal.png",
+        train_curves.append(
+            (f"{name} held-out train", class_heldout_score, class_signal_score)
         )
         validation_curves.append(
             (f"{name} validation", class_val_score, class_signal_score)
@@ -2146,456 +1323,14 @@ def main() -> None:
         )
 
     plot_comparison(
+        train_curves,
+        "Class-specific held-out train Mahalanobis ROC",
+        output_dir / "05_per_class_train_comparison.png",
+    )
+    plot_comparison(
         validation_curves,
         "Class-specific validation Mahalanobis ROC",
-        output_dir / "03_per_class_validation_comparison.png",
-    )
-
-    print(
-        "\n[6/9] Multi-Gaussian nearest-component Mahalanobis diagnostic"
-    )
-    (
-        multi_means,
-        multi_precisions,
-        multi_fit_components,
-        multi_fit_diagnostics,
-    ) = fit_multi_gaussian_mahalanobis(
-        train_z[fit_idx],
-        num_gaussians=args.num_gaussians,
-        cov_eps=cov_eps,
-        seed=seed + 505,
-    )
-
-    multi_fit_score, multi_fit_nearest = (
-        nearest_gaussian_mahalanobis_scores(
-            train_z[fit_idx],
-            multi_means,
-            multi_precisions,
-        )
-    )
-    multi_heldout_score, multi_heldout_nearest = (
-        nearest_gaussian_mahalanobis_scores(
-            train_z[heldout_idx],
-            multi_means,
-            multi_precisions,
-        )
-    )
-    multi_val_score, multi_val_nearest = (
-        nearest_gaussian_mahalanobis_scores(
-            val_z,
-            multi_means,
-            multi_precisions,
-        )
-    )
-    multi_signal_score, multi_signal_nearest = (
-        nearest_gaussian_mahalanobis_scores(
-            signal_z,
-            multi_means,
-            multi_precisions,
-        )
-    )
-
-    multi_gaussian = {
-        "num_gaussians": int(args.num_gaussians),
-        "auc_fit_subset_vs_signal": auc(
-            multi_fit_score,
-            multi_signal_score,
-        ),
-        "auc_heldout_train_vs_signal": auc(
-            multi_heldout_score,
-            multi_signal_score,
-        ),
-        "auc_validation_vs_signal": auc(
-            multi_val_score,
-            multi_signal_score,
-        ),
-        "fit_background_scores": score_stats(multi_fit_score),
-        "heldout_train_background_scores": score_stats(
-            multi_heldout_score
-        ),
-        "validation_background_scores": score_stats(multi_val_score),
-        "signal_scores": score_stats(multi_signal_score),
-        "nearest_component_counts": {
-            "fit_background": component_counts(
-                multi_fit_nearest,
-                args.num_gaussians,
-            ),
-            "heldout_train_background": component_counts(
-                multi_heldout_nearest,
-                args.num_gaussians,
-            ),
-            "validation_background": component_counts(
-                multi_val_nearest,
-                args.num_gaussians,
-            ),
-            "signal": component_counts(
-                multi_signal_nearest,
-                args.num_gaussians,
-            ),
-        },
-        "fit": multi_fit_diagnostics,
-    }
-
-    plot_one_roc(
-        multi_heldout_score,
-        multi_signal_score,
-        (
-            f"{background_display_name} "
-            f"(held-out train, nearest of {args.num_gaussians} Gaussians)"
-        ),
-        output_dir / "04_multi_gaussian_heldout_train_vs_signal.png",
-    )
-    plot_one_roc(
-        multi_val_score,
-        multi_signal_score,
-        (
-            f"{background_display_name} "
-            f"(validation, nearest of {args.num_gaussians} Gaussians)"
-        ),
-        output_dir / "04_multi_gaussian_validation_vs_signal.png",
-    )
-    plot_comparison(
-        [
-            (
-                f"Held-out train, K={args.num_gaussians}",
-                multi_heldout_score,
-                multi_signal_score,
-            ),
-            (
-                f"Validation, K={args.num_gaussians}",
-                multi_val_score,
-                multi_signal_score,
-            ),
-        ],
-        (
-            "Nearest-component Mahalanobis ROC "
-            f"with {args.num_gaussians} train Gaussians"
-        ),
-        output_dir / "04_multi_gaussian_comparison.png",
-    )
-    plot_comparison(
-        [
-            (
-                "Single Gaussian validation",
-                val_score,
-                signal_score,
-            ),
-            (
-                f"Nearest of {args.num_gaussians} Gaussians validation",
-                multi_val_score,
-                multi_signal_score,
-            ),
-        ],
-        "Single- vs multi-Gaussian validation Mahalanobis ROC",
-        output_dir / "04_single_vs_multi_gaussian_validation.png",
-    )
-
-    print(
-        f"Multi-Gaussian K={args.num_gaussians}: "
-        f"AUC fit={multi_gaussian['auc_fit_subset_vs_signal']:.6f}, "
-        f"held-out={multi_gaussian['auc_heldout_train_vs_signal']:.6f}, "
-        f"validation={multi_gaussian['auc_validation_vs_signal']:.6f}"
-    )
-
-
-    print("\n[7/9] Standardized latent-space kNN diagnostic")
-    knn_mean, knn_scale = fit_latent_standardizer(train_z[fit_idx])
-    knn_reference_z = standardize_latents(
-        train_z[fit_idx],
-        knn_mean,
-        knn_scale,
-    )
-    knn_model, effective_knn_k = fit_knn_reference(
-        knn_reference_z,
-        requested_k=args.knn_k,
-    )
-    knn_fit_score = knn_distance_scores(
-        knn_model,
-        knn_reference_z,
-        effective_knn_k,
-        reference_query=True,
-    )
-    knn_heldout_score = knn_distance_scores(
-        knn_model,
-        standardize_latents(train_z[heldout_idx], knn_mean, knn_scale),
-        effective_knn_k,
-    )
-    knn_val_score = knn_distance_scores(
-        knn_model,
-        standardize_latents(val_z, knn_mean, knn_scale),
-        effective_knn_k,
-    )
-    knn_signal_score = knn_distance_scores(
-        knn_model,
-        standardize_latents(signal_z, knn_mean, knn_scale),
-        effective_knn_k,
-    )
-
-    knn_diagnostic = {
-        "requested_k": int(args.knn_k),
-        "effective_k": int(effective_knn_k),
-        "standardization": "per-dimension train-fit background z-score",
-        "distance": "mean Euclidean distance to k nearest train-fit events",
-        "auc_fit_subset_vs_signal": auc(knn_fit_score, knn_signal_score),
-        "auc_heldout_train_vs_signal": auc(
-            knn_heldout_score,
-            knn_signal_score,
-        ),
-        "auc_validation_vs_signal": auc(knn_val_score, knn_signal_score),
-        "fit_background_scores": score_stats(knn_fit_score),
-        "heldout_train_background_scores": score_stats(knn_heldout_score),
-        "validation_background_scores": score_stats(knn_val_score),
-        "signal_scores": score_stats(knn_signal_score),
-    }
-    plot_one_roc(
-        knn_heldout_score,
-        knn_signal_score,
-        f"{background_display_name} (held-out train, kNN k={effective_knn_k})",
-        output_dir / "05_knn_heldout_train_vs_signal.png",
-    )
-    plot_one_roc(
-        knn_val_score,
-        knn_signal_score,
-        f"{background_display_name} (validation, kNN k={effective_knn_k})",
-        output_dir / "05_knn_validation_vs_signal.png",
-    )
-    plot_comparison(
-        [
-            ("Held-out train", knn_heldout_score, knn_signal_score),
-            ("Validation", knn_val_score, knn_signal_score),
-        ],
-        f"Standardized latent kNN ROC (k={effective_knn_k})",
-        output_dir / "05_knn_comparison.png",
-    )
-    print(
-        f"kNN k={effective_knn_k}: "
-        f"AUC fit={knn_diagnostic['auc_fit_subset_vs_signal']:.6f}, "
-        f"held-out={knn_diagnostic['auc_heldout_train_vs_signal']:.6f}, "
-        f"validation={knn_diagnostic['auc_validation_vs_signal']:.6f}"
-    )
-
-    print("\n[8/9] Class-conditional Gaussian-mixture likelihood diagnostic")
-    (
-        class_mix_means,
-        class_mix_precisions,
-        class_mix_logdets,
-        class_mix_priors,
-        class_mix_fit_diagnostics,
-    ) = fit_class_conditional_gaussian_mixture(
-        train_z,
-        train_y,
-        fit_idx,
-        backgrounds,
-        cov_eps,
-    )
-    class_mix_fit_score = class_conditional_gaussian_mixture_nll(
-        train_z[fit_idx],
-        class_mix_means,
-        class_mix_precisions,
-        class_mix_logdets,
-        class_mix_priors,
-    )
-    class_mix_heldout_score = class_conditional_gaussian_mixture_nll(
-        train_z[heldout_idx],
-        class_mix_means,
-        class_mix_precisions,
-        class_mix_logdets,
-        class_mix_priors,
-    )
-    class_mix_val_score = class_conditional_gaussian_mixture_nll(
-        val_z,
-        class_mix_means,
-        class_mix_precisions,
-        class_mix_logdets,
-        class_mix_priors,
-    )
-    class_mix_signal_score = class_conditional_gaussian_mixture_nll(
-        signal_z,
-        class_mix_means,
-        class_mix_precisions,
-        class_mix_logdets,
-        class_mix_priors,
-    )
-
-    class_conditional_mixture = {
-        "definition": (
-            "negative log likelihood under an empirical-prior mixture of "
-            "one full-covariance Gaussian per background class"
-        ),
-        "auc_fit_subset_vs_signal": auc(
-            class_mix_fit_score,
-            class_mix_signal_score,
-        ),
-        "auc_heldout_train_vs_signal": auc(
-            class_mix_heldout_score,
-            class_mix_signal_score,
-        ),
-        "auc_validation_vs_signal": auc(
-            class_mix_val_score,
-            class_mix_signal_score,
-        ),
-        "fit_background_scores": score_stats(class_mix_fit_score),
-        "heldout_train_background_scores": score_stats(
-            class_mix_heldout_score
-        ),
-        "validation_background_scores": score_stats(class_mix_val_score),
-        "signal_scores": score_stats(class_mix_signal_score),
-        "fit": class_mix_fit_diagnostics,
-    }
-    plot_one_roc(
-        class_mix_heldout_score,
-        class_mix_signal_score,
-        f"{background_display_name} (held-out train, class-conditional mixture NLL)",
-        output_dir / "06_class_conditional_gmm_heldout_train_vs_signal.png",
-    )
-    plot_one_roc(
-        class_mix_val_score,
-        class_mix_signal_score,
-        f"{background_display_name} (validation, class-conditional mixture NLL)",
-        output_dir / "06_class_conditional_gmm_validation_vs_signal.png",
-    )
-    plot_comparison(
-        [
-            (
-                "Held-out train",
-                class_mix_heldout_score,
-                class_mix_signal_score,
-            ),
-            (
-                "Validation",
-                class_mix_val_score,
-                class_mix_signal_score,
-            ),
-        ],
-        "Class-conditional Gaussian-mixture likelihood ROC",
-        output_dir / "06_class_conditional_gmm_comparison.png",
-    )
-    print(
-        "Class-conditional mixture NLL: "
-        f"AUC fit={class_conditional_mixture['auc_fit_subset_vs_signal']:.6f}, "
-        f"held-out={class_conditional_mixture['auc_heldout_train_vs_signal']:.6f}, "
-        f"validation={class_conditional_mixture['auc_validation_vs_signal']:.6f}"
-    )
-
-    print("\n[9/9] Two-sided local-global consistency diagnostic")
-    lg_fit_idx, lg_heldout_idx = random_split_indices(
-        len(train_lg),
-        args.fit_fraction,
-        seed + 606,
-    )
-    lg_reference = train_lg[lg_fit_idx]
-    lg_two_fit_score, lg_two_fit_p = empirical_two_sided_scores(
-        lg_reference,
-        train_lg[lg_fit_idx],
-    )
-    lg_two_heldout_score, lg_two_heldout_p = empirical_two_sided_scores(
-        lg_reference,
-        train_lg[lg_heldout_idx],
-    )
-    lg_two_val_score, lg_two_val_p = empirical_two_sided_scores(
-        lg_reference,
-        val_lg,
-    )
-    lg_two_signal_score, lg_two_signal_p = empirical_two_sided_scores(
-        lg_reference,
-        signal_lg,
-    )
-
-    two_sided_local_global = {
-        "definition": (
-            "-log of the two-sided empirical tail probability under the "
-            "train-fit background local-global score distribution"
-        ),
-        "reference_count": int(len(lg_reference)),
-        "auc_fit_subset_vs_signal": auc(
-            lg_two_fit_score,
-            lg_two_signal_score,
-        ),
-        "auc_heldout_train_vs_signal": auc(
-            lg_two_heldout_score,
-            lg_two_signal_score,
-        ),
-        "auc_validation_vs_signal": auc(
-            lg_two_val_score,
-            lg_two_signal_score,
-        ),
-        "fit_background_scores": score_stats(lg_two_fit_score),
-        "heldout_train_background_scores": score_stats(
-            lg_two_heldout_score
-        ),
-        "validation_background_scores": score_stats(lg_two_val_score),
-        "signal_scores": score_stats(lg_two_signal_score),
-    }
-    plot_one_roc(
-        lg_two_heldout_score,
-        lg_two_signal_score,
-        f"{background_display_name} (held-out train, two-sided local-global)",
-        output_dir / "07_two_sided_local_global_heldout_train_vs_signal.png",
-    )
-    plot_one_roc(
-        lg_two_val_score,
-        lg_two_signal_score,
-        f"{background_display_name} (validation, two-sided local-global)",
-        output_dir / "07_two_sided_local_global_validation_vs_signal.png",
-    )
-    plot_comparison(
-        [
-            (
-                "Held-out train",
-                lg_two_heldout_score,
-                lg_two_signal_score,
-            ),
-            (
-                "Validation",
-                lg_two_val_score,
-                lg_two_signal_score,
-            ),
-        ],
-        "Two-sided local-global empirical-tail ROC",
-        output_dir / "07_two_sided_local_global_comparison.png",
-    )
-    comparison_curves = [
-        ("Single Gaussian Mahalanobis", val_score, signal_score),
-        (f"kNN k={effective_knn_k}", knn_val_score, knn_signal_score),
-        (
-            "Class-conditional mixture NLL",
-            class_mix_val_score,
-            class_mix_signal_score,
-        ),
-        ("Raw local-global MSE", val_lg, signal_lg),
-        ("Local-global cosine distance", val_lg_cos, signal_lg_cos),
-        ("Local-global normalized MSE", val_lg_nmse, signal_lg_nmse),
-        (
-            "Two-sided local-global",
-            lg_two_val_score,
-            lg_two_signal_score,
-        ),
-    ]
-    if triplet_response is not None:
-        comparison_curves.extend(
-            [
-                (
-                    "Triplet margin score",
-                    triplet_metric_arrays["validation"]["triplet_margin_score"],
-                    triplet_metric_arrays["signal"]["triplet_margin_score"],
-                ),
-                (
-                    "Triplet hinge violation",
-                    triplet_metric_arrays["validation"]["triplet_hinge_violation"],
-                    triplet_metric_arrays["signal"]["triplet_hinge_violation"],
-                ),
-            ]
-        )
-    plot_comparison(
-        comparison_curves,
-        "Validation anomaly-score ROC comparison",
-        output_dir / "08_validation_score_comparison.png",
-    )
-    print(
-        "Two-sided local-global: "
-        f"AUC fit={two_sided_local_global['auc_fit_subset_vs_signal']:.6f}, "
-        f"held-out={two_sided_local_global['auc_heldout_train_vs_signal']:.6f}, "
-        f"validation={two_sided_local_global['auc_validation_vs_signal']:.6f}"
+        output_dir / "06_per_class_validation_comparison.png",
     )
 
     results = {
@@ -2623,79 +1358,10 @@ def main() -> None:
             "signal_total": int(len(signal_z)),
         },
         "combined_mahalanobis": combined,
-        "multi_gaussian_mahalanobis": multi_gaussian,
-        "knn_distance": knn_diagnostic,
-        "class_conditional_gaussian_mixture": class_conditional_mixture,
-        "latent_norms": latent_norms,
-        "augmented_latent_norms": augmented_latent_norms,
-        "local_global": local_global,
-        "local_global_cosine": local_global_cosine,
-        "local_global_normalized_mse": local_global_normalized_mse,
-        "two_sided_local_global": two_sided_local_global,
-        "triplet_response": triplet_response,
         "per_class": per_class,
     }
     with (output_dir / "diagnostic_results.json").open("w") as f:
         json.dump(safe_json(results), f, indent=2)
-
-    np.savez_compressed(
-        output_dir / "diagnostic_scores.npz",
-        combined_fit_background=fit_score,
-        combined_heldout_train_background=heldout_score,
-        combined_validation_background=val_score,
-        combined_signal=signal_score,
-        full_latent_norm_train_background=train_full_norm,
-        full_latent_norm_validation_background=val_full_norm,
-        full_latent_norm_signal=signal_full_norm,
-        local_global_train_background=train_lg,
-        local_global_validation_background=val_lg,
-        local_global_signal=signal_lg,
-        local_global_cosine_train_background=train_lg_cos,
-        local_global_cosine_validation_background=val_lg_cos,
-        local_global_cosine_signal=signal_lg_cos,
-        local_global_normalized_mse_train_background=train_lg_nmse,
-        local_global_normalized_mse_validation_background=val_lg_nmse,
-        local_global_normalized_mse_signal=signal_lg_nmse,
-        augmented_global_anchor_norm_train_background=train_lg_metrics["global_anchor_norm"],
-        augmented_global_anchor_norm_validation_background=val_lg_metrics["global_anchor_norm"],
-        augmented_global_anchor_norm_signal=signal_lg_metrics["global_anchor_norm"],
-        augmented_mean_local_view_norm_train_background=train_lg_metrics["mean_local_view_norm"],
-        augmented_mean_local_view_norm_validation_background=val_lg_metrics["mean_local_view_norm"],
-        augmented_mean_local_view_norm_signal=signal_lg_metrics["mean_local_view_norm"],
-        multi_gaussian_fit_background=multi_fit_score,
-        multi_gaussian_heldout_train_background=multi_heldout_score,
-        multi_gaussian_validation_background=multi_val_score,
-        multi_gaussian_signal=multi_signal_score,
-        multi_gaussian_fit_nearest_component=multi_fit_nearest,
-        multi_gaussian_heldout_nearest_component=multi_heldout_nearest,
-        multi_gaussian_validation_nearest_component=multi_val_nearest,
-        multi_gaussian_signal_nearest_component=multi_signal_nearest,
-        knn_fit_background=knn_fit_score,
-        knn_heldout_train_background=knn_heldout_score,
-        knn_validation_background=knn_val_score,
-        knn_signal=knn_signal_score,
-        class_conditional_gmm_fit_background=class_mix_fit_score,
-        class_conditional_gmm_heldout_train_background=class_mix_heldout_score,
-        class_conditional_gmm_validation_background=class_mix_val_score,
-        class_conditional_gmm_signal=class_mix_signal_score,
-        two_sided_local_global_fit_background=lg_two_fit_score,
-        two_sided_local_global_heldout_train_background=lg_two_heldout_score,
-        two_sided_local_global_validation_background=lg_two_val_score,
-        two_sided_local_global_signal=lg_two_signal_score,
-        two_sided_local_global_fit_pvalue=lg_two_fit_p,
-        two_sided_local_global_heldout_pvalue=lg_two_heldout_p,
-        two_sided_local_global_validation_pvalue=lg_two_val_p,
-        two_sided_local_global_signal_pvalue=lg_two_signal_p,
-    )
-    if triplet_response is not None:
-        np.savez_compressed(
-            output_dir / "triplet_diagnostic_scores.npz",
-            **{
-                f"{split}_{key}": values
-                for split, metrics in triplet_metric_arrays.items()
-                for key, values in metrics.items()
-            },
-        )
 
     print(f"\nSaved diagnostics to {output_dir}")
 
