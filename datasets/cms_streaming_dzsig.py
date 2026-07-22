@@ -1,0 +1,1101 @@
+"""CMS DeepNTuplizer AK8 reader and DDP-safe streaming dataset (dzsig variant).
+
+Copy of ``cms_streaming.py`` with ``Cpfcan_dzsig`` / ``log_Cpfcan_dzsig`` added
+to the model-facing feature schema for MC / future real data that includes the
+ROOT ``Cpfcan_dzsig`` branch. The original ``cms_streaming.py`` is unchanged.
+
+The public ``read_file`` API mirrors the JetClass loader: it returns padded
+particle features with shape ``(events, features, particles)``, jet features,
+and one-hot labels. CMS deliberately keeps its own model-facing feature schema;
+cross-dataset checkpoint loading reinitializes the node embedding whenever the
+ordered feature schema changes.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import random
+import re
+from pathlib import Path
+from typing import Dict, Iterator, List, Mapping, MutableMapping, Optional, Sequence, Tuple
+
+import awkward as ak
+import numpy as np
+import torch
+import uproot
+from torch.utils.data import IterableDataset, get_worker_info
+
+TREE_PATH = "deepntuplizerAK8/tree"
+
+# CMS model-facing particle features. These names intentionally preserve CMS
+# semantics where they do not match JetClass. The first four entries are a
+# strict four-momentum contract used by the ParticleTransformer.
+CMS_PARTICLE_FEATURES = [
+    "part_px",
+    "part_py",
+    "part_pz",
+    "part_energy",
+    "part_pt",
+    "log_pt_fraction",
+    "part_deta",
+    "part_dphi",
+    "Cpfcan_dxysig",
+    "log_Cpfcan_dxysig",
+    "Cpfcan_dzsig",
+    "log_Cpfcan_dzsig",
+    "Cpfcan_dz",
+    "part_charge",
+    "part_isChargedHadron",
+    "part_isNeutralHadron",
+    "part_isPhoton",
+    "part_isElectron",
+    "part_isMuon",
+]
+
+CMS_BATCH_NORMALIZED_FEATURES = [
+    "log_pt_fraction",
+    "Cpfcan_dxysig",
+    "log_Cpfcan_dxysig",
+    "Cpfcan_dzsig",
+    "log_Cpfcan_dzsig",
+    "Cpfcan_dz",
+]
+
+CMS_DEFAULT_PARTICLE_FEATURES = list(CMS_PARTICLE_FEATURES)
+
+CMS_DEFAULT_JET_FEATURES = [
+    "jet_pt",
+    "jet_eta",
+    "jet_phi",
+    "jet_mass",
+    "jet_qk_charge_05",
+    "jet_qk_charge_10",
+]
+
+CMS_FEATURE_SOURCES = {
+    "part_px": "concatenate(Cpfcan_px, Npfcan_px)",
+    "part_py": "concatenate(Cpfcan_py, Npfcan_py)",
+    "part_pz": "concatenate(Cpfcan_pz, Npfcan_pz)",
+    "part_energy": "concatenate(Cpfcan_e, Npfcan_e)",
+    "part_pt": "concatenate(Cpfcan_pt, Npfcan_pt) / jet_pt",
+    "log_pt_fraction": "log(clip(part_pt, 1e-8)) on valid candidates",
+    "part_deta": "concatenate(Cpfcan_etarel, Npfcan_etarel)",
+    "part_dphi": "concatenate(Cpfcan_phirel, Npfcan_phirel)",
+    "Cpfcan_dxysig": "ROOT Cpfcan_dxysig branch; neutral=0; no extra clipping",
+    "log_Cpfcan_dxysig": "log(clip(Cpfcan_dxysig, 1e-8)); neutral=0",
+    "Cpfcan_dzsig": "ROOT Cpfcan_dzsig branch; neutral=0; no extra clipping",
+    "log_Cpfcan_dzsig": "log(clip(Cpfcan_dzsig, 1e-8)); neutral=0",
+    "Cpfcan_dz": "raw ROOT Cpfcan_dz branch; neutral=0",
+    "part_charge": "Cpfcan_charge; neutral=0",
+    "part_isChargedHadron": "abs(merged PDG ID) == 211",
+    "part_isNeutralHadron": "abs(merged PDG ID) == 130",
+    "part_isPhoton": "abs(merged PDG ID) == 22",
+    "part_isElectron": "abs(merged PDG ID) == 11",
+    "part_isMuon": "abs(merged PDG ID) == 13",
+}
+
+# Only genuinely equivalent CMS names are mapped to JetClass-style names.
+# Impact-parameter variables are intentionally absent because their semantics
+# differ across the datasets.
+CMS_TO_JETCLASS_FEATURE_MAP = {
+    "pt": "part_pt",
+    "log_pt": "log_pt_fraction",
+    "eta": "part_deta",
+    "phi": "part_dphi",
+    "charge": "part_charge",
+    "pdgId_-211": "part_isChargedHadron",
+    "pdgId_211": "part_isChargedHadron",
+    "pdgId_130": "part_isNeutralHadron",
+    "pdgId_22": "part_isPhoton",
+    "pdgId_-11": "part_isElectron",
+    "pdgId_11": "part_isElectron",
+    "pdgId_-13": "part_isMuon",
+    "pdgId_13": "part_isMuon",
+}
+
+CMS_LABELS = [
+    "label_QCD",
+    "label_Hbb",
+    "label_Wqq",
+    "label_Zqq",
+    "label_Tbqq",
+]
+
+CMS_LABEL_TO_DIRECTORY = {
+    "label_QCD": "qcd",
+    "label_Hbb": "hbb",
+    "label_Wqq": "wjets",
+    "label_Zqq": "zjets",
+    "label_Tbqq": "ttbar",
+}
+
+CMS_LABEL_TO_FILENAME_PREFIX = {
+    "label_QCD": "qcd_",
+    "label_Hbb": "hbb_",
+    "label_Wqq": "wjets_",
+    "label_Zqq": "zjets_",
+    "label_Tbqq": "ttbar_",
+}
+
+STANDARD_PDG_IDS = (-211, -13, -11, 11, 13, 22, 130, 211)
+
+_BRANCH_ALIASES: Dict[str, Tuple[str, ...]] = {
+    "jet_pt": ("jet_pt",),
+    "jet_eta": ("jet_eta",),
+    "jet_phi": ("jet_phi",),
+    "jet_mass": ("jet_mass",),
+    "jet_qk_charge_05": ("jet_qk_charge_05",),
+    "jet_qk_charge_10": ("jet_qk_charge_10",),
+    "Cpfcan_pt": ("Cpfcan_pt",),
+    "Cpfcan_etarel": ("Cpfcan_etarel",),
+    "Cpfcan_phirel": ("Cpfcan_phirel",),
+    "Cpfcan_charge": ("Cpfcan_charge",),
+    "Cpfcan_pdg": ("Cpfcan_pdg",),
+    "Cpfcan_dxysig": ("Cpfcan_dxysig",),
+    "Cpfcan_dzsig": ("Cpfcan_dzsig",),
+    "Cpfcan_dz": ("Cpfcan_dz",),
+    "Cpfcan_px": ("Cpfcan_px",),
+    "Cpfcan_py": ("Cpfcan_py",),
+    "Cpfcan_pz": ("Cpfcan_pz",),
+    "Cpfcan_e": ("Cpfcan_e",),
+    "Npfcan_pt": ("Npfcan_pt",),
+    "Npfcan_etarel": ("Npfcan_etarel",),
+    "Npfcan_phirel": ("Npfcan_phirel",),
+    "Npfcan_pdgID": ("Npfcan_pdgID",),
+    "Npfcan_isGamma": ("Npfcan_isGamma",),
+    "Npfcan_px": ("Npfcan_px",),
+    "Npfcan_py": ("Npfcan_py",),
+    "Npfcan_pz": ("Npfcan_pz",),
+    "Npfcan_e": ("Npfcan_e",),
+}
+
+_REQUIRED_PARTICLE_BRANCHES = (
+    "jet_pt",
+    "jet_eta",
+    "Cpfcan_pt",
+    "Cpfcan_etarel",
+    "Cpfcan_phirel",
+    "Cpfcan_charge",
+    "Cpfcan_pdg",
+    "Cpfcan_dxysig",
+    "Cpfcan_dzsig",
+    "Cpfcan_dz",
+    "Cpfcan_px",
+    "Cpfcan_py",
+    "Cpfcan_pz",
+    "Cpfcan_e",
+    "Npfcan_pt",
+    "Npfcan_etarel",
+    "Npfcan_phirel",
+    "Npfcan_pdgID",
+    "Npfcan_isGamma",
+    "Npfcan_px",
+    "Npfcan_py",
+    "Npfcan_pz",
+    "Npfcan_e",
+)
+
+_OPTIONAL_LOGICAL_BRANCHES: set[str] = set()
+
+FileMap = Dict[str, Dict[str, List[str]]]
+SplitFileMaps = Dict[str, FileMap]
+
+
+def _pad(a, maxlen: int, value=0, dtype: str = "float32") -> np.ndarray:
+    """Zero-pad or truncate a jagged array to a fixed particle axis."""
+    if isinstance(a, np.ndarray) and a.ndim >= 2 and a.shape[1] == maxlen:
+        return a.astype(dtype, copy=False)
+    if isinstance(a, ak.Array):
+        if a.ndim == 1:
+            a = ak.unflatten(a, 1)
+        a = ak.fill_none(ak.pad_none(a, maxlen, clip=True), value)
+        return ak.to_numpy(ak.values_astype(a, dtype))
+    output = np.full((len(a), maxlen), value, dtype=dtype)
+    for idx, sequence in enumerate(a):
+        if len(sequence) == 0:
+            continue
+        truncated = np.asarray(sequence[:maxlen], dtype=dtype)
+        output[idx, : len(truncated)] = truncated
+    return output
+
+
+def _resolve_tree(handle: uproot.ReadOnlyDirectory):
+    if TREE_PATH in handle:
+        return handle[TREE_PATH]
+    if "tree" in handle:
+        return handle["tree"]
+    raise KeyError(f"ROOT file contains neither {TREE_PATH!r} nor 'tree'.")
+
+
+def _resolve_branch_names(tree, logical_names: Sequence[str]) -> Dict[str, Optional[str]]:
+    available = {str(name).split(";")[0] for name in tree.keys()}
+    resolved: Dict[str, Optional[str]] = {}
+    missing: List[str] = []
+    for logical_name in logical_names:
+        match = next(
+            (candidate for candidate in _BRANCH_ALIASES[logical_name] if candidate in available),
+            None,
+        )
+        resolved[logical_name] = match
+        if match is None and logical_name not in _OPTIONAL_LOGICAL_BRANCHES:
+            missing.append(logical_name)
+    if missing:
+        details = {name: _BRANCH_ALIASES[name] for name in missing}
+        raise KeyError(f"Missing required CMS branches: {details}")
+    return resolved
+
+
+def _map_neutral_pdg(pdg_id: ak.Array, is_gamma: ak.Array) -> ak.Array:
+    """Map DeepNTuplizer neutral codes to standard PDG IDs."""
+    pid = ak.values_astype(pdg_id, "int64")
+    gamma = ak.values_astype(is_gamma, "int64")
+    mapped = ak.where(pid == 2, 22, pid)
+    mapped = ak.where(pid == 3, 130, mapped)
+    mapped = ak.where(gamma == 1, 22, mapped)
+    return mapped
+
+
+def _apply_particle_order(table: MutableMapping[str, ak.Array]) -> None:
+    """Sort merged charged/neutral candidates by descending pT in every jet."""
+    order = ak.argsort(table["part_pt"], axis=1, ascending=False)
+    for key in list(table):
+        value = table[key]
+        if isinstance(value, ak.Array) and value.ndim > 1:
+            table[key] = value[order]
+
+
+def _build_particle_table(
+    arrays: Mapping[str, ak.Array],
+    *,
+    eps: float = 1e-8,
+) -> Dict[str, ak.Array]:
+    """Merge charged and neutral candidates into the CMS-native schema."""
+    jet_pt = arrays["jet_pt"]
+    safe_jet_pt = ak.where(jet_pt > 0, jet_pt, 1.0)
+
+    charged_pt_abs = arrays["Cpfcan_pt"]
+    neutral_pt_abs = arrays["Npfcan_pt"]
+    part_pt = ak.concatenate(
+        [charged_pt_abs / safe_jet_pt, neutral_pt_abs / safe_jet_pt], axis=1
+    )
+    part_deta = ak.concatenate(
+        [arrays["Cpfcan_etarel"], arrays["Npfcan_etarel"]], axis=1
+    )
+    part_dphi = ak.concatenate(
+        [arrays["Cpfcan_phirel"], arrays["Npfcan_phirel"]], axis=1
+    )
+    part_charge = ak.concatenate(
+        [arrays["Cpfcan_charge"], ak.zeros_like(neutral_pt_abs)], axis=1
+    )
+
+    charged_pdg = ak.values_astype(arrays["Cpfcan_pdg"], "int64")
+    neutral_pdg = _map_neutral_pdg(
+        arrays["Npfcan_pdgID"], arrays["Npfcan_isGamma"]
+    )
+    part_pdg = ak.concatenate([charged_pdg, neutral_pdg], axis=1)
+
+    part_px = ak.concatenate([arrays["Cpfcan_px"], arrays["Npfcan_px"]], axis=1)
+    part_py = ak.concatenate([arrays["Cpfcan_py"], arrays["Npfcan_py"]], axis=1)
+    part_pz = ak.concatenate([arrays["Cpfcan_pz"], arrays["Npfcan_pz"]], axis=1)
+    part_energy = ak.concatenate([arrays["Cpfcan_e"], arrays["Npfcan_e"]], axis=1)
+
+    dxysig_charged = ak.values_astype(arrays["Cpfcan_dxysig"], "float32")
+    dzsig_charged = ak.values_astype(arrays["Cpfcan_dzsig"], "float32")
+    dz_charged = ak.values_astype(arrays["Cpfcan_dz"], "float32")
+    log_dxysig_charged = np.log(
+        ak.where(dxysig_charged > eps, dxysig_charged, eps)
+    )
+    log_dzsig_charged = np.log(
+        ak.where(dzsig_charged > eps, dzsig_charged, eps)
+    )
+
+    dxysig = ak.concatenate(
+        [dxysig_charged, ak.zeros_like(neutral_pt_abs)], axis=1
+    )
+    log_dxysig = ak.concatenate(
+        [log_dxysig_charged, ak.zeros_like(neutral_pt_abs)], axis=1
+    )
+    dzsig = ak.concatenate(
+        [dzsig_charged, ak.zeros_like(neutral_pt_abs)], axis=1
+    )
+    log_dzsig = ak.concatenate(
+        [log_dzsig_charged, ak.zeros_like(neutral_pt_abs)], axis=1
+    )
+    raw_dz = ak.concatenate(
+        [dz_charged, ak.zeros_like(neutral_pt_abs)], axis=1
+    )
+    log_pt_fraction = np.log(ak.where(part_pt > eps, part_pt, eps))
+
+    table: Dict[str, ak.Array] = {
+        "part_px": part_px,
+        "part_py": part_py,
+        "part_pz": part_pz,
+        "part_energy": part_energy,
+        "part_pt": part_pt,
+        "log_pt_fraction": log_pt_fraction,
+        "part_deta": part_deta,
+        "part_dphi": part_dphi,
+        "Cpfcan_dxysig": dxysig,
+        "log_Cpfcan_dxysig": log_dxysig,
+        "Cpfcan_dzsig": dzsig,
+        "log_Cpfcan_dzsig": log_dzsig,
+        "Cpfcan_dz": raw_dz,
+        "part_charge": part_charge,
+        "part_isChargedHadron": ak.values_astype(abs(part_pdg) == 211, "float32"),
+        "part_isNeutralHadron": ak.values_astype(abs(part_pdg) == 130, "float32"),
+        "part_isPhoton": ak.values_astype(abs(part_pdg) == 22, "float32"),
+        "part_isElectron": ak.values_astype(abs(part_pdg) == 11, "float32"),
+        "part_isMuon": ak.values_astype(abs(part_pdg) == 13, "float32"),
+        # Useful CMS aliases for diagnostics.
+        "pt": part_pt,
+        "log_pt": log_pt_fraction,
+        "eta": part_deta,
+        "phi": part_dphi,
+        "charge": part_charge,
+        "pdgId": part_pdg,
+    }
+    for pid in STANDARD_PDG_IDS:
+        table[f"pdgId_{pid}"] = ak.values_astype(part_pdg == pid, "float32")
+
+    _apply_particle_order(table)
+    return table
+
+
+def read_file(
+    filepath: str,
+    max_num_particles: int = 128,
+    particle_features: Optional[Sequence[str]] = None,
+    jet_features: Optional[Sequence[str]] = None,
+    labels: Optional[Sequence[str]] = None,
+    lowerpt: Optional[float] = None,
+    upperpt: Optional[float] = None,
+    label_name: Optional[str] = None,
+    class_index: Optional[int] = None,
+    num_classes: Optional[int] = None,
+    jet_eta_max: Optional[float] = 2.5,
+    particle_dr_max: Optional[float] = 0.8,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Load one CMS ROOT file with a JetClass-style return signature.
+
+    When ``particle_features`` is omitted, ``CMS_PARTICLE_FEATURES`` is
+    returned. CMS impact-parameter features retain their native names and
+    semantics rather than being renamed to JetClass significance features.
+
+    ``lowerpt`` and ``upperpt`` are optional event-level cuts on the actual
+    reconstructed ``jet_pt`` branch.  File names are never used as pT cuts.
+    One-hot labels follow the exact order of the supplied ``labels`` sequence.
+    """
+    requested_particles = list(
+        CMS_DEFAULT_PARTICLE_FEATURES
+        if particle_features is None
+        else particle_features
+    )
+    requested_jets = list(
+        CMS_DEFAULT_JET_FEATURES if jet_features is None else jet_features
+    )
+    label_axis = list(CMS_LABELS if labels is None else labels)
+    if num_classes is not None and labels is None:
+        if int(num_classes) != len(label_axis):
+            label_axis = [f"class_{index}" for index in range(int(num_classes))]
+
+    if label_name is not None:
+        if label_name not in label_axis:
+            raise ValueError(f"label_name={label_name!r} is not in labels={label_axis}")
+        resolved_class_index = label_axis.index(label_name)
+    elif class_index is not None:
+        resolved_class_index = int(class_index)
+    else:
+        raise ValueError("Either label_name or class_index must be provided.")
+    if not 0 <= resolved_class_index < len(label_axis):
+        raise ValueError(
+            f"class_index={resolved_class_index} outside one-hot axis of length "
+            f"{len(label_axis)}"
+        )
+
+    with uproot.open(filepath) as handle:
+        tree = _resolve_tree(handle)
+        logical_names = list(_REQUIRED_PARTICLE_BRANCHES)
+        logical_names.extend(
+            name for name in requested_jets if name in _BRANCH_ALIASES
+        )
+        logical_names = list(dict.fromkeys(logical_names))
+        resolved = _resolve_branch_names(tree, logical_names)
+        physical_names = sorted({name for name in resolved.values() if name is not None})
+        raw_physical = tree.arrays(physical_names, library="ak")
+
+    arrays: Dict[str, ak.Array] = {
+        logical: raw_physical[physical]
+        for logical, physical in resolved.items()
+        if physical is not None
+    }
+    table = _build_particle_table(arrays)
+
+    jet_table: Dict[str, ak.Array] = {
+        logical: arrays[logical]
+        for logical in requested_jets
+        if logical in arrays
+    }
+    unsupported_jets = [name for name in requested_jets if name not in jet_table]
+    if unsupported_jets:
+        raise ValueError(
+            f"Unsupported or unavailable CMS jet features: {unsupported_jets}. "
+            f"Requested: {requested_jets}"
+        )
+
+    unsupported_particles = [name for name in requested_particles if name not in table]
+    if unsupported_particles:
+        raise ValueError(
+            f"Unsupported CMS particle features: {unsupported_particles}. "
+            f"CMS model features are {CMS_PARTICLE_FEATURES}."
+        )
+
+    jet_pt = ak.to_numpy(arrays["jet_pt"])
+    jet_eta = ak.to_numpy(arrays["jet_eta"])
+    event_mask = np.isfinite(jet_pt) & np.isfinite(jet_eta) & (jet_pt > 0)
+    if lowerpt is not None:
+        event_mask &= jet_pt >= float(lowerpt)
+    if upperpt is not None:
+        event_mask &= jet_pt < float(upperpt)
+    if jet_eta_max is not None:
+        event_mask &= np.abs(jet_eta) <= float(jet_eta_max)
+
+    if not np.any(event_mask):
+        return (
+            np.zeros(
+                (0, len(requested_particles), int(max_num_particles)),
+                dtype=np.float32,
+            ),
+            np.zeros((0, len(requested_jets)), dtype=np.float32),
+            np.zeros((0, len(label_axis)), dtype=np.float32),
+        )
+
+    for key in list(table):
+        table[key] = table[key][event_mask]
+    for key in list(jet_table):
+        jet_table[key] = jet_table[key][event_mask]
+
+    # Match JetClass particle quality handling before padding/truncation.
+    valid_particle = (
+        (table["part_pt"] > 0)
+        & (table["part_energy"] > 0)
+        & np.isfinite(table["part_pt"])
+        & np.isfinite(table["part_px"])
+        & np.isfinite(table["part_py"])
+        & np.isfinite(table["part_pz"])
+        & np.isfinite(table["part_energy"])
+        & np.isfinite(table["part_deta"])
+        & np.isfinite(table["part_dphi"])
+        & np.isfinite(table["Cpfcan_dxysig"])
+        & np.isfinite(table["log_Cpfcan_dxysig"])
+        & np.isfinite(table["Cpfcan_dzsig"])
+        & np.isfinite(table["log_Cpfcan_dzsig"])
+        & np.isfinite(table["Cpfcan_dz"])
+        & np.isfinite(table["part_charge"])
+    )
+    if particle_dr_max is not None:
+        dr = np.sqrt(table["part_deta"] ** 2 + table["part_dphi"] ** 2)
+        valid_particle = valid_particle & (dr < float(particle_dr_max))
+    # Remove invalid constituents before fixed-length truncation so they cannot
+    # displace valid lower-pT particles from the first max_num_particles slots.
+    for key in list(table):
+        table[key] = table[key][valid_particle]
+
+    x_particles = np.stack(
+        [_pad(table[name], int(max_num_particles)) for name in requested_particles],
+        axis=1,
+    ).astype(np.float32, copy=False)
+    x_jets = np.stack(
+        [ak.to_numpy(jet_table[name]).astype(np.float32, copy=False) for name in requested_jets],
+        axis=1,
+    )
+    y = np.zeros((len(x_jets), len(label_axis)), dtype=np.float32)
+    y[:, resolved_class_index] = 1.0
+    return (
+        np.ascontiguousarray(x_particles),
+        np.ascontiguousarray(x_jets),
+        np.ascontiguousarray(y),
+    )
+
+
+def validate_cms_labels(labels: Sequence[str]) -> None:
+    unknown = sorted(set(labels) - set(CMS_LABELS))
+    if unknown:
+        raise ValueError(f"Unknown CMS labels: {unknown}. Available labels: {CMS_LABELS}")
+
+
+def cms_family_from_path(filepath: str) -> str:
+    """Return the production family by removing only the terminal shard id."""
+    stem = Path(filepath).stem
+    family = re.sub(r"_\d+$", "", stem)
+    if family == stem:
+        raise ValueError(f"CMS ROOT filename lacks a terminal shard id: {filepath}")
+    return family
+
+
+def discover_cms_files_by_label_family(
+    dataset_root: str,
+    labels: Sequence[str],
+) -> FileMap:
+    """Discover non-empty ROOT shards under class directories, grouped by family."""
+    validate_cms_labels(labels)
+    root = Path(dataset_root)
+    if not root.is_dir():
+        raise FileNotFoundError(f"CMS dataset root does not exist: {dataset_root}")
+
+    discovered: FileMap = {}
+    for label in labels:
+        directory = root / CMS_LABEL_TO_DIRECTORY[label]
+        if not directory.is_dir():
+            raise FileNotFoundError(f"Missing CMS class directory for {label}: {directory}")
+        prefix = CMS_LABEL_TO_FILENAME_PREFIX[label]
+        files = sorted(
+            str(path)
+            for path in directory.glob(f"{prefix}*.root")
+            if path.is_file() and path.stat().st_size > 0
+        )
+        if not files:
+            raise FileNotFoundError(f"No CMS ROOT files found for {label} in {directory}")
+        families: Dict[str, List[str]] = {}
+        for filepath in files:
+            family = cms_family_from_path(filepath)
+            families.setdefault(family, []).append(filepath)
+        discovered[label] = {family: sorted(paths) for family, paths in sorted(families.items())}
+    return discovered
+
+
+def _stable_family_seed(seed: int, label: str, family: str) -> int:
+    digest = hashlib.blake2b(
+        f"{int(seed)}|{label}|{family}".encode("utf-8"), digest_size=8
+    ).digest()
+    return int.from_bytes(digest, "little", signed=False)
+
+
+def _split_family_files(
+    files: Sequence[str],
+    *,
+    val_fraction: float,
+    test_fraction: float,
+    rng: random.Random,
+) -> Tuple[List[str], List[str], List[str]]:
+    shuffled = list(files)
+    rng.shuffle(shuffled)
+    n_files = len(shuffled)
+    if n_files < 3 and val_fraction > 0 and test_fraction > 0:
+        raise ValueError(
+            "At least three ROOT shards are required per CMS production family "
+            f"for disjoint train/val/test splits; got {n_files}: {files}"
+        )
+
+    n_val = int(round(n_files * val_fraction))
+    n_test = int(round(n_files * test_fraction))
+    if val_fraction > 0:
+        n_val = max(1, n_val)
+    if test_fraction > 0:
+        n_test = max(1, n_test)
+
+    while n_val + n_test > n_files - 1:
+        if n_val >= n_test and n_val > int(val_fraction > 0):
+            n_val -= 1
+        elif n_test > int(test_fraction > 0):
+            n_test -= 1
+        else:
+            raise ValueError(
+                f"Cannot retain a train shard with n_files={n_files}, "
+                f"val_fraction={val_fraction}, test_fraction={test_fraction}."
+            )
+
+    val = shuffled[:n_val]
+    test = shuffled[n_val : n_val + n_test]
+    train = shuffled[n_val + n_test :]
+    return train, val, test
+
+
+def split_cms_files_by_family(
+    files_by_label_family: Mapping[str, Mapping[str, Sequence[str]]],
+    *,
+    val_fraction: float = 0.1,
+    test_fraction: float = 0.1,
+    seed: int = 42,
+) -> SplitFileMaps:
+    """Create deterministic, disjoint splits inside every class × family stratum."""
+    if val_fraction < 0 or test_fraction < 0 or val_fraction + test_fraction >= 1:
+        raise ValueError(
+            "CMS split fractions must be non-negative and satisfy "
+            "val_fraction + test_fraction < 1."
+        )
+    splits: SplitFileMaps = {"train": {}, "val": {}, "test": {}}
+    for label, families in files_by_label_family.items():
+        for split_name in splits:
+            splits[split_name][label] = {}
+        for family, files in families.items():
+            rng = random.Random(_stable_family_seed(seed, label, family))
+            train, val, test = _split_family_files(
+                files,
+                val_fraction=val_fraction,
+                test_fraction=test_fraction,
+                rng=rng,
+            )
+            for split_name, split_files in (
+                ("train", train),
+                ("val", val),
+                ("test", test),
+            ):
+                if split_files:
+                    splits[split_name][label][family] = split_files
+    return splits
+
+
+def cms_split_manifest(splits: Mapping[str, Mapping[str, Mapping[str, Sequence[str]]]]) -> Dict[str, object]:
+    """Build a JSON-serializable split manifest with paths and stratum counts."""
+    payload: Dict[str, object] = {"splits": {}}
+    flattened_for_hash: List[str] = []
+    split_payload: Dict[str, object] = {}
+    for split_name, labels in splits.items():
+        label_payload: Dict[str, object] = {}
+        for label, families in labels.items():
+            family_payload = {family: list(files) for family, files in families.items()}
+            label_payload[label] = family_payload
+            for family, files in family_payload.items():
+                flattened_for_hash.extend(
+                    f"{split_name}|{label}|{family}|{path}" for path in files
+                )
+        split_payload[split_name] = label_payload
+    payload["splits"] = split_payload
+    payload["sha256"] = hashlib.sha256(
+        "\n".join(sorted(flattened_for_hash)).encode("utf-8")
+    ).hexdigest()
+    return payload
+
+
+def load_and_preprocess_cms_file(
+    filepath: str,
+    *,
+    label_name: str,
+    label_axis: Sequence[str],
+    particle_features: Sequence[str],
+    max_num_particles: int,
+    lowerpt: Optional[float],
+    upperpt: Optional[float],
+    min_nodes: int,
+    eps: float = 1e-8,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Load one shard and return canonical ``(events, particles, features)`` arrays."""
+    del eps  # Included for signature parity with the JetClass preprocessing API.
+    x_particles, _, y = read_file(
+        filepath,
+        max_num_particles=max_num_particles,
+        particle_features=particle_features,
+        jet_features=["jet_pt"],
+        labels=label_axis,
+        lowerpt=lowerpt,
+        upperpt=upperpt,
+        label_name=label_name,
+    )
+    x_particles = np.transpose(x_particles, (0, 2, 1)).astype(np.float32, copy=False)
+    y = np.asarray(y, dtype=np.float32)
+    valid_counts = np.count_nonzero(np.any(x_particles != 0, axis=-1), axis=1)
+    keep = valid_counts >= int(min_nodes)
+    return (
+        np.ascontiguousarray(x_particles[keep], dtype=np.float32),
+        np.ascontiguousarray(y[keep], dtype=np.float32),
+    )
+
+
+class CMSIterableDataset(IterableDataset):
+    """Stream CMS ROOT shards with class-balanced, family-aware active mixing.
+
+    Inside each class, production families are interleaved before ROOT shards
+    are assigned disjointly across all DDP ranks and DataLoader workers.  A
+    balanced class cycle selects labels, while each class owns multiple active
+    ROOT shards drawn from distinct locally available families whenever the
+    active-shard budget permits.
+    """
+
+    def __init__(
+        self,
+        files_by_label_family: Mapping[str, Mapping[str, Sequence[str]]],
+        labels_to_load: Sequence[str],
+        label_axis: Sequence[str],
+        particle_features: Sequence[str],
+        max_num_particles: int,
+        min_nodes: int = 4,
+        lowerpt: Optional[float] = None,
+        upperpt: Optional[float] = None,
+        max_events: Optional[int] = None,
+        shuffle_files: bool = True,
+        shuffle_active_shards: int = 4,
+        min_active_families_per_class: int = 2,
+        family_sampling: str = "proportional",
+        infinite: bool = True,
+        seed: int = 42,
+        rank: int = 0,
+        world_size: int = 1,
+    ):
+        super().__init__()
+        validate_cms_labels(labels_to_load)
+        if not labels_to_load:
+            raise ValueError("labels_to_load must contain at least one label.")
+        if family_sampling not in {"uniform", "proportional"}:
+            raise ValueError("family_sampling must be 'uniform' or 'proportional'.")
+
+        self.labels_to_load = list(labels_to_load)
+        self.label_axis = list(label_axis)
+        missing_axis = sorted(set(self.labels_to_load) - set(self.label_axis))
+        if missing_axis:
+            raise ValueError(f"labels_to_load absent from label_axis: {missing_axis}")
+        self.files_by_label_family: FileMap = {}
+        for label in self.labels_to_load:
+            families = files_by_label_family.get(label, {})
+            cleaned = {
+                family: list(paths)
+                for family, paths in families.items()
+                if len(paths) > 0
+            }
+            if not cleaned:
+                raise ValueError(f"No files supplied for CMS label {label!r}.")
+            self.files_by_label_family[label] = cleaned
+
+        self.feature_names = list(CMS_PARTICLE_FEATURES)
+        self.batch_normalized_feature_names = list(CMS_BATCH_NORMALIZED_FEATURES)
+        self.particle_features = list(particle_features)
+        if self.particle_features != self.feature_names:
+            raise ValueError(
+                "CMS LeJEPA training requires the dataset-native feature order. "
+                f"Expected {self.feature_names}, got {self.particle_features}."
+            )
+        self.max_num_particles = int(max_num_particles)
+        self.min_nodes = int(min_nodes)
+        self.lowerpt = lowerpt
+        self.upperpt = upperpt
+        self.max_events = max_events
+        self.shuffle_files = bool(shuffle_files)
+        self.requested_active_shards = int(shuffle_active_shards)
+        self.min_active_families_per_class = max(1, int(min_active_families_per_class))
+        self.family_sampling = family_sampling
+        self.infinite = bool(infinite)
+        self.seed = int(seed)
+        self.rank = int(rank)
+        self.world_size = int(world_size)
+        self.filepaths = sorted(
+            path
+            for families in self.files_by_label_family.values()
+            for paths in families.values()
+            for path in paths
+        )
+        self.family_names_by_label = {
+            label: sorted(families) for label, families in self.files_by_label_family.items()
+        }
+        self.minimum_active_shards = sum(
+            min(len(families), self.min_active_families_per_class)
+            for families in self.family_names_by_label.values()
+        )
+        self.effective_active_shards = max(
+            len(self.labels_to_load),
+            self.minimum_active_shards,
+            self.requested_active_shards,
+        )
+
+    def _active_budget_by_label(self) -> Dict[str, int]:
+        minimum = {
+            label: min(
+                len(self.family_names_by_label[label]),
+                self.min_active_families_per_class,
+            )
+            for label in self.labels_to_load
+        }
+        budget = dict(minimum)
+        remaining = self.effective_active_shards - sum(budget.values())
+        cycle = sorted(
+            self.labels_to_load,
+            key=lambda label: len(self.family_names_by_label[label]),
+            reverse=True,
+        )
+        index = 0
+        while remaining > 0:
+            budget[cycle[index % len(cycle)]] += 1
+            remaining -= 1
+            index += 1
+        return budget
+
+    def __iter__(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
+        worker_info = get_worker_info()
+        local_worker_id = 0 if worker_info is None else worker_info.id
+        local_num_workers = 1 if worker_info is None else worker_info.num_workers
+        global_worker_id = self.rank * local_num_workers + local_worker_id
+        global_num_workers = self.world_size * local_num_workers
+
+        worker_files: FileMap = {}
+        for label, families in self.files_by_label_family.items():
+            # Interleave production families before assigning files to global
+            # workers.  Every ROOT shard is owned by exactly one rank/worker,
+            # but a worker is not required to own one shard from *every* family.
+            # That stricter rule breaks validation as soon as a small family has
+            # fewer shards than world_size × num_workers.
+            interleaved: List[Tuple[str, str]] = []
+            sorted_families = {
+                family: sorted(paths)
+                for family, paths in sorted(families.items())
+            }
+            max_family_size = max(len(paths) for paths in sorted_families.values())
+            for file_index in range(max_family_size):
+                for family, paths in sorted_families.items():
+                    if file_index < len(paths):
+                        interleaved.append((family, paths[file_index]))
+
+            local_entries = interleaved[
+                global_worker_id::global_num_workers
+            ]
+            if not local_entries:
+                raise RuntimeError(
+                    "A DDP rank/DataLoader worker received no ROOT shard for a "
+                    "CMS class. Replicating shards would duplicate events across "
+                    "ranks, so the loader fails instead. "
+                    f"label={label!r}, global_worker_id={global_worker_id}, "
+                    f"global_num_workers={global_num_workers}, "
+                    f"num_label_files={len(interleaved)}. Reduce world_size × "
+                    "num_workers or provide more shards for this class."
+                )
+
+            local_families: Dict[str, List[str]] = {}
+            for family, filepath in local_entries:
+                local_families.setdefault(family, []).append(filepath)
+            worker_files[label] = local_families
+
+        worker_quota: Optional[int] = None
+        if self.max_events is not None:
+            base = int(self.max_events) // global_num_workers
+            remainder = int(self.max_events) % global_num_workers
+            worker_quota = base + int(global_worker_id < remainder)
+
+        active_budget_by_label = self._active_budget_by_label()
+        pass_index = 0
+        while True:
+            rng = random.Random(
+                self.seed + 9176 * global_worker_id + 104729 * pass_index
+            )
+            queues: FileMap = {
+                label: {family: list(paths) for family, paths in families.items()}
+                for label, families in worker_files.items()
+            }
+            if self.shuffle_files:
+                for families in queues.values():
+                    for paths in families.values():
+                        rng.shuffle(paths)
+
+            initial_family_sizes = {
+                label: {family: len(paths) for family, paths in families.items()}
+                for label, families in worker_files.items()
+            }
+            total_local_files_by_label = {
+                label: sum(len(paths) for paths in families.values())
+                for label, families in worker_files.items()
+            }
+            empty_shard_streak = {label: 0 for label in self.labels_to_load}
+
+            def refill_label_queues(label: str) -> None:
+                active_paths = {
+                    str(shard["filepath"])
+                    for shard in active_by_label.get(label, [])
+                }
+                queues[label] = {
+                    family: [
+                        path for path in paths if path not in active_paths
+                    ]
+                    for family, paths in worker_files[label].items()
+                }
+                if self.shuffle_files:
+                    for paths in queues[label].values():
+                        rng.shuffle(paths)
+
+            active_by_label: Dict[str, List[Dict[str, object]]] = {
+                label: [] for label in self.labels_to_load
+            }
+            active_family_counts: Dict[str, Dict[str, int]] = {
+                label: {family: 0 for family in families}
+                for label, families in queues.items()
+            }
+
+            def families_with_files(label: str) -> List[str]:
+                return [family for family, paths in queues[label].items() if paths]
+
+            def choose_family(label: str, prefer_inactive: bool) -> Optional[str]:
+                candidates = families_with_files(label)
+                if not candidates:
+                    return None
+                if prefer_inactive:
+                    inactive = [
+                        family
+                        for family in candidates
+                        if active_family_counts[label][family] == 0
+                    ]
+                    if inactive:
+                        candidates = inactive
+                candidates = sorted(candidates)
+                if not self.shuffle_files:
+                    return candidates[0]
+                if self.family_sampling == "uniform":
+                    return rng.choice(candidates)
+                weights = [
+                    max(1, initial_family_sizes[label][family])
+                    / (1 + active_family_counts[label][family])
+                    for family in candidates
+                ]
+                return rng.choices(candidates, weights=weights, k=1)[0]
+
+            def load_next_shard(
+                label: str,
+                prefer_inactive: bool,
+                *,
+                allow_refill: bool,
+            ) -> Optional[Dict[str, object]]:
+                while True:
+                    family = choose_family(label, prefer_inactive=prefer_inactive)
+                    if family is None:
+                        if not (self.infinite and allow_refill):
+                            return None
+                        refill_label_queues(label)
+                        family = choose_family(
+                            label, prefer_inactive=prefer_inactive
+                        )
+                        if family is None:
+                            return None
+
+                    filepath = queues[label][family].pop()
+                    x_particles, y = load_and_preprocess_cms_file(
+                        filepath,
+                        label_name=label,
+                        label_axis=self.label_axis,
+                        particle_features=self.particle_features,
+                        max_num_particles=self.max_num_particles,
+                        lowerpt=self.lowerpt,
+                        upperpt=self.upperpt,
+                        min_nodes=self.min_nodes,
+                    )
+                    if len(x_particles) == 0:
+                        empty_shard_streak[label] += 1
+                        if (
+                            empty_shard_streak[label]
+                            >= total_local_files_by_label[label]
+                        ):
+                            raise RuntimeError(
+                                "A complete local CMS class pass produced no valid "
+                                "events after cuts. "
+                                f"label={label!r}, lowerpt={self.lowerpt}, "
+                                f"upperpt={self.upperpt}, min_nodes={self.min_nodes}, "
+                                f"global_worker_id={global_worker_id}."
+                            )
+                        continue
+
+                    empty_shard_streak[label] = 0
+                    order = np.arange(len(x_particles), dtype=np.int64)
+                    if self.shuffle_files:
+                        np.random.default_rng(rng.randrange(2**32)).shuffle(order)
+                    active_family_counts[label][family] += 1
+                    return {
+                        "x": x_particles,
+                        "y": y,
+                        "order": order,
+                        "cursor": 0,
+                        "filepath": filepath,
+                        "family": family,
+                    }
+
+            for label in self.labels_to_load:
+                for _ in range(active_budget_by_label[label]):
+                    shard = load_next_shard(
+                        label,
+                        prefer_inactive=True,
+                        allow_refill=False,
+                    )
+                    if shard is None:
+                        break
+                    active_by_label[label].append(shard)
+
+            yielded = 0
+            available_labels = [
+                label for label in self.labels_to_load if active_by_label[label]
+            ]
+            while available_labels:
+                if worker_quota is not None and yielded >= worker_quota:
+                    break
+                label_cycle = list(available_labels)
+                if self.shuffle_files:
+                    rng.shuffle(label_cycle)
+                for label in label_cycle:
+                    if worker_quota is not None and yielded >= worker_quota:
+                        break
+                    active = active_by_label[label]
+                    if not active:
+                        continue
+                    shard_index = rng.randrange(len(active)) if self.shuffle_files else 0
+                    shard = active[shard_index]
+                    cursor = int(shard["cursor"])
+                    order = shard["order"]
+                    event_index = int(order[cursor])
+                    shard["cursor"] = cursor + 1
+                    x_particles = shard["x"]
+                    y = shard["y"]
+                    yield (
+                        torch.from_numpy(x_particles[event_index].copy()),
+                        torch.from_numpy(y[event_index].copy()),
+                    )
+                    yielded += 1
+
+                    if int(shard["cursor"]) >= len(order):
+                        exhausted = active.pop(shard_index)
+                        family = str(exhausted["family"])
+                        active_family_counts[label][family] -= 1
+                        replacement = load_next_shard(
+                            label,
+                            prefer_inactive=True,
+                            allow_refill=True,
+                        )
+                        if replacement is not None:
+                            active.append(replacement)
+                available_labels = [
+                    label for label in self.labels_to_load if active_by_label[label]
+                ]
+
+            if not self.infinite:
+                break
+            if yielded == 0:
+                raise RuntimeError(
+                    "Infinite CMS stream completed a full pass without yielding any "
+                    "events. Check the event-level pT window, particle cuts, and ROOT "
+                    f"schema. global_worker_id={global_worker_id}."
+                )
+            pass_index += 1
+
+
+def collate_cms_tensors(
+    batch: Sequence[Tuple[torch.Tensor, torch.Tensor]],
+) -> Dict[str, torch.Tensor]:
+    """Stack fixed-size events and derive the all-zero particle padding mask."""
+    xs, ys = zip(*batch)
+    x_particles = torch.stack(xs, dim=0)
+    y = torch.stack(ys, dim=0)
+    padding_mask = x_particles.eq(0).all(dim=-1)
+    return {"x_particles": x_particles, "padding_mask": padding_mask, "y": y}
+
+
+__all__ = [
+    "CMS_PARTICLE_FEATURES",
+    "CMS_BATCH_NORMALIZED_FEATURES",
+    "CMS_FEATURE_SOURCES",
+    "CMS_DEFAULT_JET_FEATURES",
+    "CMS_DEFAULT_PARTICLE_FEATURES",
+    "CMSIterableDataset",
+    "CMS_LABELS",
+    "CMS_LABEL_TO_DIRECTORY",
+    "CMS_TO_JETCLASS_FEATURE_MAP",
+    "cms_family_from_path",
+    "cms_split_manifest",
+    "collate_cms_tensors",
+    "discover_cms_files_by_label_family",
+    "load_and_preprocess_cms_file",
+    "read_file",
+    "split_cms_files_by_family",
+    "validate_cms_labels",
+]
