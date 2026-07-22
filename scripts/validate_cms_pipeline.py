@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import sys
+import os
 import argparse
 import json
 from pathlib import Path
@@ -10,7 +12,10 @@ from typing import List
 
 import numpy as np
 
-from helpers.cms_streaming import (
+# Add parent directory to import local project modules
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from datasets.cms_streaming import (
     CMS_BATCH_NORMALIZED_FEATURES,
     CMS_PARTICLE_FEATURES,
     CMSIterableDataset,

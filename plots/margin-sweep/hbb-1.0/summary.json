@@ -1,0 +1,312 @@
+{
+  "model": "semi-sup-triplet",
+  "dataset": "cms",
+  "dataset_label_axis": [
+    "label_QCD",
+    "label_Hbb",
+    "label_Wqq",
+    "label_Zqq",
+    "label_Tbqq"
+  ],
+  "feature_schema_version": "dataset-native-features-v2",
+  "source_particle_features": [
+    "part_px",
+    "part_py",
+    "part_pz",
+    "part_energy",
+    "part_pt",
+    "log_pt_fraction",
+    "part_deta",
+    "part_dphi",
+    "Cpfcan_dxysig",
+    "log_Cpfcan_dxysig",
+    "Cpfcan_dz",
+    "part_charge",
+    "part_isChargedHadron",
+    "part_isNeutralHadron",
+    "part_isPhoton",
+    "part_isElectron",
+    "part_isMuon"
+  ],
+  "checkpoint": {
+    "path": null,
+    "loaded": false,
+    "feature_schema_changed": false,
+    "normalization_schema_changed": false,
+    "node_embedding_reset": false,
+    "feature_normalization_state_reset": false,
+    "classification_head_reset": false
+  },
+  "best_model_path": "plots/margin-sweep/hbb-1.0/best_model.pth",
+  "last_model_path": "plots/margin-sweep/hbb-1.0/last_model.pth",
+  "best_checkpoint_path": "plots/margin-sweep/hbb-1.0/best_checkpoint.pt",
+  "last_checkpoint_path": "plots/margin-sweep/hbb-1.0/last_checkpoint.pt",
+  "status": "completed",
+  "current_epoch": 6,
+  "completed_epochs": 6,
+  "dataset_root": "/HEP/export/home/hgao50/jet-anomaly-data/ak8-v2",
+  "background_labels": [
+    "label_QCD",
+    "label_Wqq",
+    "label_Zqq",
+    "label_Tbqq"
+  ],
+  "signal_labels": [
+    "label_Hbb"
+  ],
+  "particle_features": [
+    "part_px",
+    "part_py",
+    "part_pz",
+    "part_energy",
+    "part_pt",
+    "log_pt_fraction",
+    "part_deta",
+    "part_dphi",
+    "Cpfcan_dxysig",
+    "log_Cpfcan_dxysig",
+    "Cpfcan_dz",
+    "part_charge",
+    "part_isChargedHadron",
+    "part_isNeutralHadron",
+    "part_isPhoton",
+    "part_isElectron",
+    "part_isMuon"
+  ],
+  "particle_feature_order_is_strict": true,
+  "batch_standardized_particle_features": [
+    "log_pt_fraction",
+    "Cpfcan_dxysig",
+    "log_Cpfcan_dxysig",
+    "Cpfcan_dz"
+  ],
+  "background_train_root_shards": 2234,
+  "background_val_root_shards": 280,
+  "background_test_root_shards": 280,
+  "signal_test_root_shards": 19,
+  "max_train_events": null,
+  "max_val_events": null,
+  "max_test_background_events": null,
+  "max_test_signal_events": null,
+  "batch_size": 128,
+  "embed_dim": 32,
+  "representation_dim": 32,
+  "num_layers": 4,
+  "num_heads": 8,
+  "ffn_mult": 4,
+  "dropout": 0.01,
+  "num_trainable_parameters": 106992,
+  "use_pairwise_bias": true,
+  "pairwise_hidden_dim": 32,
+  "pairwise_num_features": 4,
+  "max_num_particles": 128,
+  "eps": 1e-08,
+  "keep_dropped_features": false,
+  "epochs": 6,
+  "learning_rate": 0.001,
+  "weight_decay": 0.05,
+  "precision": "bf16",
+  "final_lr_ratio": 0.001,
+  "num_global_views": 2,
+  "num_local_views": 4,
+  "global_drop_pt_frac_range": [
+    0.0,
+    0.3
+  ],
+  "local_drop_pt_frac_range": [
+    0.3,
+    0.75
+  ],
+  "min_nodes": 4,
+  "pt_drop_power": 1.0,
+  "invariant_weight": 1.0,
+  "sigreg_weight": 0.05,
+  "epps_pulley_num_points": 17,
+  "num_slices": 1024,
+  "anomaly_score": "mahalanobis",
+  "base_seed": 42,
+  "device": "cuda",
+  "warmup_steps": 40000,
+  "current_learning_rate": 0.000600025,
+  "best_val_loss": 0.7361812454462051,
+  "final_val_loss": 0.7361812454462051,
+  "latest_train_losses": {
+    "total_loss": 0.7813659438192845,
+    "invariant_loss": 0.22249479695037008,
+    "sigreg_loss": 8.660234375,
+    "triplet_loss": 0.0999008667850867,
+    "triplet_pos_distance": 0.046158208116889,
+    "triplet_neg_distance": 1.50314805829525,
+    "classification_loss": 1.1586347166150808
+  },
+  "latest_val_losses": {
+    "total_loss": 0.7361812454462051,
+    "invariant_loss": 0.19696930184960365,
+    "sigreg_loss": 8.23,
+    "triplet_loss": 0.09772753812372685,
+    "triplet_pos_distance": 0.03446825370192528,
+    "triplet_neg_distance": 1.4854039108753205,
+    "classification_loss": 1.178962081670761
+  },
+  "distributed": false,
+  "train_infinite_stream": true,
+  "world_size": 1,
+  "global_batch_size": 128,
+  "per_rank_batch_size": 128,
+  "steps_per_epoch": 4000,
+  "val_steps": 100,
+  "eval_steps": 100,
+  "num_workers": 3,
+  "prefetch_factor": 2,
+  "shuffle_active_shards": 4,
+  "cms_pt_min": null,
+  "cms_pt_max": null,
+  "cms_val_fraction": 0.1,
+  "cms_test_fraction": 0.1,
+  "cms_split_seed": 42,
+  "cms_split_manifest_sha256": "41203a81ede4268b60dfe7c98bd1690cf2ba0eddeda0c00a161958a8afcec08f",
+  "cms_split_root_shard_counts": {
+    "train": {
+      "label_QCD": {
+        "qcd_PT1000to1500": 160,
+        "qcd_PT1500to2000": 160,
+        "qcd_PT170to300": 155,
+        "qcd_PT300to470": 160,
+        "qcd_PT470to600": 160,
+        "qcd_PT600to800": 160,
+        "qcd_PT800to1000": 160
+      },
+      "label_Wqq": {
+        "wjets_Wto2Q_PTQQ200": 160,
+        "wjets_Wto2Q_PTQQ400": 160,
+        "wjets_Wto2Q_PTQQ600": 160
+      },
+      "label_Zqq": {
+        "zjets_Zto2Q_PTQQ200": 160,
+        "zjets_Zto2Q_PTQQ400": 160,
+        "zjets_Zto2Q_PTQQ600": 160
+      },
+      "label_Tbqq": {
+        "ttbar_TTto4Q": 159
+      },
+      "label_Hbb": {
+        "hbb_WminusH_WtoLNu": 43,
+        "hbb_WplusH_WtoLNu": 71,
+        "hbb_ZH_Zto2L": 36
+      }
+    },
+    "val": {
+      "label_QCD": {
+        "qcd_PT1000to1500": 20,
+        "qcd_PT1500to2000": 20,
+        "qcd_PT170to300": 20,
+        "qcd_PT300to470": 20,
+        "qcd_PT470to600": 20,
+        "qcd_PT600to800": 20,
+        "qcd_PT800to1000": 20
+      },
+      "label_Wqq": {
+        "wjets_Wto2Q_PTQQ200": 20,
+        "wjets_Wto2Q_PTQQ400": 20,
+        "wjets_Wto2Q_PTQQ600": 20
+      },
+      "label_Zqq": {
+        "zjets_Zto2Q_PTQQ200": 20,
+        "zjets_Zto2Q_PTQQ400": 20,
+        "zjets_Zto2Q_PTQQ600": 20
+      },
+      "label_Tbqq": {
+        "ttbar_TTto4Q": 20
+      },
+      "label_Hbb": {
+        "hbb_WminusH_WtoLNu": 6,
+        "hbb_WplusH_WtoLNu": 9,
+        "hbb_ZH_Zto2L": 4
+      }
+    },
+    "test": {
+      "label_QCD": {
+        "qcd_PT1000to1500": 20,
+        "qcd_PT1500to2000": 20,
+        "qcd_PT170to300": 20,
+        "qcd_PT300to470": 20,
+        "qcd_PT470to600": 20,
+        "qcd_PT600to800": 20,
+        "qcd_PT800to1000": 20
+      },
+      "label_Wqq": {
+        "wjets_Wto2Q_PTQQ200": 20,
+        "wjets_Wto2Q_PTQQ400": 20,
+        "wjets_Wto2Q_PTQQ600": 20
+      },
+      "label_Zqq": {
+        "zjets_Zto2Q_PTQQ200": 20,
+        "zjets_Zto2Q_PTQQ400": 20,
+        "zjets_Zto2Q_PTQQ600": 20
+      },
+      "label_Tbqq": {
+        "ttbar_TTto4Q": 20
+      },
+      "label_Hbb": {
+        "hbb_WminusH_WtoLNu": 6,
+        "hbb_WplusH_WtoLNu": 9,
+        "hbb_ZH_Zto2L": 4
+      }
+    }
+  },
+  "cms_family_sampling": "proportional",
+  "cms_min_active_families_per_class": 2,
+  "cms_effective_active_shards": 7,
+  "cms_feature_name_mapping": {
+    "pt": "part_pt",
+    "log_pt": "log_pt_fraction",
+    "eta": "part_deta",
+    "phi": "part_dphi",
+    "charge": "part_charge",
+    "pdgId_-211": "part_isChargedHadron",
+    "pdgId_211": "part_isChargedHadron",
+    "pdgId_130": "part_isNeutralHadron",
+    "pdgId_22": "part_isPhoton",
+    "pdgId_-11": "part_isElectron",
+    "pdgId_11": "part_isElectron",
+    "pdgId_-13": "part_isMuon",
+    "pdgId_13": "part_isMuon"
+  },
+  "cms_feature_sources": {
+    "part_px": "concatenate(Cpfcan_px, Npfcan_px)",
+    "part_py": "concatenate(Cpfcan_py, Npfcan_py)",
+    "part_pz": "concatenate(Cpfcan_pz, Npfcan_pz)",
+    "part_energy": "concatenate(Cpfcan_e, Npfcan_e)",
+    "part_pt": "concatenate(Cpfcan_pt, Npfcan_pt) / jet_pt",
+    "log_pt_fraction": "log(clip(part_pt, 1e-8)) on valid candidates",
+    "part_deta": "concatenate(Cpfcan_etarel, Npfcan_etarel)",
+    "part_dphi": "concatenate(Cpfcan_phirel, Npfcan_phirel)",
+    "Cpfcan_dxysig": "ROOT Cpfcan_dxysig branch; neutral=0; no extra clipping",
+    "log_Cpfcan_dxysig": "log(clip(Cpfcan_dxysig, 1e-8)); neutral=0",
+    "Cpfcan_dz": "raw ROOT Cpfcan_dz branch; neutral=0",
+    "part_charge": "Cpfcan_charge; neutral=0",
+    "part_isChargedHadron": "abs(merged PDG ID) == 211",
+    "part_isNeutralHadron": "abs(merged PDG ID) == 130",
+    "part_isPhoton": "abs(merged PDG ID) == 22",
+    "part_isElectron": "abs(merged PDG ID) == 11",
+    "part_isMuon": "abs(merged PDG ID) == 13"
+  },
+  "num_negative_views": 4,
+  "batch_mix_prob": 0.4,
+  "pt_resample_prob": 0.25,
+  "node_deta_dphi_rotation_prob": 0.1,
+  "deta_dphi_shuffle_prob": 0.1,
+  "identity_shuffle_prob": 0.15,
+  "corrupt_node_frac": 1.0,
+  "batch_mix_anchor_frac_min": 0.4,
+  "batch_mix_anchor_frac_max": 0.6,
+  "renormalize_negative_pt_sum": true,
+  "triplet_weight": 0.1,
+  "triplet_margin": 1.0,
+  "use_all_views_as_triplet_positives": false,
+  "classification_weight": 0.1,
+  "num_classification_classes": 4,
+  "total_training_steps": 24000,
+  "resumed_from_epoch": 0,
+  "global_step": 24000
+}

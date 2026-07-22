@@ -1,0 +1,63 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 4136871
+##  Job Name : JETANOMALY-JETCLASS
+##  Nodelist : gpu3101
+##      CPUs : 1
+##  Mem/Node : 48000 MB
+## Directory : /oscar/home/lwang223/jetAnomalyDetection
+##   Job Started : Tue Jul 21 12:34:06 EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Tue Jul 21 12:34:06 EDT 2026
+Job ID: 4136871
+Node: gpu3101
+==========================================
+
+GPU Information (from host):
+Tue Jul 21 12:34:06 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:41:00.0 Off |                    0 |
+| N/A   27C    P8             33W /  350W |      74MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          182625      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch version: 2.6.0+cu124
+Dataset: cms
+Dataset root: /HEP/export/home/hgao50/jet-anomaly-data/ak8-v2
+Background labels: ['label_QCD', 'label_Wqq', 'label_Zqq', 'label_Tbqq']
+Signal labels: ['label_Hbb']
+Particle features: ['part_px', 'part_py', 'part_pz', 'part_energy', 'part_pt', 'log_pt_fraction', 'part_deta', 'part_dphi', 'Cpfcan_dxysig', 'log_Cpfcan_dxysig', 'Cpfcan_dz', 'part_charge', 'part_isChargedHadron', 'part_isNeutralHadron', 'part_isPhoton', 'part_isElectron', 'part_isMuon']
+Batch-normalized particle features: ['log_pt_fraction', 'Cpfcan_dxysig', 'log_Cpfcan_dxysig', 'Cpfcan_dz']
+Lazy cms datasets ready; no full split has been loaded into RAM.
+Background train ROOT shards: 2234
+Background val ROOT shards: 280
+Background test ROOT shards: 280
+Signal test ROOT shards: 19
+Per-event particle shape: (128, 17)
+CMS active shards per worker: requested=4, effective=7; minimum family coverage=7.
+Selected SSL model: semi-sup-triplet
+Number of trainable parameters: 106,992
+
+Epoch [1/12]
+Saved new best model state_dict/full checkpoint to plots/margin-sweep/hbb-0.2/best_model.pth and plots/margin-sweep/hbb-0.2/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/margin-sweep/hbb-0.2/last_model.pth and plots/margin-sweep/hbb-0.2/last_checkpoint.pt
+Epoch 1 train losses: {'total_loss': 5.30292496573925, 'invariant_loss': 0.43878973930573556, 'sigreg_loss': 94.391, 'triplet_loss': 0.09289721972262487, 'triplet_pos_distance': 0.1015129502959171, 'triplet_neg_distance': 0.42357190129125954, 'classification_loss': 1.3493729876875877}
+Epoch 1 val losses: {'total_loss': 2.014771001338959, 'invariant_loss': 0.4748729091882706, 'sigreg_loss': 28.17125, 'triplet_loss': 0.030703391954302786, 'triplet_pos_distance': 0.10385648757219315, 'triplet_neg_distance': 0.6898558616638184, 'classification_loss': 1.2815584909915925}
+Updated run summary at plots/margin-sweep/hbb-0.2/summary.json
+
+Epoch [2/12]

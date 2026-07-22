@@ -1,0 +1,235 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 4170092
+##  Job Name : JETANOMALY-JETCLASS
+##  Nodelist : gpu2709
+##      CPUs : 1
+##  Mem/Node : 48000 MB
+## Directory : /oscar/home/lwang223/jetAnomalyDetection
+##   Job Started : Wed Jul 22 04:19:22 AM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Wed Jul 22 04:19:22 AM EDT 2026
+Job ID: 4170092
+Node: gpu2709
+==========================================
+
+GPU Information (from host):
+Wed Jul 22 04:19:22 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:C1:00.0 Off |                    0 |
+| N/A   27C    P8             32W /  350W |      76MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          157322      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch version: 2.6.0+cu124
+Dataset: cms
+Dataset root: /HEP/export/home/hgao50/jet-anomaly-data/ak8-v2
+Background labels: ['label_QCD', 'label_Hbb', 'label_Zqq', 'label_Tbqq']
+Signal labels: ['label_Wqq']
+Particle features: ['part_px', 'part_py', 'part_pz', 'part_energy', 'part_pt', 'log_pt_fraction', 'part_deta', 'part_dphi', 'Cpfcan_dxysig', 'log_Cpfcan_dxysig', 'Cpfcan_dz', 'part_charge', 'part_isChargedHadron', 'part_isNeutralHadron', 'part_isPhoton', 'part_isElectron', 'part_isMuon']
+Batch-normalized particle features: ['log_pt_fraction', 'Cpfcan_dxysig', 'log_Cpfcan_dxysig', 'Cpfcan_dz']
+Lazy cms datasets ready; no full split has been loaded into RAM.
+Background train ROOT shards: 1904
+Background val ROOT shards: 239
+Background test ROOT shards: 239
+Signal test ROOT shards: 60
+Per-event particle shape: (128, 17)
+CMS active shards per worker: requested=4, effective=7; minimum family coverage=7.
+Selected SSL model: semi-sup-triplet
+Number of trainable parameters: 106,992
+
+Epoch [1/6]
+Saved new best model state_dict/full checkpoint to plots/margin-sweep/wqq-0.1/best_model.pth and plots/margin-sweep/wqq-0.1/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/margin-sweep/wqq-0.1/last_model.pth and plots/margin-sweep/wqq-0.1/last_checkpoint.pt
+Epoch 1 train losses: {'total_loss': 5.2656835989058015, 'invariant_loss': 0.4134266686157789, 'sigreg_loss': 94.3095, 'triplet_loss': 0.04066845146007836, 'triplet_pos_distance': 0.09214009721389448, 'triplet_neg_distance': 0.41286968506115956, 'classification_loss': 1.3212953331768513}
+Epoch 1 val losses: {'total_loss': 1.9418708539009095, 'invariant_loss': 0.42837821185588837, 'sigreg_loss': 27.81625, 'triplet_loss': 0.011165093905292451, 'triplet_pos_distance': 0.09323474749922753, 'triplet_neg_distance': 0.687477070093155, 'classification_loss': 1.218292326927185}
+Updated run summary at plots/margin-sweep/wqq-0.1/summary.json
+
+Epoch [2/6]
+Saved new best model state_dict/full checkpoint to plots/margin-sweep/wqq-0.1/best_model.pth and plots/margin-sweep/wqq-0.1/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/margin-sweep/wqq-0.1/last_model.pth and plots/margin-sweep/wqq-0.1/last_checkpoint.pt
+Epoch 2 train losses: {'total_loss': 1.471998686760664, 'invariant_loss': 0.32217512201890347, 'sigreg_loss': 20.62828125, 'triplet_loss': 0.0063967974992119704, 'triplet_pos_distance': 0.06504590510576963, 'triplet_neg_distance': 0.9751168109178543, 'classification_loss': 1.1777079093009233}
+Epoch 2 val losses: {'total_loss': 1.1626949858665467, 'invariant_loss': 0.21532803207635878, 'sigreg_loss': 16.59625, 'triplet_loss': 0.00419446763349697, 'triplet_pos_distance': 0.03800233324989676, 'triplet_neg_distance': 1.1396430516242981, 'classification_loss': 1.1710376274585723}
+Updated run summary at plots/margin-sweep/wqq-0.1/summary.json
+
+Epoch [3/6]
+Saved new best model state_dict/full checkpoint to plots/margin-sweep/wqq-0.1/best_model.pth and plots/margin-sweep/wqq-0.1/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/margin-sweep/wqq-0.1/last_model.pth and plots/margin-sweep/wqq-0.1/last_checkpoint.pt
+Epoch 3 train losses: {'total_loss': 1.042091955304146, 'invariant_loss': 0.23827616322040557, 'sigreg_loss': 13.774625, 'triplet_loss': 0.003205301478097681, 'triplet_pos_distance': 0.047953510403167456, 'triplet_neg_distance': 1.2260741233825683, 'classification_loss': 1.1478578172773122}
+Epoch 3 val losses: {'total_loss': 0.9580855506658554, 'invariant_loss': 0.20722855642437935, 'sigreg_loss': 12.700625, 'triplet_loss': 0.0029415051580872387, 'triplet_pos_distance': 0.03777212787419557, 'triplet_neg_distance': 1.298369767665863, 'classification_loss': 1.155628297328949}
+Updated run summary at plots/margin-sweep/wqq-0.1/summary.json
+
+Epoch [4/6]
+Saved new best model state_dict/full checkpoint to plots/margin-sweep/wqq-0.1/best_model.pth and plots/margin-sweep/wqq-0.1/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/margin-sweep/wqq-0.1/last_model.pth and plots/margin-sweep/wqq-0.1/last_checkpoint.pt
+Epoch 4 train losses: {'total_loss': 0.8779027568101883, 'invariant_loss': 0.2185608685463667, 'sigreg_loss': 10.9886953125, 'triplet_loss': 0.002645324285578681, 'triplet_pos_distance': 0.04451665452029556, 'triplet_neg_distance': 1.3000793397128583, 'classification_loss': 1.095885773897171}
+Epoch 4 val losses: {'total_loss': 0.8424200695753098, 'invariant_loss': 0.17661794140934944, 'sigreg_loss': 11.071875, 'triplet_loss': 0.0028065561677794904, 'triplet_pos_distance': 0.030176645824685693, 'triplet_neg_distance': 1.260142627954483, 'classification_loss': 1.1198630905151368}
+Updated run summary at plots/margin-sweep/wqq-0.1/summary.json
+
+Epoch [5/6]
+Saved new best model state_dict/full checkpoint to plots/margin-sweep/wqq-0.1/best_model.pth and plots/margin-sweep/wqq-0.1/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/margin-sweep/wqq-0.1/last_model.pth and plots/margin-sweep/wqq-0.1/last_checkpoint.pt
+Epoch 5 train losses: {'total_loss': 0.7861162541061639, 'invariant_loss': 0.20962700787931682, 'sigreg_loss': 9.4510390625, 'triplet_loss': 0.00242436203804391, 'triplet_pos_distance': 0.042806602875236424, 'triplet_neg_distance': 1.3458206150233745, 'classification_loss': 1.036803940758109}
+Epoch 5 val losses: {'total_loss': 0.7688831651210785, 'invariant_loss': 0.1908409696817398, 'sigreg_loss': 9.2953125, 'triplet_loss': 0.0024182145250961186, 'triplet_pos_distance': 0.03288479363545775, 'triplet_neg_distance': 1.361273423433304, 'classification_loss': 1.1303474074602127}
+Updated run summary at plots/margin-sweep/wqq-0.1/summary.json
+
+Epoch [6/6]
+Saved new best model state_dict/full checkpoint to plots/margin-sweep/wqq-0.1/best_model.pth and plots/margin-sweep/wqq-0.1/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/margin-sweep/wqq-0.1/last_model.pth and plots/margin-sweep/wqq-0.1/last_checkpoint.pt
+Epoch 6 train losses: {'total_loss': 0.735657172575593, 'invariant_loss': 0.20663899355381726, 'sigreg_loss': 8.54590625, 'triplet_loss': 0.0022515600977494614, 'triplet_pos_distance': 0.041996480757836255, 'triplet_neg_distance': 1.3540283395648003, 'classification_loss': 1.0149174392670393}
+Epoch 6 val losses: {'total_loss': 0.7416885179281235, 'invariant_loss': 0.16888932555913924, 'sigreg_loss': 9.1203125, 'triplet_loss': 0.0025165980600286276, 'triplet_pos_distance': 0.02856467315927148, 'triplet_neg_distance': 1.321505196094513, 'classification_loss': 1.1645377534627914}
+Updated run summary at plots/margin-sweep/wqq-0.1/summary.json
+Saved run summary to plots/margin-sweep/wqq-0.1/summary.json
+Dataset backend: cms
+Dataset root: /HEP/export/home/hgao50/jet-anomaly-data/ak8-v2
+Loading /oscar/home/lwang223/jetAnomalyDetection/plots/margin-sweep/wqq-0.1/best_model.pth on cuda:0
+Sampling 100 x 128 events from each source stream
+Full-jet density latent space: representation
+Background labels: QCD+Hbb+Zqq+Tbqq
+Signal labels: Wqq
+Dataset label axis: ['label_QCD', 'label_Hbb', 'label_Wqq', 'label_Zqq', 'label_Tbqq']
+Particle feature order:
+   0: part_px
+   1: part_py
+   2: part_pz
+   3: part_energy
+   4: part_pt
+   5: log_pt_fraction
+   6: part_deta
+   7: part_dphi
+   8: Cpfcan_dxysig
+   9: log_Cpfcan_dxysig
+  10: Cpfcan_dz
+  11: part_charge
+  12: part_isChargedHadron
+  13: part_isNeutralHadron
+  14: part_isPhoton
+  15: part_isElectron
+  16: part_isMuon
+Batch-standardized particle features: ['log_pt_fraction', 'Cpfcan_dxysig', 'log_Cpfcan_dxysig', 'Cpfcan_dz']
+CMS split source: /oscar/home/lwang223/jetAnomalyDetection/plots/margin-sweep/wqq-0.1/cms_split_manifest.json; sha256=41203a81ede4268b60dfe7c98bd1690cf2ba0eddeda0c00a161958a8afcec08f
+
+Collecting full-event latents from train, validation, and signal streams...
+Regrouped interleaved full latents: train background=10200, validation background=10200, signal=2600
+AUC fit=0.498685, held-out=0.492197, validation=0.484145
+
+Per-class centroid and Mahalanobis diagnostic
+QCD: centroid shift=0.179563, AUC held-out=0.611942, validation=0.621115
+Hbb: centroid shift=0.133158, AUC held-out=0.673002, validation=0.676631
+Zqq: centroid shift=0.114148, AUC held-out=0.487964, validation=0.471288
+Tbqq: centroid shift=0.126894, AUC held-out=0.688192, validation=0.687523
+
+Saved diagnostics to /oscar/home/lwang223/jetAnomalyDetection/plots/margin-sweep/wqq-0.1/latent_diagnostics
+Dataset: cms
+Dataset root: /HEP/export/home/hgao50/jet-anomaly-data/ak8-v2
+Background labels: ['label_QCD', 'label_Wqq', 'label_Zqq', 'label_Tbqq']
+Signal labels: ['label_Hbb']
+Particle features: ['part_px', 'part_py', 'part_pz', 'part_energy', 'part_pt', 'log_pt_fraction', 'part_deta', 'part_dphi', 'Cpfcan_dxysig', 'log_Cpfcan_dxysig', 'Cpfcan_dz', 'part_charge', 'part_isChargedHadron', 'part_isNeutralHadron', 'part_isPhoton', 'part_isElectron', 'part_isMuon']
+Batch-normalized particle features: ['log_pt_fraction', 'Cpfcan_dxysig', 'log_Cpfcan_dxysig', 'Cpfcan_dz']
+Lazy cms datasets ready; no full split has been loaded into RAM.
+Background train ROOT shards: 2234
+Background val ROOT shards: 280
+Background test ROOT shards: 280
+Signal test ROOT shards: 19
+Per-event particle shape: (128, 17)
+CMS active shards per worker: requested=4, effective=7; minimum family coverage=7.
+Selected SSL model: semi-sup-triplet
+Number of trainable parameters: 106,992
+
+Epoch [1/6]
+Saved new best model state_dict/full checkpoint to plots/margin-sweep/hbb-0.1/best_model.pth and plots/margin-sweep/hbb-0.1/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/margin-sweep/hbb-0.1/last_model.pth and plots/margin-sweep/hbb-0.1/last_checkpoint.pt
+Epoch 1 train losses: {'total_loss': 5.299493675589561, 'invariant_loss': 0.4401164938431466, 'sigreg_loss': 94.39653125, 'triplet_loss': 0.04198768271214794, 'triplet_pos_distance': 0.10171593996229057, 'triplet_neg_distance': 0.4188432743505109, 'classification_loss': 1.3498114709556104}
+Epoch 1 val losses: {'total_loss': 2.0136624360084534, 'invariant_loss': 0.4778523427248001, 'sigreg_loss': 28.12875, 'triplet_loss': 0.011887601790949703, 'triplet_pos_distance': 0.1044448584318161, 'triplet_neg_distance': 0.6714372390508652, 'classification_loss': 1.2821508467197418}
+Updated run summary at plots/margin-sweep/hbb-0.1/summary.json
+
+Epoch [2/6]
+Saved new best model state_dict/full checkpoint to plots/margin-sweep/hbb-0.1/best_model.pth and plots/margin-sweep/hbb-0.1/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/margin-sweep/hbb-0.1/last_model.pth and plots/margin-sweep/hbb-0.1/last_checkpoint.pt
+Epoch 2 train losses: {'total_loss': 1.5275735489428044, 'invariant_loss': 0.36207267908006907, 'sigreg_loss': 20.849796875, 'triplet_loss': 0.006745800920645706, 'triplet_pos_distance': 0.07261466122791171, 'triplet_neg_distance': 0.9228620765954256, 'classification_loss': 1.223311596542597}
+Epoch 2 val losses: {'total_loss': 1.254287952184677, 'invariant_loss': 0.2583708703517914, 'sigreg_loss': 17.42875, 'triplet_loss': 0.003533212572801858, 'triplet_pos_distance': 0.04689818620681763, 'triplet_neg_distance': 1.1334475600719451, 'classification_loss': 1.2431376016139983}
+Updated run summary at plots/margin-sweep/hbb-0.1/summary.json
+
+Epoch [3/6]
+Saved new best model state_dict/full checkpoint to plots/margin-sweep/hbb-0.1/best_model.pth and plots/margin-sweep/hbb-0.1/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/margin-sweep/hbb-0.1/last_model.pth and plots/margin-sweep/hbb-0.1/last_checkpoint.pt
+Epoch 3 train losses: {'total_loss': 1.066779635488987, 'invariant_loss': 0.26037699306383727, 'sigreg_loss': 13.789609375, 'triplet_loss': 0.0027965006248196005, 'triplet_pos_distance': 0.05285748227406293, 'triplet_neg_distance': 1.2209887501895427, 'classification_loss': 1.1667181524932384}
+Epoch 3 val losses: {'total_loss': 0.9366658419370651, 'invariant_loss': 0.23359093964099883, 'sigreg_loss': 11.568125, 'triplet_loss': 0.0022793661971809345, 'triplet_pos_distance': 0.040998055394738914, 'triplet_neg_distance': 1.2834134936332702, 'classification_loss': 1.243899220228195}
+Updated run summary at plots/margin-sweep/hbb-0.1/summary.json
+
+Epoch [4/6]
+Saved new best model state_dict/full checkpoint to plots/margin-sweep/hbb-0.1/best_model.pth and plots/margin-sweep/hbb-0.1/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/margin-sweep/hbb-0.1/last_model.pth and plots/margin-sweep/hbb-0.1/last_checkpoint.pt
+Epoch 4 train losses: {'total_loss': 0.9020112864375115, 'invariant_loss': 0.23705231460928916, 'sigreg_loss': 11.0067265625, 'triplet_loss': 0.002230144028333598, 'triplet_pos_distance': 0.04842822319827974, 'triplet_neg_distance': 1.2950363500118256, 'classification_loss': 1.1440489414781332}
+Epoch 4 val losses: {'total_loss': 0.8605757868289947, 'invariant_loss': 0.21386913537979127, 'sigreg_loss': 10.5471875, 'triplet_loss': 0.002349999341531657, 'triplet_pos_distance': 0.03750389149412513, 'triplet_neg_distance': 1.3431995832920074, 'classification_loss': 1.1899117350578308}
+Updated run summary at plots/margin-sweep/hbb-0.1/summary.json
+
+Epoch [5/6]
+Saved new best model state_dict/full checkpoint to plots/margin-sweep/hbb-0.1/best_model.pth and plots/margin-sweep/hbb-0.1/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/margin-sweep/hbb-0.1/last_model.pth and plots/margin-sweep/hbb-0.1/last_checkpoint.pt
+Epoch 5 train losses: {'total_loss': 0.836501049131155, 'invariant_loss': 0.22355253211036324, 'sigreg_loss': 9.895953125, 'triplet_loss': 0.002200907853708486, 'triplet_pos_distance': 0.045548937125131486, 'triplet_neg_distance': 1.3296387653946877, 'classification_loss': 1.1789980247020722}
+Epoch 5 val losses: {'total_loss': 0.7959781134128571, 'invariant_loss': 0.19031138598918915, 'sigreg_loss': 9.778125, 'triplet_loss': 0.0022668358887312934, 'triplet_pos_distance': 0.033028254844248296, 'triplet_neg_distance': 1.2944181227684022, 'classification_loss': 1.165728461742401}
+Updated run summary at plots/margin-sweep/hbb-0.1/summary.json
+
+Epoch [6/6]
+Saved new best model state_dict/full checkpoint to plots/margin-sweep/hbb-0.1/best_model.pth and plots/margin-sweep/hbb-0.1/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/margin-sweep/hbb-0.1/last_model.pth and plots/margin-sweep/hbb-0.1/last_checkpoint.pt
+Epoch 6 train losses: {'total_loss': 0.7743864708542824, 'invariant_loss': 0.21854205610603095, 'sigreg_loss': 8.7873046875, 'triplet_loss': 0.002011580537451664, 'triplet_pos_distance': 0.04500881134206429, 'triplet_neg_distance': 1.3353347596228122, 'classification_loss': 1.1627410598248242}
+Epoch 6 val losses: {'total_loss': 0.7474237924814224, 'invariant_loss': 0.1927694185078144, 'sigreg_loss': 8.751875, 'triplet_loss': 0.002085296642035246, 'triplet_pos_distance': 0.033791639376431704, 'triplet_neg_distance': 1.2975193691253661, 'classification_loss': 1.1682864916324616}
+Updated run summary at plots/margin-sweep/hbb-0.1/summary.json
+Saved run summary to plots/margin-sweep/hbb-0.1/summary.json
+Dataset backend: cms
+Dataset root: /HEP/export/home/hgao50/jet-anomaly-data/ak8-v2
+Loading /oscar/home/lwang223/jetAnomalyDetection/plots/margin-sweep/hbb-0.1/best_model.pth on cuda:0
+Sampling 100 x 128 events from each source stream
+Full-jet density latent space: representation
+Background labels: QCD+Wqq+Zqq+Tbqq
+Signal labels: Hbb
+Dataset label axis: ['label_QCD', 'label_Hbb', 'label_Wqq', 'label_Zqq', 'label_Tbqq']
+Particle feature order:
+   0: part_px
+   1: part_py
+   2: part_pz
+   3: part_energy
+   4: part_pt
+   5: log_pt_fraction
+   6: part_deta
+   7: part_dphi
+   8: Cpfcan_dxysig
+   9: log_Cpfcan_dxysig
+  10: Cpfcan_dz
+  11: part_charge
+  12: part_isChargedHadron
+  13: part_isNeutralHadron
+  14: part_isPhoton
+  15: part_isElectron
+  16: part_isMuon
+Batch-standardized particle features: ['log_pt_fraction', 'Cpfcan_dxysig', 'log_Cpfcan_dxysig', 'Cpfcan_dz']
+CMS split source: /oscar/home/lwang223/jetAnomalyDetection/plots/margin-sweep/hbb-0.1/cms_split_manifest.json; sha256=41203a81ede4268b60dfe7c98bd1690cf2ba0eddeda0c00a161958a8afcec08f
+
+Collecting full-event latents from train, validation, and signal streams...
+Regrouped interleaved full latents: train background=10200, validation background=10200, signal=2600
+AUC fit=0.645282, held-out=0.637993, validation=0.631602
+
+Per-class centroid and Mahalanobis diagnostic
+QCD: centroid shift=0.201105, AUC held-out=0.799827, validation=0.803148
+Wqq: centroid shift=0.14031, AUC held-out=0.684590, validation=0.693097
+Zqq: centroid shift=0.14183, AUC held-out=0.651020, validation=0.639115
+Tbqq: centroid shift=0.158728, AUC held-out=0.640036, validation=0.640764
+
+Saved diagnostics to /oscar/home/lwang223/jetAnomalyDetection/plots/margin-sweep/hbb-0.1/latent_diagnostics

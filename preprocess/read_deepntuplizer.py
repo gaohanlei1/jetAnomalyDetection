@@ -19,7 +19,6 @@ import uproot
 import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-import constants as c
 
 TREE_PATH = "deepntuplizerAK8/tree"
 
@@ -65,6 +64,15 @@ NEUTRAL_BRANCHES = [
 
 READ_BRANCHES = JET_BRANCHES + CHARGED_BRANCHES + NEUTRAL_BRANCHES
 
+# DeepNTuplizer AK8 jet-level metadata written with fj_ prefix.
+RAW_FATJET_PROPERTIES = [
+    "phi",
+    "eta",
+    "pt",
+    "mass",
+    "qk_charge_05",
+    "qk_charge_10",
+]
 
 def _constituent_mass(px: np.ndarray, py: np.ndarray, pz: np.ndarray, energy: np.ndarray) -> np.ndarray:
     mass_sq = energy ** 2 - px ** 2 - py ** 2 - pz ** 2
@@ -213,7 +221,7 @@ def _jet_metadata(
         "fj_qk_charge_05": float(qk_charge_05),
         "fj_qk_charge_10": float(qk_charge_10),
     }
-    for prop in c.RAW_FATJET_PROPERTIES:
+    for prop in RAW_FATJET_PROPERTIES:
         key = f"fj_{prop}"
         if key not in metadata and prop in {
             "pt",

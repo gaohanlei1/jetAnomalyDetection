@@ -36,8 +36,8 @@ for path in (SCRIPT_DIR, PROJECT_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from helpers import cms_streaming
-from helpers import jetclass_streaming
+from datasets import cms_streaming
+from datasets import jetclass_streaming
 from models.part_jetclass import (
     CorruptedNegativeAugmentationConfig,
     LeJEPALossConfig,

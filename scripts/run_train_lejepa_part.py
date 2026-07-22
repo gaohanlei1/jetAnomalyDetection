@@ -97,8 +97,7 @@ from torch.profiler import ProfilerActivity, profile, record_function, schedule
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from helpers import helpers_main
-from helpers.cms_streaming import (
+from datasets.cms_streaming import (
     CMS_BATCH_NORMALIZED_FEATURES,
     CMS_FEATURE_SOURCES,
     CMS_PARTICLE_FEATURES,
@@ -111,7 +110,7 @@ from helpers.cms_streaming import (
     split_cms_files_by_family,
     validate_cms_labels,
 )
-from helpers.jetclass_streaming import (
+from datasets.jetclass_streaming import (
     DEFAULT_PARTICLE_FEATURES,
     JETCLASS_BATCH_NORMALIZED_FEATURES,
     JETCLASS_LABELS,
@@ -131,8 +130,12 @@ from models.part_jetclass import (
 from visualize.plot_latent_space import reduce_to_2d, plot_latent_space
 from visualize.plot_metrics import plot_anomaly_score, plot_roc_curve
 
-config = helpers_main.load_config()
-DEVICE = torch.device(helpers_main.get_device())
+if torch.cuda.is_available():
+    DEVICE = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    DEVICE = torch.device("mps")
+else:
+    DEVICE = torch.device("cpu")
 
 FEATURE_SCHEMA_VERSION = "dataset-native-features-v2"
 ONLY_MODEL_NAME = "semi-sup-triplet"
@@ -329,7 +332,7 @@ class TrainLeJEPAParticleTransformer:
         else:
             self.background_labels = parse_csv_list(self.args.background_labels)
         if self.args.signal_labels is None:
-            self.signal_labels = ["label_Wqq"]
+            self.signal_labels = []
         else:
             self.signal_labels = parse_csv_list(self.args.signal_labels)
 
@@ -3200,17 +3203,17 @@ if __name__ == "__main__":
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=config["model"]["batch_size"],
-        help="Training batch size. Defaults to config model.batch_size.",
+        default=128,
+        help="Training batch size. Defaults to 128.",
     )
     parser.add_argument(
         "--steps-per-epoch",
         type=int,
-        default=10000,
+        default=4000,
         help=(
             "Number of streamed training batches per epoch. Required for lazy "
             "IterableDataset training because the full dataset length is not materialized. "
-            "Default: 10000."
+            "Default: 4000."
         ),
     )
     parser.add_argument(
@@ -3231,8 +3234,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--epochs",
         type=int,
-        default=config["training"].get("epochs", 100),
-        help="Number of training epochs. Defaults to config training.epochs.",
+        default=80,
+        help="Number of training epochs. Defaults to 80.",
     )
     parser.add_argument(
         "--learning-rate",
