@@ -1,0 +1,17 @@
+Traceback (most recent call last):
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_train_lejepa_part.py", line 3114, in <module>
+    trainer = TrainLeJEPAParticleTransformer()
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_train_lejepa_part.py", line 386, in __init__
+    raise FileNotFoundError(
+FileNotFoundError: Missing JetClass split directory: /HEP/export/home/hgao50/jet-anomaly-data/ak8-v3/train_100M
+Traceback (most recent call last):
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/diagnose_lejepa_latents.py", line 2040, in <module>
+    main()
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/diagnose_lejepa_latents.py", line 1474, in main
+    with summary_path.open() as handle:
+         ^^^^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/pathlib.py", line 1044, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/oscar/home/lwang223/jetAnomalyDetection/plots/quickrun/all-jetclass/summary.json'

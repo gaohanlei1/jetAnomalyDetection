@@ -275,7 +275,7 @@ class DiagnosticDatasetBackend:
         else:
             requested_labels = list(dict.fromkeys(
                 list(self.summary["background_labels"])
-                + list(self.summary["signal_labels"])
+                + list(self.summary.get("signal_labels", []))
             ))
             discovered = cms_streaming.discover_cms_files_by_label_family(
                 str(self.dataset_root),
@@ -804,8 +804,8 @@ def collect_interleaved_full_latents(
     combined_batch_size: int,
     seed: int,
     latent_space: str = "representation",
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Forward background and signal events together, then return labels.
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Forward background and signal events together, then return labels and source.
 
     This interleaved collection path is retained for compatibility with older
     model versions whose evaluation-time feature standardization depended on
@@ -842,6 +842,7 @@ def collect_interleaved_full_latents(
 
     zs: List[torch.Tensor] = []
     ys: List[torch.Tensor] = []
+    source_is_signal: List[torch.Tensor] = []
 
     for _ in tqdm(range(steps), desc=description):
         background_batch = next(background_iterator)
@@ -879,6 +880,13 @@ def collect_interleaved_full_latents(
             ],
             dim=0,
         ).float()
+        source = torch.cat(
+            [
+                torch.zeros(num_background, dtype=torch.bool),
+                torch.ones(num_signal, dtype=torch.bool),
+            ],
+            dim=0,
+        )
 
         permutation = torch.randperm(
             x.shape[0],
@@ -887,6 +895,7 @@ def collect_interleaved_full_latents(
         x = x[permutation].to(device, non_blocking=True)
         padding_mask = padding_mask[permutation].to(device, non_blocking=True)
         y = y[permutation]
+        source = source[permutation]
 
         with autocast_context(device, precision):
             z = encode_single_view(
@@ -898,8 +907,13 @@ def collect_interleaved_full_latents(
 
         zs.append(z.detach().float().cpu())
         ys.append(y.cpu())
+        source_is_signal.append(source.cpu())
 
-    return torch.cat(zs).numpy(), torch.cat(ys).numpy()
+    return (
+        torch.cat(zs).numpy(),
+        torch.cat(ys).numpy(),
+        torch.cat(source_is_signal).numpy(),
+    )
 
 
 
@@ -1020,8 +1034,9 @@ def plot_pair_latent_space(
     path: Path,
     seed: int,
     max_points: int | None = None,
+    annotate_roles: bool = True,
 ) -> None:
-    """Plot one background class against the configured signal in one PCA basis."""
+    """Plot one pair of classes in one PCA basis."""
 
     background = np.asarray(background, dtype=np.float64)
     signal = np.asarray(signal, dtype=np.float64)
@@ -1084,7 +1099,11 @@ def plot_pair_latent_space(
         s=10,
         alpha=0.45,
         marker="o",
-        label=f"{background_label} (Background)",
+        label=(
+            f"{background_label} (Background)"
+            if annotate_roles
+            else background_label
+        ),
     )
     ax.scatter(
         signal_2d[:, 0],
@@ -1092,7 +1111,11 @@ def plot_pair_latent_space(
         s=18,
         alpha=0.65,
         marker="x",
-        label=f"{signal_label} (Signal)",
+        label=(
+            f"{signal_label} (Signal)"
+            if annotate_roles
+            else signal_label
+        ),
     )
 
     ax.set_xlabel(f"PC1 ({100.0 * explained_variance_ratio[0]:.1f}% variance)")
@@ -1120,6 +1143,7 @@ def plot_pair_lda_residual_pca_space(
     seed: int,
     cov_eps: float,
     max_points: int | None = None,
+    annotate_roles: bool = True,
 ) -> None:
     """Plot Fisher LDA1 against PCA1 of the residual orthogonal subspace.
 
@@ -1229,7 +1253,11 @@ def plot_pair_lda_residual_pca_space(
         s=10,
         alpha=0.45,
         marker="o",
-        label=f"{background_label} (Background)",
+        label=(
+            f"{background_label} (Background)"
+            if annotate_roles
+            else background_label
+        ),
     )
     ax.scatter(
         lda_scores[num_background:],
@@ -1237,7 +1265,11 @@ def plot_pair_lda_residual_pca_space(
         s=18,
         alpha=0.65,
         marker="x",
-        label=f"{signal_label} (Signal)",
+        label=(
+            f"{signal_label} (Signal)"
+            if annotate_roles
+            else signal_label
+        ),
     )
     ax.set_xlabel("Fisher LDA1")
     ax.set_ylabel(
@@ -1251,6 +1283,72 @@ def plot_pair_lda_residual_pca_space(
     fig.tight_layout()
     fig.savefig(path, dpi=200, bbox_inches="tight")
     plt.close(fig)
+
+def plot_grouped_latent_space(
+    groups: Sequence[Tuple[str, np.ndarray, str]],
+    path: Path,
+    title: str,
+    seed: int,
+    max_points: int | None = None,
+) -> None:
+    """Plot multiple named latent groups in one jointly fitted PCA basis."""
+
+    rng = np.random.default_rng(seed)
+    prepared: List[Tuple[str, np.ndarray, str]] = []
+    for name, values, marker in groups:
+        values = np.asarray(values, dtype=np.float64)
+        if values.ndim != 2:
+            raise ValueError(f"Expected latent group {name!r} with shape (N, D).")
+        if len(values) == 0:
+            continue
+        if max_points is not None and len(values) > int(max_points):
+            indices = rng.choice(len(values), int(max_points), replace=False)
+            values = values[indices]
+        prepared.append((name, values, marker))
+
+    if len(prepared) < 2:
+        raise RuntimeError(
+            f"At least two non-empty groups are required for {path.name}."
+        )
+
+    latent_dims = {values.shape[1] for _, values, _ in prepared}
+    if len(latent_dims) != 1:
+        raise ValueError(f"Latent dimensions disagree across groups: {latent_dims}.")
+
+    combined = np.concatenate([values for _, values, _ in prepared], axis=0)
+    centered = combined - combined.mean(axis=0, keepdims=True)
+    _, singular_values, vh = np.linalg.svd(centered, full_matrices=False)
+    reduced = centered @ vh[:2].T
+    total_variance = np.square(singular_values).sum()
+    explained = (
+        np.square(singular_values[:2]) / total_variance
+        if total_variance > 0.0
+        else np.zeros(2, dtype=np.float64)
+    )
+
+    fig, ax = plt.subplots(figsize=(9, 7.5))
+    offset = 0
+    for name, values, marker in prepared:
+        stop = offset + len(values)
+        ax.scatter(
+            reduced[offset:stop, 0],
+            reduced[offset:stop, 1],
+            s=12 if marker == "o" else 18,
+            alpha=0.5 if marker == "o" else 0.65,
+            marker=marker,
+            label=name,
+        )
+        offset = stop
+
+    ax.set_xlabel(f"PC1 ({100.0 * explained[0]:.1f}% variance)")
+    ax.set_ylabel(f"PC2 ({100.0 * explained[1]:.1f}% variance)")
+    ax.set_title(title)
+    ax.grid(alpha=0.2)
+    ax.legend(loc="best", fontsize=8, frameon=True, markerscale=1.3)
+    fig.tight_layout()
+    fig.savefig(path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
 
 def plot_score_distribution(
     background: np.ndarray,
@@ -1389,12 +1487,11 @@ def main() -> None:
         max_num_particles_override=args.max_num_particles,
     )
 
-    backgrounds = list(summary["background_labels"])
-    signals = list(summary["signal_labels"])
-    backend.validate_requested_labels(backgrounds + signals)
-    overlap = sorted(set(backgrounds) & set(signals))
-    if overlap:
-        raise ValueError(f"Background and signal labels overlap: {overlap}")
+    backgrounds = list(dict.fromkeys(summary["background_labels"]))
+    signals = list(dict.fromkeys(summary.get("signal_labels", [])))
+    backend.validate_requested_labels(list(dict.fromkeys(backgrounds + signals)))
+    signal_was_configured = bool(signals)
+    signal_rotation = signals if signal_was_configured else list(backgrounds)
 
     def display_label(label: str) -> str:
         return label.removeprefix("label_")
@@ -1415,14 +1512,18 @@ def main() -> None:
         else summary.get("mahalanobis_cov_eps", 1e-4)
     )
     precision = str(summary.get("precision", "fp32"))
+    max_pair_points = int(summary.get("max_latent_plot_points", 5000))
 
     print(f"Dataset backend: {backend.dataset_name}")
     print(f"Dataset root: {backend.dataset_root}")
     print(f"Loading {checkpoint_path} on {device}")
     print(f"Sampling {steps} x {batch_size} events from each source stream")
     print(f"Full-jet density latent space: {args.full_latent_space}")
-    print(f"Background labels: {background_display_name}")
-    print(f"Signal labels: {signal_display_name}")
+    print(f"Training labels: {background_display_name}")
+    if signal_was_configured:
+        print(f"Visualization signal labels: {signal_display_name}")
+    else:
+        print("Visualization signal labels: none; rotating every training type")
     print(f"Dataset label axis: {backend.label_axis}")
     print("Particle feature order:")
     for index, name in enumerate(backend.feature_names):
@@ -1484,128 +1585,216 @@ def main() -> None:
         "pin_memory": device.type == "cuda",
     }
 
-    print("\nCollecting full-event latents from train, validation, and signal streams...")
-    train_mixed_z, train_mixed_y = collect_interleaved_full_latents(
-        model=model,
-        background_loader=backend.make_loader(
-            split_name="train",
-            labels=backgrounds,
-            seed=seed + 101,
-            **loader_common,
-        ),
-        signal_loader=backend.make_loader(
-            split_name="test",
-            labels=signals,
-            seed=seed + 301,
-            **loader_common,
-        ),
-        steps=steps,
-        device=device,
-        precision=precision,
-        description="Full latent: interleaved train background + signal",
-        background_labels=backgrounds,
-        signal_labels=signals,
-        combined_batch_size=batch_size,
-        seed=seed + 401,
-        latent_space=args.full_latent_space,
-    )
-    train_background_mask = labels_mask(
-        train_mixed_y,
-        backgrounds,
-        backend.label_axis,
-    )
-    train_z = train_mixed_z[train_background_mask]
-    train_y = train_mixed_y[train_background_mask]
-
-    validation_mixed_z, validation_mixed_y = collect_interleaved_full_latents(
-        model=model,
-        background_loader=backend.make_loader(
-            split_name="val",
-            labels=backgrounds,
-            seed=seed + 202,
-            **loader_common,
-        ),
-        signal_loader=backend.make_loader(
-            split_name="test",
-            labels=signals,
-            seed=seed + 302,
-            **loader_common,
-        ),
-        steps=steps,
-        device=device,
-        precision=precision,
-        description="Full latent: interleaved validation background + signal",
-        background_labels=backgrounds,
-        signal_labels=signals,
-        combined_batch_size=batch_size,
-        seed=seed + 402,
-        latent_space=args.full_latent_space,
-    )
-    validation_background_mask = labels_mask(
-        validation_mixed_y,
-        backgrounds,
-        backend.label_axis,
-    )
-    validation_signal_mask = labels_mask(
-        validation_mixed_y,
-        signals,
-        backend.label_axis,
-    )
-    val_z = validation_mixed_z[validation_background_mask]
-    val_y = validation_mixed_y[validation_background_mask]
-    signal_z = validation_mixed_z[validation_signal_mask]
-    signal_y = validation_mixed_y[validation_signal_mask]
-
-    for background_index, background in enumerate(backgrounds):
-        background_name = display_label(background)
-        background_pair_z = validation_mixed_z[
-            labels_mask(
-                validation_mixed_y,
-                [background],
-                backend.label_axis,
+    print("\nCollecting full-event latents...")
+    if signal_was_configured:
+        train_mixed_z, train_mixed_y, train_source_is_signal = (
+            collect_interleaved_full_latents(
+                model=model,
+                background_loader=backend.make_loader(
+                    split_name="train",
+                    labels=backgrounds,
+                    seed=seed + 101,
+                    **loader_common,
+                ),
+                signal_loader=backend.make_loader(
+                    split_name="test",
+                    labels=signals,
+                    seed=seed + 301,
+                    **loader_common,
+                ),
+                steps=steps,
+                device=device,
+                precision=precision,
+                description="Full latent: interleaved train types + signal test",
+                background_labels=backgrounds,
+                signal_labels=signals,
+                combined_batch_size=batch_size,
+                seed=seed + 401,
+                latent_space=args.full_latent_space,
             )
-        ]
-        max_pair_points = int(summary.get("max_latent_plot_points", 5000))
-        plot_pair_latent_space(
-            background=background_pair_z,
-            signal=signal_z,
-            background_label=background_name,
-            signal_label=signal_display_name,
-            path=(
-                output_dir
-                / f"01_pairwise_pca_{background_name.lower()}_vs_"
-                f"{signal_display_name.lower()}.png"
-            ),
-            seed=seed + 450 + background_index,
-            max_points=max_pair_points,
         )
-        plot_pair_lda_residual_pca_space(
-            background=background_pair_z,
-            signal=signal_z,
-            background_label=background_name,
-            signal_label=signal_display_name,
-            path=(
-                output_dir
-                / f"02_pairwise_lda_residual_pca_{background_name.lower()}_vs_"
-                f"{signal_display_name.lower()}.png"
-            ),
-            seed=seed + 550 + background_index,
-            cov_eps=cov_eps,
-            max_points=max_pair_points,
-        )
+        train_z = train_mixed_z[~train_source_is_signal]
+        train_y = train_mixed_y[~train_source_is_signal]
+        train_signal_z = train_mixed_z[train_source_is_signal]
+        train_signal_y = train_mixed_y[train_source_is_signal]
 
-    if len(train_z) == 0 or len(val_z) == 0 or len(signal_z) == 0:
+        validation_mixed_z, validation_mixed_y, val_source_is_signal = (
+            collect_interleaved_full_latents(
+                model=model,
+                background_loader=backend.make_loader(
+                    split_name="val",
+                    labels=backgrounds,
+                    seed=seed + 202,
+                    **loader_common,
+                ),
+                signal_loader=backend.make_loader(
+                    split_name="test",
+                    labels=signals,
+                    seed=seed + 302,
+                    **loader_common,
+                ),
+                steps=steps,
+                device=device,
+                precision=precision,
+                description="Full latent: interleaved validation types + signal test",
+                background_labels=backgrounds,
+                signal_labels=signals,
+                combined_batch_size=batch_size,
+                seed=seed + 402,
+                latent_space=args.full_latent_space,
+            )
+        )
+        val_z = validation_mixed_z[~val_source_is_signal]
+        val_y = validation_mixed_y[~val_source_is_signal]
+        val_signal_z = validation_mixed_z[val_source_is_signal]
+        val_signal_y = validation_mixed_y[val_source_is_signal]
+    else:
+        train_z, train_y = collect_full_latents(
+            model=model,
+            loader=backend.make_loader(
+                split_name="train",
+                labels=backgrounds,
+                seed=seed + 101,
+                **loader_common,
+            ),
+            steps=steps,
+            device=device,
+            precision=precision,
+            description="Full latent: all training types",
+            latent_space=args.full_latent_space,
+        )
+        val_z, val_y = collect_full_latents(
+            model=model,
+            loader=backend.make_loader(
+                split_name="val",
+                labels=backgrounds,
+                seed=seed + 202,
+                **loader_common,
+            ),
+            steps=steps,
+            device=device,
+            precision=precision,
+            description="Full latent: all validation types",
+            latent_space=args.full_latent_space,
+        )
+        train_signal_z = np.empty((0, train_z.shape[1]), dtype=train_z.dtype)
+        train_signal_y = np.empty((0, len(backend.label_axis)), dtype=train_y.dtype)
+        val_signal_z = np.empty((0, val_z.shape[1]), dtype=val_z.dtype)
+        val_signal_y = np.empty((0, len(backend.label_axis)), dtype=val_y.dtype)
+
+    if len(train_z) == 0 or len(val_z) == 0:
         raise RuntimeError(
-            "Interleaved latent collection produced an empty regrouped sample: "
-            f"train_background={len(train_z)}, "
-            f"validation_background={len(val_z)}, signal={len(signal_z)}."
+            f"Collected empty training/validation samples: train={len(train_z)}, "
+            f"validation={len(val_z)}."
         )
 
     print(
-        "Regrouped interleaved full latents: "
-        f"train background={len(train_z)}, "
-        f"validation background={len(val_z)}, signal={len(signal_z)}"
+        "Collected full latents: "
+        f"train={len(train_z)}, validation={len(val_z)}, "
+        f"train-context signal test={len(train_signal_z)}, "
+        f"validation-context signal test={len(val_signal_z)}"
     )
+
+    def all_type_groups(
+        base_z: np.ndarray,
+        base_y: np.ndarray,
+        base_role: str,
+        signal_z: np.ndarray,
+        signal_y: np.ndarray,
+    ) -> List[Tuple[str, np.ndarray, str]]:
+        groups: List[Tuple[str, np.ndarray, str]] = []
+        for label in backgrounds:
+            values = base_z[class_mask(base_y, label, backend.label_axis)]
+            name = display_label(label)
+            if signal_was_configured:
+                name += f" ({base_role})"
+            groups.append((name, values, "o"))
+        if signal_was_configured:
+            for label in signals:
+                values = signal_z[class_mask(signal_y, label, backend.label_axis)]
+                groups.append((f"{display_label(label)} (Signal Test)", values, "x"))
+        return groups
+
+    plot_grouped_latent_space(
+        groups=all_type_groups(
+            train_z, train_y, "Background Train", train_signal_z, train_signal_y
+        ),
+        path=output_dir / "01_all_type_train_pca.png",
+        title=(
+            "All-type train latent space with signal test"
+            if signal_was_configured
+            else "All-type train latent space"
+        ),
+        seed=seed + 430,
+        max_points=max_pair_points,
+    )
+    plot_grouped_latent_space(
+        groups=all_type_groups(
+            val_z, val_y, "Background Validation", val_signal_z, val_signal_y
+        ),
+        path=output_dir / "02_all_type_validation_pca.png",
+        title=(
+            "All-type validation latent space with signal test"
+            if signal_was_configured
+            else "All-type validation latent space"
+        ),
+        seed=seed + 440,
+        max_points=max_pair_points,
+    )
+
+    if signal_was_configured:
+        pair_specs = [
+            (background, signal)
+            for signal in signals
+            for background in backgrounds
+            if background != signal
+        ]
+    else:
+        pair_specs = [
+            (backgrounds[i], backgrounds[j])
+            for i in range(len(backgrounds))
+            for j in range(i + 1, len(backgrounds))
+        ]
+
+    for pair_index, (first_label, second_label) in enumerate(pair_specs):
+        first_name = display_label(first_label)
+        second_name = display_label(second_label)
+        first_z = val_z[class_mask(val_y, first_label, backend.label_axis)]
+        if signal_was_configured:
+            second_z = val_signal_z[
+                class_mask(val_signal_y, second_label, backend.label_axis)
+            ]
+        else:
+            second_z = val_z[class_mask(val_y, second_label, backend.label_axis)]
+
+        plot_pair_latent_space(
+            background=first_z,
+            signal=second_z,
+            background_label=first_name,
+            signal_label=second_name,
+            path=(
+                output_dir
+                / f"03_pairwise_pca_{first_name.lower()}_vs_{second_name.lower()}.png"
+            ),
+            seed=seed + 450 + pair_index,
+            max_points=max_pair_points,
+            annotate_roles=signal_was_configured,
+        )
+        plot_pair_lda_residual_pca_space(
+            background=first_z,
+            signal=second_z,
+            background_label=first_name,
+            signal_label=second_name,
+            path=(
+                output_dir
+                / f"04_pairwise_lda_residual_pca_{first_name.lower()}_vs_"
+                f"{second_name.lower()}.png"
+            ),
+            seed=seed + 550 + pair_index,
+            cov_eps=cov_eps,
+            max_points=max_pair_points,
+            annotate_roles=signal_was_configured,
+        )
 
     fit_idx, heldout_idx = stratified_split(
         train_y,
@@ -1614,112 +1803,183 @@ def main() -> None:
         args.fit_fraction,
         seed + 404,
     )
-    mean, precision_matrix, cov_diag = fit_mahalanobis(train_z[fit_idx], cov_eps)
-    fit_score = mahalanobis_scores(train_z[fit_idx], mean, precision_matrix)
-    heldout_score = mahalanobis_scores(train_z[heldout_idx], mean, precision_matrix)
-    val_score = mahalanobis_scores(val_z, mean, precision_matrix)
-    signal_score = mahalanobis_scores(signal_z, mean, precision_matrix)
 
-    combined = {
-        "auc_fit_subset_vs_signal": auc(fit_score, signal_score),
-        "auc_heldout_train_vs_signal": auc(heldout_score, signal_score),
-        "auc_validation_vs_signal": auc(val_score, signal_score),
-        "fit_background_scores": score_stats(fit_score),
-        "heldout_train_background_scores": score_stats(heldout_score),
-        "validation_background_scores": score_stats(val_score),
-        "signal_scores": score_stats(signal_score),
-        "covariance": cov_diag,
-    }
-    plot_comparison(
-        [
-            ("Held-out train", heldout_score, signal_score),
-            ("Validation", val_score, signal_score),
-        ],
-        "Mahalanobis ROC from a train-fit background Gaussian",
-        output_dir / "03_combined_mahalanobis_comparison.png",
-    )
-    print(
-        f"AUC fit={combined['auc_fit_subset_vs_signal']:.6f}, "
-        f"held-out={combined['auc_heldout_train_vs_signal']:.6f}, "
-        f"validation={combined['auc_validation_vs_signal']:.6f}"
-    )
-
-    print("\nPer-class centroid and Mahalanobis diagnostic")
-    per_class: Dict[str, Dict[str, object]] = {}
-    train_curves = []
-    validation_curves = []
-    for label in backgrounds:
-        name = display_label(label)
-        train_mask = class_mask(train_y, label, backend.label_axis)
-        val_mask = class_mask(val_y, label, backend.label_axis)
-        class_train_indices = np.flatnonzero(train_mask)
-        class_fit_idx = fit_idx[np.isin(fit_idx, class_train_indices)]
-        class_heldout_idx = heldout_idx[np.isin(heldout_idx, class_train_indices)]
-
-        class_mean, class_precision, class_cov_diag = fit_mahalanobis(
-            train_z[class_fit_idx], cov_eps
+    combined = None
+    if signal_was_configured:
+        mean, precision_matrix, cov_diag = fit_mahalanobis(
+            train_z[fit_idx], cov_eps
         )
-        class_fit_score = mahalanobis_scores(
-            train_z[class_fit_idx], class_mean, class_precision
+        fit_score = mahalanobis_scores(train_z[fit_idx], mean, precision_matrix)
+        heldout_score = mahalanobis_scores(
+            train_z[heldout_idx], mean, precision_matrix
         )
-        class_heldout_score = mahalanobis_scores(
-            train_z[class_heldout_idx], class_mean, class_precision
+        val_score = mahalanobis_scores(val_z, mean, precision_matrix)
+        train_signal_score = mahalanobis_scores(
+            train_signal_z, mean, precision_matrix
         )
-        class_val_score = mahalanobis_scores(
-            val_z[val_mask], class_mean, class_precision
-        )
-        class_signal_score = mahalanobis_scores(
-            signal_z, class_mean, class_precision
-        )
-
-        result = centroid_info(train_z[train_mask], val_z[val_mask])
-        result.update(
-            {
-                "auc_fit_subset_vs_signal": auc(class_fit_score, class_signal_score),
-                "auc_heldout_train_vs_signal": auc(
-                    class_heldout_score, class_signal_score
-                ),
-                "auc_validation_vs_signal": auc(class_val_score, class_signal_score),
-                "fit_background_scores": score_stats(class_fit_score),
-                "heldout_train_background_scores": score_stats(class_heldout_score),
-                "validation_background_scores": score_stats(class_val_score),
-                "signal_scores": score_stats(class_signal_score),
-                "covariance": class_cov_diag,
-            }
-        )
-        per_class[label] = result
-
+        val_signal_score = mahalanobis_scores(val_signal_z, mean, precision_matrix)
+        combined = {
+            "auc_fit_subset_vs_signal": auc(fit_score, train_signal_score),
+            "auc_heldout_train_vs_signal": auc(
+                heldout_score, train_signal_score
+            ),
+            "auc_validation_vs_signal": auc(val_score, val_signal_score),
+            "fit_background_scores": score_stats(fit_score),
+            "heldout_train_background_scores": score_stats(heldout_score),
+            "validation_background_scores": score_stats(val_score),
+            "train_context_signal_scores": score_stats(train_signal_score),
+            "validation_context_signal_scores": score_stats(val_signal_score),
+            "covariance": cov_diag,
+        }
         plot_comparison(
             [
-                ("Held-out train", class_heldout_score, class_signal_score),
-                ("Validation", class_val_score, class_signal_score),
+                ("Held-out train", heldout_score, train_signal_score),
+                ("Validation", val_score, val_signal_score),
             ],
-            f"{name}-specific Mahalanobis ROC",
-            output_dir / f"04_{name.lower()}_train_validation_comparison.png",
-        )
-        train_curves.append(
-            (f"{name} held-out train", class_heldout_score, class_signal_score)
-        )
-        validation_curves.append(
-            (f"{name} validation", class_val_score, class_signal_score)
+            "Mahalanobis ROC from an all-type train-fit Gaussian",
+            output_dir / "05_combined_mahalanobis_comparison.png",
         )
         print(
-            f"{name}: centroid shift="
-            f"{result['train_validation_centroid_l2_distance']:.6g}, "
-            f"AUC held-out={result['auc_heldout_train_vs_signal']:.6f}, "
-            f"validation={result['auc_validation_vs_signal']:.6f}"
+            f"Global AUC fit={combined['auc_fit_subset_vs_signal']:.6f}, "
+            f"held-out={combined['auc_heldout_train_vs_signal']:.6f}, "
+            f"validation={combined['auc_validation_vs_signal']:.6f}"
         )
 
-    plot_comparison(
-        train_curves,
-        "Class-specific held-out train Mahalanobis ROC",
-        output_dir / "05_per_class_train_comparison.png",
-    )
-    plot_comparison(
-        validation_curves,
-        "Class-specific validation Mahalanobis ROC",
-        output_dir / "06_per_class_validation_comparison.png",
-    )
+    centroids = {
+        label: centroid_info(
+            train_z[class_mask(train_y, label, backend.label_axis)],
+            val_z[class_mask(val_y, label, backend.label_axis)],
+        )
+        for label in backgrounds
+    }
+
+    print("\nRotating pairwise class-specific Mahalanobis diagnostics")
+    pairwise_results: Dict[str, Dict[str, Dict[str, object]]] = {}
+    for signal_index, signal_label in enumerate(signal_rotation):
+        signal_name = display_label(signal_label)
+        train_curves = []
+        validation_curves = []
+        per_background: Dict[str, Dict[str, object]] = {}
+
+        if signal_was_configured:
+            signal_train_values = train_signal_z[
+                class_mask(train_signal_y, signal_label, backend.label_axis)
+            ]
+            signal_val_values = val_signal_z[
+                class_mask(val_signal_y, signal_label, backend.label_axis)
+            ]
+        else:
+            signal_train_mask = class_mask(train_y, signal_label, backend.label_axis)
+            signal_train_indices = np.flatnonzero(signal_train_mask)
+            signal_train_heldout_idx = heldout_idx[
+                np.isin(heldout_idx, signal_train_indices)
+            ]
+            signal_train_values = train_z[signal_train_heldout_idx]
+            signal_val_values = val_z[
+                class_mask(val_y, signal_label, backend.label_axis)
+            ]
+
+        if len(signal_train_values) == 0 or len(signal_val_values) == 0:
+            raise RuntimeError(
+                f"No signal-rotation samples collected for {signal_label}."
+            )
+
+        for background_label in backgrounds:
+            if background_label == signal_label:
+                continue
+            background_name = display_label(background_label)
+            train_mask = class_mask(train_y, background_label, backend.label_axis)
+            val_mask = class_mask(val_y, background_label, backend.label_axis)
+            class_train_indices = np.flatnonzero(train_mask)
+            class_fit_idx = fit_idx[np.isin(fit_idx, class_train_indices)]
+            class_heldout_idx = heldout_idx[
+                np.isin(heldout_idx, class_train_indices)
+            ]
+
+            class_mean, class_precision, class_cov_diag = fit_mahalanobis(
+                train_z[class_fit_idx], cov_eps
+            )
+            class_fit_score = mahalanobis_scores(
+                train_z[class_fit_idx], class_mean, class_precision
+            )
+            class_heldout_score = mahalanobis_scores(
+                train_z[class_heldout_idx], class_mean, class_precision
+            )
+            class_val_score = mahalanobis_scores(
+                val_z[val_mask], class_mean, class_precision
+            )
+            train_signal_score = mahalanobis_scores(
+                signal_train_values, class_mean, class_precision
+            )
+            val_signal_score = mahalanobis_scores(
+                signal_val_values, class_mean, class_precision
+            )
+
+            result = {
+                "auc_fit_subset_vs_train_signal": auc(
+                    class_fit_score, train_signal_score
+                ),
+                "auc_heldout_train_vs_train_signal": auc(
+                    class_heldout_score, train_signal_score
+                ),
+                "auc_validation_vs_validation_signal": auc(
+                    class_val_score, val_signal_score
+                ),
+                "fit_background_scores": score_stats(class_fit_score),
+                "heldout_train_background_scores": score_stats(
+                    class_heldout_score
+                ),
+                "validation_background_scores": score_stats(class_val_score),
+                "train_signal_scores": score_stats(train_signal_score),
+                "validation_signal_scores": score_stats(val_signal_score),
+                "covariance": class_cov_diag,
+                "centroid": centroids[background_label],
+            }
+            per_background[background_label] = result
+
+            plot_comparison(
+                [
+                    ("Held-out train", class_heldout_score, train_signal_score),
+                    ("Validation", class_val_score, val_signal_score),
+                ],
+                f"{background_name}-specific Mahalanobis ROC vs {signal_name}",
+                output_dir
+                / f"06_{background_name.lower()}_vs_{signal_name.lower()}_"
+                "train_validation_comparison.png",
+            )
+            train_curves.append(
+                (
+                    f"{background_name} held-out train",
+                    class_heldout_score,
+                    train_signal_score,
+                )
+            )
+            validation_curves.append(
+                (
+                    f"{background_name} validation",
+                    class_val_score,
+                    val_signal_score,
+                )
+            )
+            print(
+                f"signal={signal_name}, background={background_name}: "
+                f"train AUC={result['auc_heldout_train_vs_train_signal']:.6f}, "
+                f"validation AUC="
+                f"{result['auc_validation_vs_validation_signal']:.6f}"
+            )
+
+        pairwise_results[signal_label] = per_background
+        plot_comparison(
+            train_curves,
+            f"Multi-class held-out train ROC with {signal_name} as signal",
+            output_dir / f"07_multiclass_train_signal_{signal_name.lower()}.png",
+        )
+        plot_comparison(
+            validation_curves,
+            f"Multi-class validation ROC with {signal_name} as signal",
+            output_dir
+            / f"08_multiclass_validation_signal_{signal_name.lower()}.png",
+        )
 
     results = {
         "run_dir": str(run_dir),
@@ -1745,17 +2005,30 @@ def main() -> None:
             "seed": seed,
             "max_num_particles": backend.max_num_particles,
         },
-        "labels": {"background": backgrounds, "signal": signals},
+        "labels": {
+            "background": backgrounds,
+            "signal": signals,
+            "effective_signal_rotation": signal_rotation,
+        },
+        "signal_was_configured": signal_was_configured,
         "full_latent_space": args.full_latent_space,
         "sample_counts": {
             "background_train_total": int(len(train_z)),
             "background_train_fit": int(len(fit_idx)),
             "background_train_heldout": int(len(heldout_idx)),
             "background_validation_total": int(len(val_z)),
-            "signal_total": int(len(signal_z)),
+            "signal_total": int(len(val_signal_z)),
+            "train_context_signal_test_total": int(len(train_signal_z)),
+            "validation_context_signal_test_total": int(len(val_signal_z)),
         },
         "combined_mahalanobis": combined,
-        "per_class": per_class,
+        "per_class": (
+            pairwise_results[signals[0]]
+            if len(signals) == 1
+            else pairwise_results
+        ),
+        "centroids": centroids,
+        "pairwise_mahalanobis_by_signal": pairwise_results,
     }
     with (output_dir / "diagnostic_results.json").open("w") as handle:
         json.dump(safe_json(results), handle, indent=2)

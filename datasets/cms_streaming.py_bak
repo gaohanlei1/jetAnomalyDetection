@@ -1,8 +1,4 @@
-"""CMS DeepNTuplizer AK8 reader and DDP-safe streaming dataset (dzsig variant).
-
-Copy of ``cms_streaming.py`` with ``Cpfcan_dzsig`` / ``log_Cpfcan_dzsig`` added
-to the model-facing feature schema for MC / future real data that includes the
-ROOT ``Cpfcan_dzsig`` branch. The original ``cms_streaming.py`` is unchanged.
+"""CMS DeepNTuplizer AK8 reader and DDP-safe streaming dataset.
 
 The public ``read_file`` API mirrors the JetClass loader: it returns padded
 particle features with shape ``(events, features, particles)``, jet features,
@@ -43,8 +39,7 @@ CMS_PARTICLE_FEATURES = [
     "part_dphi",
     "Cpfcan_dxysig",
     "log_Cpfcan_dxysig",
-    "Cpfcan_dzsig",
-    "log_Cpfcan_dzsig",
+    "Cpfcan_dz",
     "part_charge",
     "part_isChargedHadron",
     "part_isNeutralHadron",
@@ -57,8 +52,7 @@ CMS_BATCH_NORMALIZED_FEATURES = [
     "log_pt_fraction",
     "Cpfcan_dxysig",
     "log_Cpfcan_dxysig",
-    "Cpfcan_dzsig",
-    "log_Cpfcan_dzsig",
+    "Cpfcan_dz",
 ]
 
 CMS_DEFAULT_PARTICLE_FEATURES = list(CMS_PARTICLE_FEATURES)
@@ -83,8 +77,7 @@ CMS_FEATURE_SOURCES = {
     "part_dphi": "concatenate(Cpfcan_phirel, Npfcan_phirel)",
     "Cpfcan_dxysig": "ROOT Cpfcan_dxysig branch; neutral=0; no extra clipping",
     "log_Cpfcan_dxysig": "log(clip(Cpfcan_dxysig, 1e-8)); neutral=0",
-    "Cpfcan_dzsig": "ROOT Cpfcan_dzsig branch; neutral=0; no extra clipping",
-    "log_Cpfcan_dzsig": "log(clip(Cpfcan_dzsig, 1e-8)); neutral=0",
+    "Cpfcan_dz": "raw ROOT Cpfcan_dz branch; neutral=0",
     "part_charge": "Cpfcan_charge; neutral=0",
     "part_isChargedHadron": "abs(merged PDG ID) == 211",
     "part_isNeutralHadron": "abs(merged PDG ID) == 130",
@@ -151,7 +144,7 @@ _BRANCH_ALIASES: Dict[str, Tuple[str, ...]] = {
     "Cpfcan_charge": ("Cpfcan_charge",),
     "Cpfcan_pdg": ("Cpfcan_pdg",),
     "Cpfcan_dxysig": ("Cpfcan_dxysig",),
-    "Cpfcan_dzsig": ("Cpfcan_dzsig",),
+    "Cpfcan_dz": ("Cpfcan_dz",),
     "Cpfcan_px": ("Cpfcan_px",),
     "Cpfcan_py": ("Cpfcan_py",),
     "Cpfcan_pz": ("Cpfcan_pz",),
@@ -176,7 +169,7 @@ _REQUIRED_PARTICLE_BRANCHES = (
     "Cpfcan_charge",
     "Cpfcan_pdg",
     "Cpfcan_dxysig",
-    "Cpfcan_dzsig",
+    "Cpfcan_dz",
     "Cpfcan_px",
     "Cpfcan_py",
     "Cpfcan_pz",
@@ -297,12 +290,9 @@ def _build_particle_table(
     part_energy = ak.concatenate([arrays["Cpfcan_e"], arrays["Npfcan_e"]], axis=1)
 
     dxysig_charged = ak.values_astype(arrays["Cpfcan_dxysig"], "float32")
-    dzsig_charged = ak.values_astype(arrays["Cpfcan_dzsig"], "float32")
+    dz_charged = ak.values_astype(arrays["Cpfcan_dz"], "float32")
     log_dxysig_charged = np.log(
         ak.where(dxysig_charged > eps, dxysig_charged, eps)
-    )
-    log_dzsig_charged = np.log(
-        ak.where(dzsig_charged > eps, dzsig_charged, eps)
     )
 
     dxysig = ak.concatenate(
@@ -311,11 +301,8 @@ def _build_particle_table(
     log_dxysig = ak.concatenate(
         [log_dxysig_charged, ak.zeros_like(neutral_pt_abs)], axis=1
     )
-    dzsig = ak.concatenate(
-        [dzsig_charged, ak.zeros_like(neutral_pt_abs)], axis=1
-    )
-    log_dzsig = ak.concatenate(
-        [log_dzsig_charged, ak.zeros_like(neutral_pt_abs)], axis=1
+    raw_dz = ak.concatenate(
+        [dz_charged, ak.zeros_like(neutral_pt_abs)], axis=1
     )
     log_pt_fraction = np.log(ak.where(part_pt > eps, part_pt, eps))
 
@@ -330,8 +317,7 @@ def _build_particle_table(
         "part_dphi": part_dphi,
         "Cpfcan_dxysig": dxysig,
         "log_Cpfcan_dxysig": log_dxysig,
-        "Cpfcan_dzsig": dzsig,
-        "log_Cpfcan_dzsig": log_dzsig,
+        "Cpfcan_dz": raw_dz,
         "part_charge": part_charge,
         "part_isChargedHadron": ak.values_astype(abs(part_pdg) == 211, "float32"),
         "part_isNeutralHadron": ak.values_astype(abs(part_pdg) == 130, "float32"),
@@ -479,8 +465,7 @@ def read_file(
         & np.isfinite(table["part_dphi"])
         & np.isfinite(table["Cpfcan_dxysig"])
         & np.isfinite(table["log_Cpfcan_dxysig"])
-        & np.isfinite(table["Cpfcan_dzsig"])
-        & np.isfinite(table["log_Cpfcan_dzsig"])
+        & np.isfinite(table["Cpfcan_dz"])
         & np.isfinite(table["part_charge"])
     )
     if particle_dr_max is not None:
