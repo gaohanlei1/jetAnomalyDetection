@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --nodes=1               # node count
-#SBATCH --nodelist=gpu3106      # the L40S GPU!! 3001-3005, 3101-3106, 2708 are L40S
+# SBATCH --nodelist=gpu3106      # the L40S GPU!! 3001-3005, 3101-3106, 2708 are L40S
 #SBATCH -p gpu --gres=gpu:1     # number of gpus per node
 #SBATCH --ntasks-per-node=1     # total number of tasks across all nodes
 #SBATCH --cpus-per-task=6       # cpu-cores per task (>1 if multi-threaded tasks)
@@ -85,55 +85,55 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #     --shuffle-active-shards 4 \
 #     --output-dir "plots/quickrun/all-cms-mc"
 
-# python -u \
-#     scripts/diagnose_lejepa_latents.py \
-#     "plots/quickrun/all-cms-mc"
-
-
-python -u \
-    scripts/run_train_lejepa_part.py \
-    --dataset jetclass \
-    --dataset-root "/HEP/export/home/lwang223/JetClass/JetClass/Pythia" \
-    --model semi-sup-triplet \
-    --background-labels "label_QCD,label_Hbb,label_Hcc,label_Hgg,label_Wqq,label_H4q,label_Hqql,label_Zqq,label_Tbqq,label_Tbl" \
-    --signal-labels "label_QCD,label_Hbb,label_Hcc,label_Hgg,label_Wqq,label_H4q,label_Hqql,label_Zqq,label_Tbqq,label_Tbl" \
-    --embed-dim 32 \
-    --representation-dim 32 \
-    --dropout 0.01 \
-    --num-layers 4 \
-    --num-heads 8 \
-    --batch-size 128 \
-    --steps-per-epoch 4000 \
-    --val-steps 100 \
-    --eval-steps 100 \
-    --epochs 40 \
-    --learning-rate 1e-3 \
-    --weight-decay 5e-2 \
-    --precision bf16 \
-    --num-global-views 2 \
-    --num-local-views 4 \
-    --num-negative-views 4 \
-    --batch-mix-prob 0.4 \
-    --pt-resample-prob 0.25 \
-    --node-deta-dphi-rotation-prob 0.1 \
-    --deta-dphi-shuffle-prob 0.1 \
-    --identity-shuffle-prob 0.15 \
-    --global-drop-pt-frac-min 0.0 \
-    --global-drop-pt-frac-max 0.3 \
-    --local-drop-pt-frac-min 0.3 \
-    --local-drop-pt-frac-max 0.75 \
-    --batch-mix-anchor-frac-min 0.4 \
-    --batch-mix-anchor-frac-max 0.6 \
-    --anomaly-score mahalanobis \
-    --pairwise-hidden-dim 32 \
-    --triplet-weight 0.1 \
-    --triplet-margin 0.2 \
-    --classification-weight 0.1 \
-    --num-workers 3 \
-    --prefetch-factor 2 \
-    --shuffle-active-shards 4 \
-    --output-dir "plots/quickrun/all-jetclass"
-
 python -u \
     scripts/diagnose_lejepa_latents.py \
-    "plots/quickrun/all-jetclass"
+    "plots/quickrun/all-cms-mc"
+
+
+# python -u \
+#     scripts/run_train_lejepa_part.py \
+#     --dataset jetclass \
+#     --dataset-root "/HEP/export/home/lwang223/JetClass/JetClass/Pythia" \
+#     --model semi-sup-triplet \
+#     --background-labels "label_QCD,label_Hbb,label_Hcc,label_Hgg,label_Wqq,label_H4q,label_Hqql,label_Zqq,label_Tbqq,label_Tbl" \
+#     --signal-labels "label_QCD,label_Hbb,label_Hcc,label_Hgg,label_Wqq,label_H4q,label_Hqql,label_Zqq,label_Tbqq,label_Tbl" \
+#     --embed-dim 32 \
+#     --representation-dim 32 \
+#     --dropout 0.01 \
+#     --num-layers 4 \
+#     --num-heads 8 \
+#     --batch-size 128 \
+#     --steps-per-epoch 4000 \
+#     --val-steps 100 \
+#     --eval-steps 100 \
+#     --epochs 40 \
+#     --learning-rate 1e-3 \
+#     --weight-decay 5e-2 \
+#     --precision bf16 \
+#     --num-global-views 2 \
+#     --num-local-views 4 \
+#     --num-negative-views 4 \
+#     --batch-mix-prob 0.4 \
+#     --pt-resample-prob 0.25 \
+#     --node-deta-dphi-rotation-prob 0.1 \
+#     --deta-dphi-shuffle-prob 0.1 \
+#     --identity-shuffle-prob 0.15 \
+#     --global-drop-pt-frac-min 0.0 \
+#     --global-drop-pt-frac-max 0.3 \
+#     --local-drop-pt-frac-min 0.3 \
+#     --local-drop-pt-frac-max 0.75 \
+#     --batch-mix-anchor-frac-min 0.4 \
+#     --batch-mix-anchor-frac-max 0.6 \
+#     --anomaly-score mahalanobis \
+#     --pairwise-hidden-dim 32 \
+#     --triplet-weight 0.1 \
+#     --triplet-margin 0.2 \
+#     --classification-weight 0.1 \
+#     --num-workers 3 \
+#     --prefetch-factor 2 \
+#     --shuffle-active-shards 4 \
+#     --output-dir "plots/quickrun/all-jetclass"
+
+# python -u \
+#     scripts/diagnose_lejepa_latents.py \
+#     "plots/quickrun/all-jetclass"

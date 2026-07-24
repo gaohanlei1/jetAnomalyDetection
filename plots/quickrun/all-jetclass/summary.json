@@ -45,9 +45,9 @@
   "last_model_path": "plots/quickrun/all-jetclass/last_model.pth",
   "best_checkpoint_path": "plots/quickrun/all-jetclass/best_checkpoint.pt",
   "last_checkpoint_path": "plots/quickrun/all-jetclass/last_checkpoint.pt",
-  "status": "training",
-  "current_epoch": 1,
-  "completed_epochs": 1,
+  "status": "completed",
+  "current_epoch": 40,
+  "completed_epochs": 40,
   "dataset_root": "/HEP/export/home/lwang223/JetClass/JetClass/Pythia",
   "background_labels": [
     "label_QCD",
@@ -145,26 +145,26 @@
   "base_seed": 42,
   "device": "cuda",
   "warmup_steps": 40000,
-  "current_learning_rate": 0.000100025,
-  "best_val_loss": 2.034286209344864,
-  "final_val_loss": 2.034286209344864,
+  "current_learning_rate": 1e-06,
+  "best_val_loss": 0.4960164052248001,
+  "final_val_loss": 0.4960164052248001,
   "latest_train_losses": {
-    "total_loss": 5.327050373613835,
-    "invariant_loss": 0.48599856304901184,
-    "sigreg_loss": 92.3205,
-    "triplet_loss": 0.0848140346123837,
-    "triplet_pos_distance": 0.10072263305739033,
-    "triplet_neg_distance": 0.4605378084303811,
-    "classification_loss": 2.167911093354225
+    "total_loss": 0.5069699252173304,
+    "invariant_loss": 0.129872233081609,
+    "sigreg_loss": 5.91111328125,
+    "triplet_loss": 0.008263136570574715,
+    "triplet_pos_distance": 0.02547205821494572,
+    "triplet_neg_distance": 1.0089258264899255,
+    "classification_loss": 0.8071619869023562
   },
   "latest_val_losses": {
-    "total_loss": 2.034286209344864,
-    "invariant_loss": 0.43228178560733793,
-    "sigreg_loss": 28.3425,
-    "triplet_loss": 0.038600606117397546,
-    "triplet_pos_distance": 0.08045643981546163,
-    "triplet_neg_distance": 0.703389647603035,
-    "classification_loss": 1.8080059146881104
+    "total_loss": 0.4960164052248001,
+    "invariant_loss": 0.09954077586531639,
+    "sigreg_loss": 6.316875,
+    "triplet_loss": 0.008710459773428738,
+    "triplet_pos_distance": 0.013213301650248468,
+    "triplet_neg_distance": 0.9872093498706818,
+    "classification_loss": 0.7982332527637481
   },
   "distributed": false,
   "train_infinite_stream": true,
@@ -194,5 +194,5 @@
   "num_classification_classes": 10,
   "total_training_steps": 160000,
   "resumed_from_epoch": 0,
-  "global_step": 4000
+  "global_step": 160000
 }

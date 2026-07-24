@@ -65,7 +65,8 @@ CMS_DEFAULT_BATCH_STANDARDIZED_FEATURES = (
     "log_pt_fraction",
     "Cpfcan_dxysig",
     "log_Cpfcan_dxysig",
-    "Cpfcan_dz",
+    "Cpfcan_dzsig",
+    "log_Cpfcan_dzsig",
 )
 
 
@@ -513,7 +514,16 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Defaults to the saved per-rank batch size.",
     )
-    parser.add_argument("--num-workers", type=int, default=None)
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=None,
+        help=(
+            "Accepted for command-line compatibility. Diagnostic DataLoaders "
+            "always use exactly one worker so CMS production-family sampling "
+            "has the same deterministic ownership for train, validation, and test."
+        ),
+    )
     parser.add_argument("--device", type=str, default="auto")
     parser.add_argument("--fit-fraction", type=float, default=0.5)
     parser.add_argument(
@@ -677,7 +687,7 @@ def build_model(
         ),
         dz_sig_index=_feature_index(
             features,
-            ("dz_sig", "Cpfcan_dz"),
+            ("dz_sig", "Cpfcan_dzsig"),
             "part_charge",
         ),
         charge_index=features.index("part_charge"),
@@ -1503,9 +1513,13 @@ def main() -> None:
         args.batch_size
         or summary.get("per_rank_batch_size", summary.get("batch_size", 128))
     )
-    num_workers = int(
-        summary.get("num_workers", 4) if args.num_workers is None else args.num_workers
-    )
+    num_workers = 1
+    if args.num_workers not in (None, 1):
+        warnings.warn(
+            f"Ignoring --num-workers={args.num_workers}; latent diagnostics "
+            "always use num_workers=1.",
+            RuntimeWarning,
+        )
     cov_eps = float(
         args.mahalanobis_cov_eps
         if args.mahalanobis_cov_eps is not None
@@ -1587,67 +1601,60 @@ def main() -> None:
 
     print("\nCollecting full-event latents...")
     if signal_was_configured:
-        train_mixed_z, train_mixed_y, train_source_is_signal = (
-            collect_interleaved_full_latents(
-                model=model,
-                background_loader=backend.make_loader(
-                    split_name="train",
-                    labels=backgrounds,
-                    seed=seed + 101,
-                    **loader_common,
-                ),
-                signal_loader=backend.make_loader(
-                    split_name="test",
-                    labels=signals,
-                    seed=seed + 301,
-                    **loader_common,
-                ),
-                steps=steps,
-                device=device,
-                precision=precision,
-                description="Full latent: interleaved train types + signal test",
-                background_labels=backgrounds,
-                signal_labels=signals,
-                combined_batch_size=batch_size,
-                seed=seed + 401,
-                latent_space=args.full_latent_space,
-            )
+        # Collect each source independently. The current model uses frozen
+        # evaluation-time feature statistics, so background and signal events
+        # do not need to share a forward batch. Most importantly, the signal
+        # test latent sample is collected exactly once and reused for every
+        # train/validation comparison.
+        train_z, train_y = collect_full_latents(
+            model=model,
+            loader=backend.make_loader(
+                split_name="train",
+                labels=backgrounds,
+                seed=seed + 101,
+                **loader_common,
+            ),
+            steps=steps,
+            device=device,
+            precision=precision,
+            description="Full latent: background train",
+            latent_space=args.full_latent_space,
         )
-        train_z = train_mixed_z[~train_source_is_signal]
-        train_y = train_mixed_y[~train_source_is_signal]
-        train_signal_z = train_mixed_z[train_source_is_signal]
-        train_signal_y = train_mixed_y[train_source_is_signal]
+        val_z, val_y = collect_full_latents(
+            model=model,
+            loader=backend.make_loader(
+                split_name="val",
+                labels=backgrounds,
+                seed=seed + 202,
+                **loader_common,
+            ),
+            steps=steps,
+            device=device,
+            precision=precision,
+            description="Full latent: background validation",
+            latent_space=args.full_latent_space,
+        )
+        signal_test_z, signal_test_y = collect_full_latents(
+            model=model,
+            loader=backend.make_loader(
+                split_name="test",
+                labels=signals,
+                seed=seed + 301,
+                **loader_common,
+            ),
+            steps=steps,
+            device=device,
+            precision=precision,
+            description="Full latent: shared signal test",
+            latent_space=args.full_latent_space,
+        )
 
-        validation_mixed_z, validation_mixed_y, val_source_is_signal = (
-            collect_interleaved_full_latents(
-                model=model,
-                background_loader=backend.make_loader(
-                    split_name="val",
-                    labels=backgrounds,
-                    seed=seed + 202,
-                    **loader_common,
-                ),
-                signal_loader=backend.make_loader(
-                    split_name="test",
-                    labels=signals,
-                    seed=seed + 302,
-                    **loader_common,
-                ),
-                steps=steps,
-                device=device,
-                precision=precision,
-                description="Full latent: interleaved validation types + signal test",
-                background_labels=backgrounds,
-                signal_labels=signals,
-                combined_batch_size=batch_size,
-                seed=seed + 402,
-                latent_space=args.full_latent_space,
-            )
-        )
-        val_z = validation_mixed_z[~val_source_is_signal]
-        val_y = validation_mixed_y[~val_source_is_signal]
-        val_signal_z = validation_mixed_z[val_source_is_signal]
-        val_signal_y = validation_mixed_y[val_source_is_signal]
+        # Keep the historical variable names used by the plotting and scoring
+        # code, but point both contexts to the exact same arrays.
+        train_signal_z = signal_test_z
+        train_signal_y = signal_test_y
+        val_signal_z = signal_test_z
+        val_signal_y = signal_test_y
     else:
         train_z, train_y = collect_full_latents(
             model=model,
@@ -1691,8 +1698,7 @@ def main() -> None:
     print(
         "Collected full latents: "
         f"train={len(train_z)}, validation={len(val_z)}, "
-        f"train-context signal test={len(train_signal_z)}, "
-        f"validation-context signal test={len(val_signal_z)}"
+        f"shared signal test={len(train_signal_z)}"
     )
 
     def all_type_groups(
@@ -2017,7 +2023,10 @@ def main() -> None:
             "background_train_fit": int(len(fit_idx)),
             "background_train_heldout": int(len(heldout_idx)),
             "background_validation_total": int(len(val_z)),
-            "signal_total": int(len(val_signal_z)),
+            "signal_total": int(len(train_signal_z)),
+            "shared_signal_test_total": int(len(train_signal_z)),
+            # Retained for compatibility with older result consumers. Both
+            # values now refer to the same shared signal-test sample.
             "train_context_signal_test_total": int(len(train_signal_z)),
             "validation_context_signal_test_total": int(len(val_signal_z)),
         },
