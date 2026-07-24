@@ -1063,6 +1063,7 @@ class TrainLeJEPAParticleTransformer:
             "batch_standardized_particle_features": list(
                 self.batch_normalized_feature_names
             ),
+            "full_event_latent_space": "representation",
         }
 
     def build_model(self) -> None:
@@ -1368,7 +1369,11 @@ class TrainLeJEPAParticleTransformer:
         return_labels: bool = False,
     ):
         """
-        Compute full-jet representations without augmentation/crop/drop.
+        Compute full-jet LeJEPA representations without augmentation/crop/drop.
+
+        The full-event CLS state is always passed through ``representation_head``
+        so ROC evaluation uses the same representation space optimized by the
+        LeJEPA, SIGReg, and triplet objectives.
 
         When ``return_labels=True``, also return the original dataset one-hot
         labels gathered in exactly the same event order as the latent tensor.
@@ -1397,10 +1402,11 @@ class TrainLeJEPAParticleTransformer:
                 dtype=dtype,
                 enabled=use_autocast,
             ):
-                z = self.model_core(
+                cls = self.model_core(
                     x_particles,
                     padding_mask=padding_mask,
                 )
+                z = self.model_core.representation_head(cls)
 
             latents.append(z.detach().float().cpu())
             if return_labels:
@@ -1735,8 +1741,18 @@ class TrainLeJEPAParticleTransformer:
         background_train_loader,
         background_val_loader,
         signal_loader,
-    ):
-        """Fit one all-training-type Gaussian and retain labels for regrouping."""
+    ) -> Dict[str, Dict[str, Dict[str, float]]]:
+        """Fit one Gaussian per background class and compute pairwise AUCs.
+
+        For each configured background class, all collected training events of
+        that class are used to fit its own Gaussian. The resulting class-specific
+        Mahalanobis score is then evaluated on:
+
+            train AUC: that background's train events vs test-split signal events
+            val AUC:   that background's val events vs test-split signal events
+
+        No train/held-out subdivision is introduced here.
+        """
 
         bg_train_latents, bg_train_labels = self.collect_representations(
             background_train_loader,
@@ -1751,15 +1767,82 @@ class TrainLeJEPAParticleTransformer:
             return_labels=True,
         )
 
-        mean, precision = self.fit_mahalanobis_background(bg_train_latents.numpy())
-        return (
-            self.mahalanobis_scores(bg_train_latents.numpy(), mean, precision),
-            bg_train_labels,
-            self.mahalanobis_scores(bg_val_latents.numpy(), mean, precision),
-            bg_val_labels,
-            self.mahalanobis_scores(signal_latents.numpy(), mean, precision),
-            signal_labels,
-        )
+        # Every rank must participate in the representation gathers above, but
+        # only rank 0 needs to perform the NumPy fitting and ROC bookkeeping.
+        if not self.is_main_process:
+            return {}
+
+        bg_train_latents_np = bg_train_latents.numpy()
+        bg_val_latents_np = bg_val_latents.numpy()
+        signal_latents_np = signal_latents.numpy()
+        bg_train_ids = self._dataset_label_ids(bg_train_labels.numpy())
+        bg_val_ids = self._dataset_label_ids(bg_val_labels.numpy())
+        signal_ids = self._dataset_label_ids(signal_labels.numpy())
+
+        results: Dict[str, Dict[str, Dict[str, float]]] = {
+            signal_label: {} for signal_label in self.signal_labels
+        }
+
+        for background_label in self.background_labels:
+            background_index = self.dataset_label_axis.index(background_label)
+            train_mask = bg_train_ids == background_index
+            val_mask = bg_val_ids == background_index
+
+            num_train = int(np.count_nonzero(train_mask))
+            num_val = int(np.count_nonzero(val_mask))
+            if num_train < 2 or num_val == 0:
+                warnings.warn(
+                    "Skipping an insufficient class-specific Mahalanobis sample: "
+                    f"background={background_label}, train={num_train}, "
+                    f"val={num_val}."
+                )
+                continue
+
+            # Fit this background class independently using all of its collected
+            # train events. This intentionally preserves the existing in-sample
+            # definition of the plotted train AUC.
+            mean, precision = self.fit_mahalanobis_background(
+                bg_train_latents_np[train_mask]
+            )
+            background_train_scores = self.mahalanobis_scores(
+                bg_train_latents_np[train_mask],
+                mean,
+                precision,
+            )
+            background_val_scores = self.mahalanobis_scores(
+                bg_val_latents_np[val_mask],
+                mean,
+                precision,
+            )
+            all_signal_scores = self.mahalanobis_scores(
+                signal_latents_np,
+                mean,
+                precision,
+            )
+
+            for signal_label in self.signal_labels:
+                signal_index = self.dataset_label_axis.index(signal_label)
+                signal_mask = signal_ids == signal_index
+                if not np.any(signal_mask):
+                    warnings.warn(
+                        "No test events were collected for signal label "
+                        f"{signal_label!r}."
+                    )
+                    continue
+
+                signal_scores = all_signal_scores[signal_mask]
+                results[signal_label][background_label] = {
+                    "train": self.compute_auc(
+                        background_train_scores,
+                        signal_scores,
+                    ),
+                    "val": self.compute_auc(
+                        background_val_scores,
+                        signal_scores,
+                    ),
+                }
+
+        return results
 
     @torch.no_grad()
     def compute_local_global_anomaly_scores(
@@ -1826,10 +1909,19 @@ class TrainLeJEPAParticleTransformer:
         score_fn,
         score_name,
     ) -> Dict[str, Dict[str, Dict[str, float]]]:
-        """Compute pairwise AUCs after regrouping one globally scored sample."""
+        """Compute pairwise AUCs for the configured anomaly score.
+
+        Mahalanobis fitting is class-specific and is completed directly inside
+        ``compute_mahalanobis_anomaly_scores`` because each background class
+        defines a different score for the same signal events. Local-global scores
+        remain class-independent and are regrouped below by dataset label.
+        """
 
         if sg_loader is None or not self.signal_labels:
             return {}
+
+        if score_name == "mahalanobis":
+            return score_fn(bg_train_loader, bg_val_loader, sg_loader)
 
         (
             background_train_scores,
@@ -1932,6 +2024,7 @@ class TrainLeJEPAParticleTransformer:
             "batch_standardized_particle_features": list(
                 self.batch_normalized_feature_names
             ),
+            "full_event_latent_space": "representation",
             "background_train_root_shards": len(self.bg_train_dataset.filepaths),
             "background_val_root_shards": len(self.bg_val_dataset.filepaths),
             "background_test_root_shards": len(self.bg_test_dataset.filepaths),

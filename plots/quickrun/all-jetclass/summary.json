@@ -46,8 +46,8 @@
   "best_checkpoint_path": "plots/quickrun/all-jetclass/best_checkpoint.pt",
   "last_checkpoint_path": "plots/quickrun/all-jetclass/last_checkpoint.pt",
   "status": "training",
-  "current_epoch": 0,
-  "completed_epochs": 0,
+  "current_epoch": 1,
+  "completed_epochs": 1,
   "dataset_root": "/HEP/export/home/lwang223/JetClass/JetClass/Pythia",
   "background_labels": [
     "label_QCD",
@@ -97,6 +97,7 @@
     "d0_sig",
     "dz_sig"
   ],
+  "full_event_latent_space": "representation",
   "background_train_root_shards": 1000,
   "background_val_root_shards": 50,
   "background_test_root_shards": 200,
@@ -144,11 +145,27 @@
   "base_seed": 42,
   "device": "cuda",
   "warmup_steps": 40000,
-  "current_learning_rate": 2.5000000000000002e-08,
-  "best_val_loss": null,
-  "final_val_loss": null,
-  "latest_train_losses": null,
-  "latest_val_losses": null,
+  "current_learning_rate": 0.000100025,
+  "best_val_loss": 2.034286209344864,
+  "final_val_loss": 2.034286209344864,
+  "latest_train_losses": {
+    "total_loss": 5.327050373613835,
+    "invariant_loss": 0.48599856304901184,
+    "sigreg_loss": 92.3205,
+    "triplet_loss": 0.0848140346123837,
+    "triplet_pos_distance": 0.10072263305739033,
+    "triplet_neg_distance": 0.4605378084303811,
+    "classification_loss": 2.167911093354225
+  },
+  "latest_val_losses": {
+    "total_loss": 2.034286209344864,
+    "invariant_loss": 0.43228178560733793,
+    "sigreg_loss": 28.3425,
+    "triplet_loss": 0.038600606117397546,
+    "triplet_pos_distance": 0.08045643981546163,
+    "triplet_neg_distance": 0.703389647603035,
+    "classification_loss": 1.8080059146881104
+  },
   "distributed": false,
   "train_infinite_stream": true,
   "world_size": 1,
@@ -176,5 +193,6 @@
   "classification_weight": 0.1,
   "num_classification_classes": 10,
   "total_training_steps": 160000,
-  "resumed_from_epoch": 0
+  "resumed_from_epoch": 0,
+  "global_step": 4000
 }

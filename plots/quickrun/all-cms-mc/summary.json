@@ -43,8 +43,8 @@
   "best_checkpoint_path": "plots/quickrun/all-cms-mc/best_checkpoint.pt",
   "last_checkpoint_path": "plots/quickrun/all-cms-mc/last_checkpoint.pt",
   "status": "training",
-  "current_epoch": 2,
-  "completed_epochs": 2,
+  "current_epoch": 1,
+  "completed_epochs": 1,
   "dataset_root": "/HEP/export/home/hgao50/jet-anomaly-data/ak8-v3",
   "background_labels": [
     "label_QCD",
@@ -88,6 +88,7 @@
     "Cpfcan_dzsig",
     "log_Cpfcan_dzsig"
   ],
+  "full_event_latent_space": "representation",
   "background_train_root_shards": 2388,
   "background_val_root_shards": 299,
   "background_test_root_shards": 299,
@@ -135,26 +136,26 @@
   "base_seed": 42,
   "device": "cuda",
   "warmup_steps": 40000,
-  "current_learning_rate": 0.00020002500000000002,
-  "best_val_loss": 1.2184269869327544,
-  "final_val_loss": 1.2184269869327544,
+  "current_learning_rate": 0.000100025,
+  "best_val_loss": 2.050303546190262,
+  "final_val_loss": 2.050303546190262,
   "latest_train_losses": {
-    "total_loss": 1.4787021652460097,
-    "invariant_loss": 0.3305356698669493,
-    "sigreg_loss": 20.01121875,
-    "triplet_loss": 0.022831179823493586,
-    "triplet_pos_distance": 0.06770313907600939,
-    "triplet_neg_distance": 0.8022450269460678,
-    "classification_loss": 1.453384469807148
+    "total_loss": 5.284699924498796,
+    "invariant_loss": 0.4083498026317684,
+    "sigreg_loss": 94.21253125,
+    "triplet_loss": 0.09029344298737124,
+    "triplet_pos_distance": 0.09887473174973274,
+    "triplet_neg_distance": 0.414315354043385,
+    "classification_loss": 1.5669772254824639
   },
   "latest_val_losses": {
-    "total_loss": 1.2184269869327544,
-    "invariant_loss": 0.2560320173203945,
-    "sigreg_loss": 16.3825,
-    "triplet_loss": 0.019859851533547045,
-    "triplet_pos_distance": 0.04635891169309616,
-    "triplet_neg_distance": 0.9986056762933732,
-    "classification_loss": 1.411511743068695
+    "total_loss": 2.050303546190262,
+    "invariant_loss": 0.4603030771017075,
+    "sigreg_loss": 28.7525,
+    "triplet_loss": 0.035789680313318965,
+    "triplet_pos_distance": 0.10683645091950894,
+    "triplet_neg_distance": 0.6136202526092529,
+    "classification_loss": 1.4884335494041443
   },
   "distributed": false,
   "train_infinite_stream": true,
@@ -317,5 +318,5 @@
   "num_classification_classes": 5,
   "total_training_steps": 160000,
   "resumed_from_epoch": 0,
-  "global_step": 8000
+  "global_step": 4000
 }

@@ -1,21 +1,21 @@
 ## SLURM PROLOG ###############################################################
-##    Job ID : 4232252
+##    Job ID : 4242719
 ##  Job Name : JETANOMALY
 ##  Nodelist : gpu3005
 ##      CPUs : 1
-##  Mem/Node : 48000 MB
+##  Mem/Node : 72000 MB
 ## Directory : /oscar/home/lwang223/jetAnomalyDetection
-##   Job Started : Thu Jul 23 03:42:31 PM EDT 2026
+##   Job Started : Thu Jul 23 09:31:49 PM EDT 2026
 ###############################################################################
 
 ==========================================
-Job started at: Thu Jul 23 03:42:31 PM EDT 2026
-Job ID: 4232252
+Job started at: Thu Jul 23 09:31:49 PM EDT 2026
+Job ID: 4242719
 Node: gpu3005
 ==========================================
 
 GPU Information (from host):
-Thu Jul 23 15:42:31 2026       
+Thu Jul 23 21:31:49 2026       
 +-----------------------------------------------------------------------------------------+
 | NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
 |-----------------------------------------+------------------------+----------------------+
@@ -23,8 +23,8 @@ Thu Jul 23 15:42:31 2026
 | Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
 |                                         |                        |               MIG M. |
 |=========================================+========================+======================|
-|   0  NVIDIA L40S                    On  |   00000000:61:00.0 Off |                    0 |
-| N/A   33C    P0             61W /  350W |      75MiB /  46068MiB |      0%      Default |
+|   0  NVIDIA L40S                    On  |   00000000:E1:00.0 Off |                    0 |
+| N/A   26C    P8             32W /  350W |      75MiB /  46068MiB |      0%      Default |
 |                                         |                        |                  N/A |
 +-----------------------------------------+------------------------+----------------------+
                                                                                          
@@ -57,14 +57,7 @@ Epoch [1/40]
 Saved new best model state_dict/full checkpoint to plots/quickrun/all-cms-mc/best_model.pth and plots/quickrun/all-cms-mc/best_checkpoint.pt
 Saved last model state_dict/full checkpoint to plots/quickrun/all-cms-mc/last_model.pth and plots/quickrun/all-cms-mc/last_checkpoint.pt
 Epoch 1 train losses: {'total_loss': 5.284699924498796, 'invariant_loss': 0.4083498026317684, 'sigreg_loss': 94.21253125, 'triplet_loss': 0.09029344298737124, 'triplet_pos_distance': 0.09887473174973274, 'triplet_neg_distance': 0.414315354043385, 'classification_loss': 1.5669772254824639}
-Epoch 1 val losses: {'total_loss': 2.029393433332443, 'invariant_loss': 0.4618258386850357, 'sigreg_loss': 28.3025, 'triplet_loss': 0.03536862786859274, 'triplet_pos_distance': 0.10729229867458344, 'triplet_neg_distance': 0.6178617429733276, 'classification_loss': 1.487963410615921}
+Epoch 1 val losses: {'total_loss': 2.050303546190262, 'invariant_loss': 0.4603030771017075, 'sigreg_loss': 28.7525, 'triplet_loss': 0.035789680313318965, 'triplet_pos_distance': 0.10683645091950894, 'triplet_neg_distance': 0.6136202526092529, 'classification_loss': 1.4884335494041443}
 Updated run summary at plots/quickrun/all-cms-mc/summary.json
 
 Epoch [2/40]
-Saved new best model state_dict/full checkpoint to plots/quickrun/all-cms-mc/best_model.pth and plots/quickrun/all-cms-mc/best_checkpoint.pt
-Saved last model state_dict/full checkpoint to plots/quickrun/all-cms-mc/last_model.pth and plots/quickrun/all-cms-mc/last_checkpoint.pt
-Epoch 2 train losses: {'total_loss': 1.4787021652460097, 'invariant_loss': 0.3305356698669493, 'sigreg_loss': 20.01121875, 'triplet_loss': 0.022831179823493586, 'triplet_pos_distance': 0.06770313907600939, 'triplet_neg_distance': 0.8022450269460678, 'classification_loss': 1.453384469807148}
-Epoch 2 val losses: {'total_loss': 1.2184269869327544, 'invariant_loss': 0.2560320173203945, 'sigreg_loss': 16.3825, 'triplet_loss': 0.019859851533547045, 'triplet_pos_distance': 0.04635891169309616, 'triplet_neg_distance': 0.9986056762933732, 'classification_loss': 1.411511743068695}
-Updated run summary at plots/quickrun/all-cms-mc/summary.json
-
-Epoch [3/40]

@@ -1,21 +1,21 @@
 ## SLURM PROLOG ###############################################################
-##    Job ID : 4234059
+##    Job ID : 4242845
 ##  Job Name : JETANOMALY
-##  Nodelist : gpu3004
+##  Nodelist : gpu3106
 ##      CPUs : 1
-##  Mem/Node : 48000 MB
+##  Mem/Node : 72000 MB
 ## Directory : /oscar/home/lwang223/jetAnomalyDetection
-##   Job Started : Thu Jul 23 04:16:05 PM EDT 2026
+##   Job Started : Thu Jul 23 09:40:26 PM EDT 2026
 ###############################################################################
 
 ==========================================
-Job started at: Thu Jul 23 04:16:05 PM EDT 2026
-Job ID: 4234059
-Node: gpu3004
+Job started at: Thu Jul 23 09:40:26 PM EDT 2026
+Job ID: 4242845
+Node: gpu3106
 ==========================================
 
 GPU Information (from host):
-Thu Jul 23 16:16:05 2026       
+Thu Jul 23 21:40:26 2026       
 +-----------------------------------------------------------------------------------------+
 | NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
 |-----------------------------------------+------------------------+----------------------+
@@ -23,8 +23,8 @@ Thu Jul 23 16:16:05 2026
 | Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
 |                                         |                        |               MIG M. |
 |=========================================+========================+======================|
-|   0  NVIDIA L40S                    On  |   00000000:E1:00.0 Off |                    0 |
-| N/A   43C    P8             36W /  350W |      74MiB /  46068MiB |      0%      Default |
+|   0  NVIDIA L40S                    On  |   00000000:21:00.0 Off |                    0 |
+| N/A   31C    P8             32W /  350W |      74MiB /  46068MiB |      0%      Default |
 |                                         |                        |                  N/A |
 +-----------------------------------------+------------------------+----------------------+
                                                                                          
@@ -33,7 +33,7 @@ Thu Jul 23 16:16:05 2026
 |  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
 |        ID   ID                                                               Usage      |
 |=========================================================================================|
-|    0   N/A  N/A          184125      G   /usr/libexec/Xorg                        64MiB |
+|    0   N/A  N/A          158569      G   /usr/libexec/Xorg                        64MiB |
 +-----------------------------------------------------------------------------------------+
 
 PyTorch version: 2.6.0+cu124
@@ -49,3 +49,14 @@ Background val ROOT shards: 50
 Background test ROOT shards: 200
 Signal test ROOT shards: 200
 Per-event particle shape: (128, 16)
+Selected SSL model: semi-sup-triplet
+Number of trainable parameters: 107,158
+
+Epoch [1/40]
+Saved new best model state_dict/full checkpoint to plots/quickrun/all-jetclass/best_model.pth and plots/quickrun/all-jetclass/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/quickrun/all-jetclass/last_model.pth and plots/quickrun/all-jetclass/last_checkpoint.pt
+Epoch 1 train losses: {'total_loss': 5.327050373613835, 'invariant_loss': 0.48599856304901184, 'sigreg_loss': 92.3205, 'triplet_loss': 0.0848140346123837, 'triplet_pos_distance': 0.10072263305739033, 'triplet_neg_distance': 0.4605378084303811, 'classification_loss': 2.167911093354225}
+Epoch 1 val losses: {'total_loss': 2.034286209344864, 'invariant_loss': 0.43228178560733793, 'sigreg_loss': 28.3425, 'triplet_loss': 0.038600606117397546, 'triplet_pos_distance': 0.08045643981546163, 'triplet_neg_distance': 0.703389647603035, 'classification_loss': 1.8080059146881104}
+Updated run summary at plots/quickrun/all-jetclass/summary.json
+
+Epoch [2/40]

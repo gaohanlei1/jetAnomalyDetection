@@ -97,7 +97,7 @@ class ParticleTransformerConfig:
     compute_dtype: torch.dtype = torch.bfloat16
     use_internal_autocast: bool = False
     eps: float = 1e-8
-    feature_norm_momentum: float = 0.9
+    feature_norm_momentum: float = 0.1
 
     input_feature_names: Tuple[str, ...] = (
         "part_px",
