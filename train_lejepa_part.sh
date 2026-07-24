@@ -87,7 +87,7 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 
 python -u \
     scripts/diagnose_lejepa_latents.py \
-    "plots/quickrun/all-cms-mc"
+    "plots/quickrun/all-cms-mc-shuffledata"
 
 
 # python -u \

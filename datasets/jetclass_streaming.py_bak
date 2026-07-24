@@ -125,43 +125,6 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import torch
 from torch.utils.data import IterableDataset, get_worker_info
 
-
-###########################################
-
-# NOTE:
-# PARTICLE_FEATURES and BATCH_NORMALIZED_FEATURES are available to change
-# to customize the features seen by the model. 
-# Do not change other MACROS unless you are changing the data pipeline.
-# The first four entries are a strict four-momentum contract used by the 
-# ParticleTransformer.
-
-PARTICLE_FEATURES = [
-    "part_px",
-    "part_py",
-    "part_pz",
-    "part_energy",
-    "part_pt",
-    "log_pt_fraction",
-    "part_deta",
-    "part_dphi",
-    "d0_sig",
-    "dz_sig",
-    "part_charge",
-    "part_isChargedHadron",
-    "part_isNeutralHadron",
-    "part_isPhoton",
-    "part_isElectron",
-    "part_isMuon",
-]
-
-BATCH_NORMALIZED_FEATURES = [
-    "log_pt_fraction",
-    "d0_sig",
-    "dz_sig",
-]
-
-###########################################
-
 JETCLASS_LABELS = [
     "label_QCD",
     "label_Hbb",
@@ -175,7 +138,7 @@ JETCLASS_LABELS = [
     "label_Tbl",
 ]
 
-AVAILABLE_PARTICLE_FEATURES = [
+DEFAULT_PARTICLE_FEATURES = [
     "part_px",
     "part_py",
     "part_pz",
@@ -192,6 +155,12 @@ AVAILABLE_PARTICLE_FEATURES = [
     "part_isPhoton",
     "part_isElectron",
     "part_isMuon",
+]
+
+JETCLASS_BATCH_NORMALIZED_FEATURES = [
+    "log_pt_fraction",
+    "d0_sig",
+    "dz_sig",
 ]
 
 # Actual ROOT branches needed to construct the model features above.
@@ -214,6 +183,13 @@ RAW_PARTICLE_FEATURES = [
     "part_isElectron",
     "part_isMuon",
 ]
+
+DERIVED_PARTICLE_FEATURES = {
+    "log_pt_fraction",
+    "d0_sig",
+    "dz_sig",
+}
+
 
 # Jet-level features are not model inputs. They are loaded only for event
 # quality cuts and to convert absolute particle pt into a per-jet pt fraction.
@@ -311,26 +287,16 @@ class JetClassIterableDataset(IterableDataset):
 
         self.split_dir = split_dir
         self.labels_to_load = list(labels_to_load)
-        self.particle_features = list(particle_features)
-        if not self.particle_features:
-            raise ValueError("particle_features must contain at least one feature.")
-        if len(set(self.particle_features)) != len(self.particle_features):
-            raise ValueError(
-                f"particle_features contains duplicates: {self.particle_features}"
-            )
-        unknown_features = sorted(
-            set(self.particle_features) - set(AVAILABLE_PARTICLE_FEATURES)
+        self.feature_names = list(DEFAULT_PARTICLE_FEATURES)
+        self.batch_normalized_feature_names = list(
+            JETCLASS_BATCH_NORMALIZED_FEATURES
         )
-        if unknown_features:
+        self.particle_features = list(particle_features)
+        if self.particle_features != self.feature_names:
             raise ValueError(
-                f"Unsupported JetClass particle features: {unknown_features}. "
-                f"Available features are {AVAILABLE_PARTICLE_FEATURES}."
+                "JetClass LeJEPA training requires the dataset-native feature order. "
+                f"Expected {self.feature_names}, got {self.particle_features}."
             )
-        self.feature_names = list(self.particle_features)
-        self.batch_normalized_feature_names = [
-            name for name in BATCH_NORMALIZED_FEATURES
-            if name in self.particle_features
-        ]
         self.max_num_particles = int(max_num_particles)
         self.max_events = max_events
         self.shuffle_files = bool(shuffle_files)
@@ -698,12 +664,12 @@ def load_and_preprocess_jetclass_file(
     """
 
     requested = list(particle_features)
-    supported = set(AVAILABLE_PARTICLE_FEATURES)
+    supported = set(DEFAULT_PARTICLE_FEATURES)
     unknown = sorted(set(requested) - supported)
     if unknown:
         raise ValueError(
             f"Unsupported model particle features: {unknown}. "
-            f"Available features are {AVAILABLE_PARTICLE_FEATURES}."
+            f"Supported features are {DEFAULT_PARTICLE_FEATURES}."
         )
 
     loaded_particle_features = list(RAW_PARTICLE_FEATURES)
@@ -834,9 +800,8 @@ def collate_jetclass_tensors(
 
 
 __all__ = [
-    "AVAILABLE_PARTICLE_FEATURES",
-    "PARTICLE_FEATURES",
-    "BATCH_NORMALIZED_FEATURES",
+    "DEFAULT_PARTICLE_FEATURES",
+    "JETCLASS_BATCH_NORMALIZED_FEATURES",
     "JETCLASS_LABELS",
     "JetClassIterableDataset",
     "collate_jetclass_tensors",

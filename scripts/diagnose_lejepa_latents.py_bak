@@ -2,7 +2,7 @@
 """Post-training latent diagnostics for JetClass or CMS LeJEPA runs.
 
 The dataset backend, particle feature order, batch-standardized feature list,
-label axis, and CMS per-type shuffled-shard split are reconstructed from the
+label axis, and CMS class × production-family split are reconstructed from the
 training ``summary.json``.  A command-line dataset override is available for
 explicit recovery workflows, but normal use requires only the run directory.
 
@@ -55,6 +55,19 @@ FOUR_VECTOR_FEATURES = (
     "part_energy",
 )
 
+JETCLASS_DEFAULT_BATCH_STANDARDIZED_FEATURES = (
+    "log_pt_fraction",
+    "d0_sig",
+    "dz_sig",
+)
+
+CMS_DEFAULT_BATCH_STANDARDIZED_FEATURES = (
+    "log_pt_fraction",
+    "Cpfcan_dxysig",
+    "log_Cpfcan_dxysig",
+    "Cpfcan_dzsig",
+    "log_Cpfcan_dzsig",
+)
 
 
 def _construct_with_supported_kwargs(factory, **kwargs):
@@ -74,33 +87,6 @@ def _first_summary_list(
         if value is not None:
             return [str(item) for item in value]
     return None
-
-
-def _require_summary_list(
-    summary: Mapping[str, object],
-    key: str,
-) -> List[str]:
-    """Read a required non-empty ordered string list from summary.json."""
-    if key not in summary or summary[key] is None:
-        raise KeyError(
-            f"summary.json is missing required field {key!r}. "
-            "Diagnostics must use the exact feature schema saved by training."
-        )
-    value = summary[key]
-    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
-        raise TypeError(
-            f"summary.json field {key!r} must be a list of feature names, "
-            f"got {type(value).__name__}."
-        )
-    result = [str(item) for item in value]
-    if not result:
-        raise ValueError(f"summary.json field {key!r} must not be empty.")
-    if len(set(result)) != len(result):
-        raise ValueError(
-            f"summary.json field {key!r} contains duplicate feature names: "
-            f"{result}."
-        )
-    return result
 
 
 def _dataset_metadata_list(
@@ -144,7 +130,7 @@ class DiagnosticDatasetBackend:
     max_num_particles: int
     min_nodes: int
     shuffle_active_shards: int
-    cms_splits: Optional[Dict[str, Dict[str, List[str]]]] = None
+    cms_splits: Optional[Dict[str, Dict[str, Dict[str, List[str]]]]] = None
     cms_manifest_sha256: Optional[str] = None
     cms_manifest_source: Optional[str] = None
 
@@ -174,13 +160,42 @@ class DiagnosticDatasetBackend:
                 )
             dataset_root = Path(str(summary["dataset_root"])).expanduser().resolve()
 
-        features = _require_summary_list(summary, "particle_features")
-        _validate_four_vector_prefix(features, "Saved particle feature list")
-
-        standardized = _require_summary_list(
+        features = _first_summary_list(
             summary,
-            "batch_standardized_particle_features",
+            ("particle_features", "feature_names"),
         )
+        if features is None:
+            module = jetclass_streaming if dataset_name == "jetclass" else cms_streaming
+            for attr in (
+                "DEFAULT_PARTICLE_FEATURES",
+                "CMS_PARTICLE_FEATURES",
+                "CANONICAL_PARTICLE_FEATURES",
+            ):
+                value = getattr(module, attr, None)
+                if value is not None:
+                    features = list(value)
+                    break
+        if not features:
+            raise KeyError(
+                "Could not resolve the model particle feature list from summary.json "
+                "or the selected dataset module."
+            )
+        _validate_four_vector_prefix(features, "Current dataset feature list")
+
+        standardized = _first_summary_list(
+            summary,
+            (
+                "batch_standardized_particle_features",
+                "batch_normalized_particle_features",
+                "standardized_particle_features",
+            ),
+        )
+        if standardized is None:
+            standardized = list(
+                JETCLASS_DEFAULT_BATCH_STANDARDIZED_FEATURES
+                if dataset_name == "jetclass"
+                else CMS_DEFAULT_BATCH_STANDARDIZED_FEATURES
+            )
         missing_standardized = sorted(set(standardized) - set(features))
         if missing_standardized:
             raise ValueError(
@@ -245,12 +260,7 @@ class DiagnosticDatasetBackend:
                 raise ValueError(
                     f"CMS split manifest has no 'splits' mapping: {manifest_path}"
                 )
-            if int(manifest.get("version", 0)) != 2:
-                raise ValueError(
-                    "The CMS split manifest uses the obsolete production-family "
-                    f"layout: {manifest_path}. Recreate it with the shuffled-shard "
-                    "CMS pipeline."
-                )
+            splits = manifest["splits"]
             self.cms_manifest_sha256 = str(manifest.get("sha256", "")) or None
             self.cms_manifest_source = str(manifest_path)
             if (
@@ -262,16 +272,17 @@ class DiagnosticDatasetBackend:
                     "The saved CMS split manifest hash does not match summary.json: "
                     f"summary={expected_hash}, manifest={self.cms_manifest_sha256}."
                 )
-            self.cms_splits = self._resolve_manifest_paths(manifest["splits"])
+            self.cms_splits = self._resolve_manifest_paths(splits)
         else:
             requested_labels = list(dict.fromkeys(
                 list(self.summary["background_labels"])
                 + list(self.summary.get("signal_labels", []))
             ))
-            discovered = cms_streaming.discover_cms_files(
-                str(self.dataset_root), requested_labels
+            discovered = cms_streaming.discover_cms_files_by_label_family(
+                str(self.dataset_root),
+                requested_labels,
             )
-            self.cms_splits = cms_streaming.split_cms_files(
+            self.cms_splits = cms_streaming.split_cms_files_by_family(
                 discovered,
                 val_fraction=float(self.summary.get("cms_val_fraction", 0.1)),
                 test_fraction=float(self.summary.get("cms_test_fraction", 0.1)),
@@ -282,11 +293,9 @@ class DiagnosticDatasetBackend:
             self.cms_manifest_source = "reconstructed from summary.json"
             if expected_hash is not None and str(expected_hash) != self.cms_manifest_sha256:
                 raise RuntimeError(
-                    "Reconstructed CMS split does not match the split used by "
-                    "training. "
-                    f"summary={expected_hash}, reconstructed="
-                    f"{self.cms_manifest_sha256}. Restore cms_split_manifest.json "
-                    "from the run directory."
+                    "Reconstructed CMS split does not match the split used by training. "
+                    f"summary={expected_hash}, reconstructed={self.cms_manifest_sha256}. "
+                    "Restore cms_split_manifest.json from the run directory."
                 )
 
         assert self.cms_splits is not None
@@ -296,49 +305,42 @@ class DiagnosticDatasetBackend:
 
     def _resolve_manifest_paths(
         self,
-        splits: Mapping[str, Mapping[str, Sequence[str]]],
-    ) -> Dict[str, Dict[str, List[str]]]:
+        splits: Mapping[str, Mapping[str, Mapping[str, Sequence[str]]]],
+    ) -> Dict[str, Dict[str, Dict[str, List[str]]]]:
         old_root_value = self.summary.get("dataset_root")
         old_root = (
             Path(str(old_root_value)).expanduser()
             if old_root_value is not None
             else None
         )
-        resolved: Dict[str, Dict[str, List[str]]] = {}
+        resolved: Dict[str, Dict[str, Dict[str, List[str]]]] = {}
         missing: List[str] = []
         for split_name, labels in splits.items():
             resolved[split_name] = {}
-            for label, paths in labels.items():
-                if isinstance(paths, Mapping):
-                    raise ValueError(
-                        "CMS manifest contains nested production-family mappings; "
-                        "the shuffled-shard pipeline expects label -> path list."
-                    )
-                resolved_paths: List[str] = []
-                for raw_path in paths:
-                    path = Path(str(raw_path)).expanduser()
-                    if path.is_file():
-                        candidate = path.resolve()
-                    else:
-                        candidate = None
-                        if old_root is not None:
+            for label, families in labels.items():
+                resolved[split_name][label] = {}
+                for family, paths in families.items():
+                    resolved_paths: List[str] = []
+                    for raw_path in paths:
+                        path = Path(str(raw_path)).expanduser()
+                        if path.is_file():
+                            candidate = path.resolve()
+                        elif old_root is not None:
                             try:
                                 relative = path.relative_to(old_root)
                             except ValueError:
-                                relative = None
-                            if relative is not None:
-                                relocated = (self.dataset_root / relative).resolve()
-                                if relocated.is_file():
-                                    candidate = relocated
-                        if candidate is None:
-                            directory_name = cms_streaming.CMS_LABEL_TO_DIRECTORY[label]
-                            candidate = (
-                                self.dataset_root / directory_name / path.name
-                            ).resolve()
-                    if not candidate.is_file():
-                        missing.append(str(candidate))
-                    resolved_paths.append(str(candidate))
-                resolved[split_name][label] = resolved_paths
+                                directory_map = getattr(cms_streaming, "CMS_LABEL_TO_DIRECTORY", {})
+                                directory_name = directory_map.get(
+                                    label, label.removeprefix("label_").lower()
+                                )
+                                relative = Path(directory_name) / path.name
+                            candidate = (self.dataset_root / relative).resolve()
+                        else:
+                            candidate = (self.dataset_root / path.name).resolve()
+                        if not candidate.is_file():
+                            missing.append(str(candidate))
+                        resolved_paths.append(str(candidate))
+                    resolved[split_name][label][family] = resolved_paths
         if missing:
             preview = "\n  ".join(missing[:10])
             raise FileNotFoundError(
@@ -417,7 +419,7 @@ class DiagnosticDatasetBackend:
             assert self.cms_splits is not None
             dataset = _construct_with_supported_kwargs(
                 cms_streaming.CMSIterableDataset,
-                files_by_label=self.cms_splits[split_name],
+                files_by_label_family=self.cms_splits[split_name],
                 labels_to_load=labels,
                 label_axis=self.label_axis,
                 particle_features=self.feature_names,
@@ -428,6 +430,12 @@ class DiagnosticDatasetBackend:
                 max_events=None,
                 shuffle_files=True,
                 shuffle_active_shards=self.shuffle_active_shards,
+                min_active_families_per_class=int(
+                    self.summary.get("cms_min_active_families_per_class", 2)
+                ),
+                family_sampling=str(
+                    self.summary.get("cms_family_sampling", "proportional")
+                ),
                 infinite=True,
                 seed=seed,
                 rank=0,
@@ -511,17 +519,40 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         help=(
-            "Diagnostic DataLoader workers. Defaults to summary.json num_workers."
+            "Accepted for command-line compatibility. Diagnostic DataLoaders "
+            "always use exactly one worker so CMS production-family sampling "
+            "has the same deterministic ownership for train, validation, and test."
         ),
     )
     parser.add_argument("--device", type=str, default="auto")
     parser.add_argument("--fit-fraction", type=float, default=0.5)
+    parser.add_argument(
+        "--num-gaussians",
+        type=int,
+        default=6,
+        help="Reserved for the extended multi-Gaussian diagnostic. Default: 6.",
+    )
+    parser.add_argument(
+        "--knn-k",
+        type=int,
+        default=30,
+        help="Reserved for the extended kNN diagnostic. Default: 30.",
+    )
     parser.add_argument("--mahalanobis-cov-eps", type=float, default=None)
     parser.add_argument(
         "--max-num-particles",
         type=int,
         default=None,
         help="Override summary.json; otherwise uses the training value.",
+    )
+    parser.add_argument(
+        "--full-latent-space",
+        choices=["representation", "cls"],
+        default="representation",
+        help=(
+            "Which unaugmented latent to use for density scores. "
+            "'representation' applies representation_head to the CLS state."
+        ),
     )
     return parser.parse_args()
 
@@ -721,15 +752,16 @@ def encode_single_view(
     model: torch.nn.Module,
     x: torch.Tensor,
     padding_mask: torch.Tensor,
+    latent_space: str = "representation",
 ) -> torch.Tensor:
-    """Encode one unaugmented view in the trained representation space."""
     cls = model(x, padding_mask=padding_mask)
-    if not hasattr(model, "representation_head"):
-        raise AttributeError(
-            "The loaded model has no representation_head; representation-space "
-            "diagnostics cannot continue."
-        )
-    return model.representation_head(cls)
+    if latent_space == "cls":
+        return cls
+    if latent_space != "representation":
+        raise ValueError(f"Unknown latent_space={latent_space!r}.")
+    if hasattr(model, "representation_head"):
+        return model.representation_head(cls)
+    return cls
 
 
 @torch.no_grad()
@@ -740,8 +772,15 @@ def collect_full_latents(
     device: torch.device,
     precision: str,
     description: str,
+    latent_space: str = "representation",
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """Collect unaugmented representation-space latents from one loader."""
+    """Collect unaugmented latents from one loader.
+
+    This helper remains for diagnostics that intentionally use a single source.
+    The main Mahalanobis/per-class path uses
+    ``collect_interleaved_full_latents`` below so that background and signal
+    events share exactly the same forward-pass normalization context.
+    """
     model.eval()
     zs, ys = [], []
     iterator = iter(loader)
@@ -754,10 +793,138 @@ def collect_full_latents(
                 model,
                 x,
                 padding_mask=mask,
+                latent_space=latent_space,
             )
         zs.append(z.detach().float().cpu())
         ys.append(batch["y"].float())
     return torch.cat(zs).numpy(), torch.cat(ys).numpy()
+
+
+@torch.no_grad()
+def collect_interleaved_full_latents(
+    model: torch.nn.Module,
+    background_loader: DataLoader,
+    signal_loader: DataLoader,
+    steps: int,
+    device: torch.device,
+    precision: str,
+    description: str,
+    background_labels: Sequence[str],
+    signal_labels: Sequence[str],
+    combined_batch_size: int,
+    seed: int,
+    latent_space: str = "representation",
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Forward background and signal events together, then return labels and source.
+
+    This interleaved collection path is retained for compatibility with older
+    model versions whose evaluation-time feature standardization depended on
+    the current batch composition. The current model uses frozen normalization
+    statistics in ``eval`` mode, so interleaving background and signal events is
+    no longer required for correctness. It is kept here to preserve the sampling
+    and evaluation behavior of earlier diagnostic runs.
+
+    The combined batch budget is split in proportion to the number of requested
+    background and signal jet classes. Because both source datasets already
+    emit class-balanced streams, this gives approximately equal representation
+    to every configured jet type inside each forward pass.
+    """
+    if combined_batch_size < 2:
+        raise ValueError("combined_batch_size must be at least 2.")
+    if not background_labels or not signal_labels:
+        raise ValueError("Both background_labels and signal_labels are required.")
+
+    num_background_classes = len(background_labels)
+    num_signal_classes = len(signal_labels)
+    num_classes = num_background_classes + num_signal_classes
+
+    num_background = int(
+        round(combined_batch_size * num_background_classes / num_classes)
+    )
+    num_background = min(max(num_background, 1), combined_batch_size - 1)
+    num_signal = combined_batch_size - num_background
+
+    model.eval()
+    background_iterator = iter(background_loader)
+    signal_iterator = iter(signal_loader)
+    permutation_generator = torch.Generator(device="cpu")
+    permutation_generator.manual_seed(int(seed))
+
+    zs: List[torch.Tensor] = []
+    ys: List[torch.Tensor] = []
+    source_is_signal: List[torch.Tensor] = []
+
+    for _ in tqdm(range(steps), desc=description):
+        background_batch = next(background_iterator)
+        signal_batch = next(signal_iterator)
+
+        background_available = int(background_batch["x_particles"].shape[0])
+        signal_available = int(signal_batch["x_particles"].shape[0])
+        if background_available < num_background or signal_available < num_signal:
+            raise RuntimeError(
+                "A source loader batch is too small for the requested mixed "
+                "forward composition: "
+                f"need background={num_background}, signal={num_signal}; "
+                f"received background={background_available}, "
+                f"signal={signal_available}."
+            )
+
+        x = torch.cat(
+            [
+                background_batch["x_particles"][:num_background],
+                signal_batch["x_particles"][:num_signal],
+            ],
+            dim=0,
+        )
+        padding_mask = torch.cat(
+            [
+                background_batch["padding_mask"][:num_background],
+                signal_batch["padding_mask"][:num_signal],
+            ],
+            dim=0,
+        )
+        y = torch.cat(
+            [
+                background_batch["y"][:num_background],
+                signal_batch["y"][:num_signal],
+            ],
+            dim=0,
+        ).float()
+        source = torch.cat(
+            [
+                torch.zeros(num_background, dtype=torch.bool),
+                torch.ones(num_signal, dtype=torch.bool),
+            ],
+            dim=0,
+        )
+
+        permutation = torch.randperm(
+            x.shape[0],
+            generator=permutation_generator,
+        )
+        x = x[permutation].to(device, non_blocking=True)
+        padding_mask = padding_mask[permutation].to(device, non_blocking=True)
+        y = y[permutation]
+        source = source[permutation]
+
+        with autocast_context(device, precision):
+            z = encode_single_view(
+                model,
+                x,
+                padding_mask=padding_mask,
+                latent_space=latent_space,
+            )
+
+        zs.append(z.detach().float().cpu())
+        ys.append(y.cpu())
+        source_is_signal.append(source.cpu())
+
+    return (
+        torch.cat(zs).numpy(),
+        torch.cat(ys).numpy(),
+        torch.cat(source_is_signal).numpy(),
+    )
+
 
 
 def label_ids(y: np.ndarray, label_axis: Sequence[str]) -> np.ndarray:
@@ -1346,13 +1513,13 @@ def main() -> None:
         args.batch_size
         or summary.get("per_rank_batch_size", summary.get("batch_size", 128))
     )
-    num_workers = int(
-        args.num_workers
-        if args.num_workers is not None
-        else summary.get("num_workers", 0)
-    )
-    if num_workers < 0:
-        raise ValueError("--num-workers must be non-negative.")
+    num_workers = 1
+    if args.num_workers not in (None, 1):
+        warnings.warn(
+            f"Ignoring --num-workers={args.num_workers}; latent diagnostics "
+            "always use num_workers=1.",
+            RuntimeWarning,
+        )
     cov_eps = float(
         args.mahalanobis_cov_eps
         if args.mahalanobis_cov_eps is not None
@@ -1365,7 +1532,7 @@ def main() -> None:
     print(f"Dataset root: {backend.dataset_root}")
     print(f"Loading {checkpoint_path} on {device}")
     print(f"Sampling {steps} x {batch_size} events from each source stream")
-    print("Full-jet density latent space: representation")
+    print(f"Full-jet density latent space: {args.full_latent_space}")
     print(f"Training labels: {background_display_name}")
     if signal_was_configured:
         print(f"Visualization signal labels: {signal_display_name}")
@@ -1451,6 +1618,7 @@ def main() -> None:
             device=device,
             precision=precision,
             description="Full latent: background train",
+            latent_space=args.full_latent_space,
         )
         val_z, val_y = collect_full_latents(
             model=model,
@@ -1464,6 +1632,7 @@ def main() -> None:
             device=device,
             precision=precision,
             description="Full latent: background validation",
+            latent_space=args.full_latent_space,
         )
         signal_test_z, signal_test_y = collect_full_latents(
             model=model,
@@ -1477,6 +1646,7 @@ def main() -> None:
             device=device,
             precision=precision,
             description="Full latent: shared signal test",
+            latent_space=args.full_latent_space,
         )
 
         # Keep the historical variable names used by the plotting and scoring
@@ -1498,6 +1668,7 @@ def main() -> None:
             device=device,
             precision=precision,
             description="Full latent: all training types",
+            latent_space=args.full_latent_space,
         )
         val_z, val_y = collect_full_latents(
             model=model,
@@ -1511,6 +1682,7 @@ def main() -> None:
             device=device,
             precision=precision,
             description="Full latent: all validation types",
+            latent_space=args.full_latent_space,
         )
         train_signal_z = np.empty((0, train_z.shape[1]), dtype=train_z.dtype)
         train_signal_y = np.empty((0, len(backend.label_axis)), dtype=train_y.dtype)
@@ -1834,6 +2006,8 @@ def main() -> None:
             "events_per_source_stream": steps * batch_size,
             "num_workers": num_workers,
             "fit_fraction": float(args.fit_fraction),
+            "num_gaussians": int(args.num_gaussians),
+            "knn_k": int(args.knn_k),
             "seed": seed,
             "max_num_particles": backend.max_num_particles,
         },
@@ -1843,6 +2017,7 @@ def main() -> None:
             "effective_signal_rotation": signal_rotation,
         },
         "signal_was_configured": signal_was_configured,
+        "full_latent_space": args.full_latent_space,
         "sample_counts": {
             "background_train_total": int(len(train_z)),
             "background_train_fit": int(len(fit_idx)),
