@@ -1,9 +1,10 @@
 """Train one LeJEPA semi-supervised triplet ParticleTransformer on JetClass or CMS.
 
-Each dataset owns its native ordered particle-feature schema and its own list
-of features standardized inside the model. CMS ROOT shards are split inside
-every class × production-family stratum and streamed with DDP-safe hierarchical
-mixing. Cross-dataset checkpoint loading preserves schema-independent weights
+Each dataset module exposes PARTICLE_FEATURES and BATCH_NORMALIZED_FEATURES.
+CMS ROOT shards are already shuffled across production families and pT ranges,
+then split randomly inside each jet type and streamed with the same label-
+stratified active-pool design as JetClass. Cross-dataset checkpoint loading
+preserves schema-independent weights
 while reinitializing the node embedding and feature-normalization state.
 
 Example commands:
@@ -98,21 +99,21 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from datasets.cms_streaming import (
-    CMS_BATCH_NORMALIZED_FEATURES,
+    BATCH_NORMALIZED_FEATURES as CMS_BATCH_NORMALIZED_FEATURES,
+    PARTICLE_FEATURES as CMS_PARTICLE_FEATURES,
     CMS_FEATURE_SOURCES,
-    CMS_PARTICLE_FEATURES,
     CMSIterableDataset,
     CMS_LABELS,
     CMS_TO_JETCLASS_FEATURE_MAP,
     cms_split_manifest,
     collate_cms_tensors,
-    discover_cms_files_by_label_family,
-    split_cms_files_by_family,
+    discover_cms_files,
+    split_cms_files,
     validate_cms_labels,
 )
 from datasets.jetclass_streaming import (
-    DEFAULT_PARTICLE_FEATURES,
-    JETCLASS_BATCH_NORMALIZED_FEATURES,
+    BATCH_NORMALIZED_FEATURES as JETCLASS_BATCH_NORMALIZED_FEATURES,
+    PARTICLE_FEATURES as JETCLASS_PARTICLE_FEATURES,
     JETCLASS_LABELS,
     JetClassIterableDataset,
     collate_jetclass_tensors,
@@ -135,7 +136,7 @@ elif torch.backends.mps.is_available():
 else:
     DEVICE = torch.device("cpu")
 
-FEATURE_SCHEMA_VERSION = "dataset-native-features-v2"
+FEATURE_SCHEMA_VERSION = "dataset-module-macros-v3"
 ONLY_MODEL_NAME = "semi-sup-triplet"
 FOUR_VECTOR_FEATURE_PREFIX = [
     "part_px",
@@ -341,30 +342,31 @@ class TrainLeJEPAParticleTransformer:
             label.removeprefix("label_") for label in self.signal_labels
         )
         if self.dataset_name == "jetclass":
-            dataset_features = list(DEFAULT_PARTICLE_FEATURES)
-            dataset_normalized_features = list(
+            self.particle_feature_names = list(JETCLASS_PARTICLE_FEATURES)
+            self.batch_normalized_feature_names = list(
                 JETCLASS_BATCH_NORMALIZED_FEATURES
             )
         elif self.dataset_name == "cms":
-            dataset_features = list(CMS_PARTICLE_FEATURES)
-            dataset_normalized_features = list(
+            self.particle_feature_names = list(CMS_PARTICLE_FEATURES)
+            self.batch_normalized_feature_names = list(
                 CMS_BATCH_NORMALIZED_FEATURES
             )
         else:
             raise ValueError(f"Unsupported dataset {self.dataset_name!r}.")
 
-        if self.args.particle_features is not None:
-            requested_features = parse_csv_list(self.args.particle_features)
-            if requested_features != dataset_features:
-                raise ValueError(
-                    "--particle-features must exactly match the selected dataset's "
-                    "native ordered schema. "
-                    f"dataset={self.dataset_name}, expected={dataset_features}, "
-                    f"got={requested_features}."
-                )
-
-        self.particle_feature_names = dataset_features
-        self.batch_normalized_feature_names = dataset_normalized_features
+        if not self.particle_feature_names:
+            raise ValueError(
+                f"{self.dataset_name}.PARTICLE_FEATURES must not be empty."
+            )
+        missing_normalized = sorted(
+            set(self.batch_normalized_feature_names)
+            - set(self.particle_feature_names)
+        )
+        if missing_normalized:
+            raise ValueError(
+                f"{self.dataset_name}.BATCH_NORMALIZED_FEATURES contains "
+                f"features absent from PARTICLE_FEATURES: {missing_normalized}."
+            )
         validate_four_vector_prefix(
             self.particle_feature_names,
             source=f"{self.dataset_name} dataset feature schema",
@@ -392,11 +394,11 @@ class TrainLeJEPAParticleTransformer:
             self.dataset_label_axis = list(CMS_LABELS)
             validate_cms_labels(all_requested_labels)
             self.collate_fn = collate_cms_tensors
-            discovered = discover_cms_files_by_label_family(
+            discovered = discover_cms_files(
                 self.dataset_root,
                 all_requested_labels,
             )
-            self.cms_splits = split_cms_files_by_family(
+            self.cms_splits = split_cms_files(
                 discovered,
                 val_fraction=self.args.cms_val_fraction,
                 test_fraction=self.args.cms_test_fraction,
@@ -511,7 +513,7 @@ class TrainLeJEPAParticleTransformer:
                 seed_offset: int,
             ) -> CMSIterableDataset:
                 return CMSIterableDataset(
-                    files_by_label_family=self.cms_splits[split_name],
+                    files_by_label=self.cms_splits[split_name],
                     labels_to_load=labels,
                     label_axis=self.dataset_label_axis,
                     particle_features=self.particle_feature_names,
@@ -522,10 +524,6 @@ class TrainLeJEPAParticleTransformer:
                     max_events=max_events,
                     shuffle_files=True,
                     shuffle_active_shards=self.args.shuffle_active_shards,
-                    min_active_families_per_class=(
-                        self.args.cms_min_active_families_per_class
-                    ),
-                    family_sampling=self.args.cms_family_sampling,
                     infinite=True,
                     seed=self.args.seed + seed_offset,
                     rank=self.rank,
@@ -611,8 +609,8 @@ class TrainLeJEPAParticleTransformer:
             print(
                 "CMS active shards per worker: requested="
                 f"{self.args.shuffle_active_shards}, effective="
-                f"{self.bg_train_dataset.effective_active_shards}; minimum family "
-                f"coverage={self.bg_train_dataset.minimum_active_shards}."
+                f"{self.bg_train_dataset.effective_active_shards}; "
+                "at least one active shard per requested jet type."
             )
 
     def plot_features(self) -> None:
@@ -1291,7 +1289,7 @@ class TrainLeJEPAParticleTransformer:
                 )
 
                 if len(train_auc) > 0:
-                    train_best = float(np.nanmax(train_auc))
+                    train_last = float(train_auc[-1])
                     train_steps = np.concatenate(([0], eval_steps[: len(train_auc)])) # so that 0-1 epoch range displays 1th epoch value, etc
                     train_auc = np.concatenate(([train_auc[0]], train_auc))
                     ax.step(
@@ -1303,11 +1301,11 @@ class TrainLeJEPAParticleTransformer:
                         alpha=0.85,
                         label=(
                             f"{background_name} Train vs {signal_name} "
-                            f"(Best: {train_best:.4f})"
+                            f"(Last: {train_last:.4f})"
                         ),
                     )
                 if len(val_auc) > 0:
-                    val_best = float(np.nanmax(val_auc))
+                    val_last = float(val_auc[-1])
                     val_steps = np.concatenate(([0], eval_steps[: len(val_auc)]))
                     val_auc = np.concatenate(([val_auc[0]], val_auc))
                     ax.step(
@@ -1319,7 +1317,7 @@ class TrainLeJEPAParticleTransformer:
                         alpha=0.85,
                         label=(
                             f"{background_name} Val vs {signal_name} "
-                            f"(Best: {val_best:.4f})"
+                            f"(Last: {val_last:.4f})"
                         ),
                     )
 
@@ -2117,18 +2115,11 @@ class TrainLeJEPAParticleTransformer:
                     "cms_split_manifest_sha256": self.cms_manifest["sha256"],
                     "cms_split_root_shard_counts": {
                         split_name: {
-                            label: {
-                                family: len(paths)
-                                for family, paths in families.items()
-                            }
-                            for label, families in label_map.items()
+                            label: len(paths)
+                            for label, paths in label_map.items()
                         }
                         for split_name, label_map in self.cms_splits.items()
                     },
-                    "cms_family_sampling": self.args.cms_family_sampling,
-                    "cms_min_active_families_per_class": (
-                        self.args.cms_min_active_families_per_class
-                    ),
                     "cms_effective_active_shards": (
                         self.bg_train_dataset.effective_active_shards
                     ),
@@ -2665,7 +2656,7 @@ if __name__ == "__main__":
         default="jetclass",
         help=(
             "Dataset backend. JetClass uses official split directories; CMS "
-            "uses deterministic class × production-family file splits."
+            "uses deterministic random file splits within each jet type."
         ),
     )
     parser.add_argument(
@@ -2693,15 +2684,6 @@ if __name__ == "__main__":
         help=(
             "Comma-separated canonical labels used only as anomaly signals. "
             "Default: label_Wqq."
-        ),
-    )
-    parser.add_argument(
-        "--particle-features",
-        type=str,
-        default=None,
-        help=(
-            "Optional explicit feature-order assertion. When supplied, it must "
-            "exactly match the selected dataset's native feature list."
         ),
     )
     parser.add_argument(
@@ -2744,9 +2726,9 @@ if __name__ == "__main__":
         default=3,
         help=(
             "Requested number of preprocessed ROOT shards kept active per "
-            "DataLoader worker. CMS may raise this to satisfy minimum per-class "
-            "production-family coverage. Higher values improve mixing but use "
-            "more CPU RAM. Default: 3."
+            "DataLoader worker. Both datasets raise this to at least the number "
+            "of requested jet types, guaranteeing one active shard per type. "
+            "Higher values improve mixing but use more CPU RAM. Default: 3."
         ),
     )
     parser.add_argument(
@@ -2783,38 +2765,19 @@ if __name__ == "__main__":
         "--cms-val-fraction",
         type=float,
         default=0.1,
-        help="CMS ROOT-shard validation fraction inside every class × family.",
+        help="CMS ROOT-shard validation fraction within every jet type.",
     )
     parser.add_argument(
         "--cms-test-fraction",
         type=float,
         default=0.1,
-        help="CMS ROOT-shard test fraction inside every class × family.",
+        help="CMS ROOT-shard test fraction within every jet type.",
     )
     parser.add_argument(
         "--cms-split-seed",
         type=int,
         default=42,
-        help="Seed for deterministic CMS class × family train/val/test splits.",
-    )
-    parser.add_argument(
-        "--cms-min-active-families-per-class",
-        type=int,
-        default=2,
-        help=(
-            "Minimum number of distinct active production families per CMS class "
-            "when that class has enough families. Default: 2."
-        ),
-    )
-    parser.add_argument(
-        "--cms-family-sampling",
-        choices=["uniform", "proportional"],
-        default="proportional",
-        help=(
-            "How replacement families are chosen inside a CMS class. "
-            "'proportional' approximately preserves family shard abundance; "
-            "'uniform' gives every family equal selection weight."
-        ),
+        help="Seed for deterministic CMS per-type train/val/test file splits.",
     )
 
     # Model.

@@ -39,9 +39,9 @@ PARTICLE_FEATURES = [
     "part_deta",
     "part_dphi",
     "Cpfcan_dxysig",
-    "log_Cpfcan_dxysig",
+    # "log_Cpfcan_dxysig",
     "Cpfcan_dzsig",
-    "log_Cpfcan_dzsig",
+    # "log_Cpfcan_dzsig",
     "part_charge",
     "part_isChargedHadron",
     "part_isNeutralHadron",
@@ -53,9 +53,9 @@ PARTICLE_FEATURES = [
 BATCH_NORMALIZED_FEATURES = [
     "log_pt_fraction",
     "Cpfcan_dxysig",
-    "log_Cpfcan_dxysig",
+    # "log_Cpfcan_dxysig",
     "Cpfcan_dzsig",
-    "log_Cpfcan_dzsig",
+    # "log_Cpfcan_dzsig",
 ]
 
 ###########################################
@@ -411,7 +411,11 @@ def read_file(
         )
 
     with uproot.open(filepath) as handle:
-        tree = _resolve_tree(handle)
+        try:
+            tree = _resolve_tree(handle)
+        except KeyError as error:
+            raise KeyError(f"Could not resolve event tree in {filepath!r}: {error}") from error
+        
         logical_names = list(_REQUIRED_PARTICLE_BRANCHES)
         logical_names.extend(
             name for name in requested_jets if name in _BRANCH_ALIASES
@@ -700,7 +704,9 @@ class CMSIterableDataset(IterableDataset):
     Files for every label are sharded independently across all DDP ranks and
     DataLoader workers. The active-shard budget is at least the number of
     requested labels, so every label owns at least one active shard. Events are
-    yielded through a balanced label cycle, matching the JetClass stream.
+    yielded through a balanced label cycle. In infinite mode, each label
+    refills its own local shard queue independently, so a shorter label cannot
+    disappear while other labels continue streaming.
     """
 
     def __init__(
@@ -855,27 +861,52 @@ class CMSIterableDataset(IterableDataset):
                         )
                     loaded_by_label[label] = label_events
 
+                if self.infinite:
+                    empty_labels = [
+                        label for label in self.labels_to_load
+                        if not loaded_by_label[label]
+                    ]
+                    if empty_labels:
+                        raise RuntimeError(
+                            "Infinite CMS stream found labels with no valid local "
+                            "events after cuts: "
+                            f"{empty_labels}; global_worker_id={global_worker_id}."
+                        )
+
                 cursors = {label: 0 for label in self.labels_to_load}
                 while True:
                     made_progress = False
                     for label in self.labels_to_load:
                         if worker_quota is not None and yielded >= worker_quota:
                             break
-                        cursor = cursors[label]
+
                         events = loaded_by_label[label]
-                        if cursor >= len(events):
+                        if not events:
                             continue
+
+                        cursor = cursors[label]
+                        if cursor >= len(events):
+                            if not self.infinite:
+                                continue
+                            cursor = 0
+                            cursors[label] = 0
+
                         yield events[cursor]
-                        cursors[label] += 1
+                        cursors[label] = cursor + 1
                         yielded += 1
                         made_progress = True
+
                     if worker_quota is not None and yielded >= worker_quota:
                         break
                     if not made_progress:
                         break
             else:
-                file_iters_by_label = {
-                    label: iter(files_by_label[label])
+                # Keep one independent file queue and active shard pool per
+                # label. In infinite mode, exhausting one label's local file
+                # queue refills only that label, so no class can disappear
+                # from the balanced label cycle while other classes continue.
+                file_queues_by_label = {
+                    label: list(files_by_label[label])
                     for label in self.labels_to_load
                 }
                 total_local_files_by_label = {
@@ -889,12 +920,35 @@ class CMSIterableDataset(IterableDataset):
                     label: [] for label in self.labels_to_load
                 }
 
-                def load_next_shard(label: str) -> Optional[Dict[str, object]]:
+                def refill_label_queue(label: str) -> None:
+                    """Rebuild only one label's queue, excluding active paths."""
+                    active_paths = {
+                        str(shard["filepath"])
+                        for shard in active_by_label[label]
+                    }
+                    candidates = [
+                        filepath
+                        for filepath in worker_files_by_label[label]
+                        if filepath not in active_paths
+                    ]
+                    if self.shuffle_files:
+                        rng.shuffle(candidates)
+                    file_queues_by_label[label] = candidates
+
+                def load_next_shard(
+                    label: str,
+                    *,
+                    allow_refill: bool,
+                ) -> Optional[Dict[str, object]]:
                     while True:
-                        try:
-                            filepath = next(file_iters_by_label[label])
-                        except StopIteration:
-                            return None
+                        if not file_queues_by_label[label]:
+                            if not (self.infinite and allow_refill):
+                                return None
+                            refill_label_queue(label)
+                            if not file_queues_by_label[label]:
+                                return None
+
+                        filepath = file_queues_by_label[label].pop()
                         x_particles, y = load_and_preprocess_cms_file(
                             filepath,
                             label_name=label,
@@ -920,6 +974,7 @@ class CMSIterableDataset(IterableDataset):
                                     f"global_worker_id={global_worker_id}."
                                 )
                             continue
+
                         empty_shard_streak[label] = 0
                         order = np.arange(len(x_particles), dtype=np.int64)
                         np.random.default_rng(rng.randrange(2**32)).shuffle(order)
@@ -931,10 +986,16 @@ class CMSIterableDataset(IterableDataset):
                             "filepath": filepath,
                         }
 
+                # Initial active pools are finite: each local path is loaded at
+                # most once during initialization. Independent refill begins
+                # only when an active shard from that same label is exhausted.
                 for label in self.labels_to_load:
                     budget = active_budget_by_label[label]
                     for _ in range(min(budget, len(files_by_label[label]))):
-                        shard = load_next_shard(label)
+                        shard = load_next_shard(
+                            label,
+                            allow_refill=False,
+                        )
                         if shard is not None:
                             active_by_label[label].append(shard)
 
@@ -953,6 +1014,7 @@ class CMSIterableDataset(IterableDataset):
                         active = active_by_label[label]
                         if not active:
                             continue
+
                         shard_index = rng.randrange(len(active))
                         shard = active[shard_index]
                         cursor = int(shard["cursor"])
@@ -966,11 +1028,23 @@ class CMSIterableDataset(IterableDataset):
                             torch.from_numpy(y[event_index].copy()),
                         )
                         yielded += 1
+
                         if int(shard["cursor"]) >= len(order):
                             active.pop(shard_index)
-                            replacement = load_next_shard(label)
+                            replacement = load_next_shard(
+                                label,
+                                allow_refill=True,
+                            )
                             if replacement is not None:
                                 active.append(replacement)
+                            elif self.infinite:
+                                raise RuntimeError(
+                                    "Infinite CMS stream failed to refill a label "
+                                    "after its active shard was exhausted. "
+                                    f"label={label!r}, "
+                                    f"global_worker_id={global_worker_id}."
+                                )
+
                     available_labels = [
                         label for label in self.labels_to_load
                         if active_by_label[label]

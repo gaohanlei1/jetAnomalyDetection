@@ -11,9 +11,9 @@ Example commands:
 
 Train on CMS dataset: (use --dataset [cms | jetclass])
 python -u \
-    scripts/run_train_lejepa_part_jetclass.py \
+    scripts/run_train_lejepa_part.py \
     --dataset cms \
-    --dataset-root "/HEP/export/home/hgao50/jet-anomaly-data/ak8-v2" \
+    --dataset-root "/HEP/export/home/hgao50/jet-anomaly-data/ak8-v4" \
     --model semi-sup-triplet \
     --background-labels "label_QCD,label_Hbb,label_Zqq,label_Tbqq" \
     --signal-labels "label_Wqq" \
@@ -24,8 +24,8 @@ python -u \
     --num-heads 8 \
     --batch-size 256 \
     --steps-per-epoch 4000 \
-    --val-steps 100 \
-    --eval-steps 100 \
+    --val-steps 3000 \
+    --eval-steps 3000 \
     --epochs 12 \
     --learning-rate 1e-3 \
     --weight-decay 5e-2 \
@@ -58,7 +58,7 @@ Finetune a JetClass model on CMS dataset: (specify --checkpoint and --checkpoint
 python -u \
     scripts/run_train_lejepa_part.py \
     --dataset cms \
-    --dataset-root /HEP/export/home/hgao50/jet-anomaly-data/ak8-v2 \
+    --dataset-root /HEP/export/home/hgao50/jet-anomaly-data/ak8-v4 \
     --model semi-sup-triplet \
     --background-labels label_QCD,label_Hbb \
     --signal-labels label_Wqq \
@@ -668,19 +668,22 @@ class TrainLeJEPAParticleTransformer:
             "drop_last": True,
         }
 
+        # Match diagnostics: evaluation uses the same worker count and
+        # prefetch factor recorded for training. Persistent workers are disabled
+        # so each bounded evaluation starts from a freshly initialized,
+        # deterministic dataset iterator.
         eval_kwargs = {
             "batch_size": self.per_rank_batch_size,
-            "num_workers": 1,
+            "num_workers": self.args.num_workers,
             "pin_memory": self.args.pin_memory,
             "collate_fn": self.collate_fn,
-            "persistent_workers": True,
+            "persistent_workers": False,
             "drop_last": True,
         }
 
         if self.args.num_workers > 0:
             train_kwargs["prefetch_factor"] = self.args.prefetch_factor
-
-        eval_kwargs["prefetch_factor"] = 1
+            eval_kwargs["prefetch_factor"] = self.args.prefetch_factor
 
         # IterableDataset owns sample order; DataLoader shuffle is invalid here.
         train_loader = DataLoader(self.bg_train_dataset, **train_kwargs)
@@ -1274,13 +1277,15 @@ class TrainLeJEPAParticleTransformer:
             pair_history = auc_history[signal_label]
 
             for background_index, background_label in enumerate(self.background_labels):
-                # if background_label == signal_label or background_label not in pair_history:
+                # Background classes are shown against the configured test signal.
                 #     continue
                 if background_label not in pair_history:
                     continue
                 background_name = background_label.removeprefix("label_")
                 pair_values = pair_history[background_label]
-                train_auc = np.asarray(pair_values.get("train", []), dtype=np.float64)
+                train_heldout_auc = np.asarray(
+                    pair_values.get("train_heldout", []), dtype=np.float64
+                )
                 val_auc = np.asarray(pair_values.get("val", []), dtype=np.float64)
                 color = (
                     default_colors[background_index % len(default_colors)]
@@ -1288,24 +1293,28 @@ class TrainLeJEPAParticleTransformer:
                     else None
                 )
 
-                if len(train_auc) > 0:
-                    train_best = float(np.nanmax(train_auc))
-                    train_steps = np.concatenate(([0], eval_steps[: len(train_auc)])) # so that 0-1 epoch range displays 1th epoch value, etc
-                    train_auc = np.concatenate(([train_auc[0]], train_auc))
+                if len(train_heldout_auc) > 0:
+                    train_heldout_last = float(train_heldout_auc[-1])
+                    train_heldout_steps = np.concatenate(
+                        ([0], eval_steps[: len(train_heldout_auc)])
+                    )  # Show the first epoch value over the 0-1 epoch interval.
+                    train_heldout_auc = np.concatenate(
+                        ([train_heldout_auc[0]], train_heldout_auc)
+                    )
                     ax.step(
-                        train_steps,
-                        train_auc,
+                        train_heldout_steps,
+                        train_heldout_auc,
                         where="pre",
                         linestyle="-",
                         color=color,
                         alpha=0.85,
                         label=(
-                            f"{background_name} Train vs {signal_name} "
-                            f"(Best: {train_best:.4f})"
+                            f"{background_name} Held-out train vs {signal_name} "
+                            f"(Last: {train_heldout_last:.4f})"
                         ),
                     )
                 if len(val_auc) > 0:
-                    val_best = float(np.nanmax(val_auc))
+                    val_last = float(val_auc[-1])
                     val_steps = np.concatenate(([0], eval_steps[: len(val_auc)]))
                     val_auc = np.concatenate(([val_auc[0]], val_auc))
                     ax.step(
@@ -1317,7 +1326,7 @@ class TrainLeJEPAParticleTransformer:
                         alpha=0.85,
                         label=(
                             f"{background_name} Val vs {signal_name} "
-                            f"(Best: {val_best:.4f})"
+                            f"(Last: {val_last:.4f})"
                         ),
                     )
 
@@ -1742,14 +1751,18 @@ class TrainLeJEPAParticleTransformer:
     ) -> Dict[str, Dict[str, Dict[str, float]]]:
         """Fit one Gaussian per background class and compute pairwise AUCs.
 
-        For each configured background class, all collected training events of
-        that class are used to fit its own Gaussian. The resulting class-specific
-        Mahalanobis score is then evaluated on:
+        This follows the diagnostics protocol exactly for the background train
+        sample:
 
-            train AUC: that background's train events vs test-split signal events
-            val AUC:   that background's val events vs test-split signal events
+            1. Collect the bounded train-evaluation representation sample.
+            2. Split every background class independently into 50% fit and 50%
+               held-out subsets with seed ``base_seed + 404``.
+            3. Fit one class-specific Gaussian using only that class's fit half.
+            4. Report held-out-train and validation AUCs against the same
+               test-split signal sample.
 
-        No train/held-out subdivision is introduced here.
+        No event used to fit a Gaussian contributes to the reported
+        held-out-train AUC.
         """
 
         bg_train_latents, bg_train_labels = self.collect_representations(
@@ -1766,7 +1779,7 @@ class TrainLeJEPAParticleTransformer:
         )
 
         # Every rank must participate in the representation gathers above, but
-        # only rank 0 needs to perform the NumPy fitting and ROC bookkeeping.
+        # only rank 0 performs NumPy fitting and ROC bookkeeping.
         if not self.is_main_process:
             return {}
 
@@ -1777,33 +1790,46 @@ class TrainLeJEPAParticleTransformer:
         bg_val_ids = self._dataset_label_ids(bg_val_labels.numpy())
         signal_ids = self._dataset_label_ids(signal_labels.numpy())
 
+        fit_indices, heldout_indices = self._stratified_fit_heldout_indices(
+            bg_train_ids,
+            labels=self.background_labels,
+            fit_fraction=0.5,
+            seed=self.base_seed + 404,
+        )
+
         results: Dict[str, Dict[str, Dict[str, float]]] = {
             signal_label: {} for signal_label in self.signal_labels
         }
 
         for background_label in self.background_labels:
             background_index = self.dataset_label_axis.index(background_label)
-            train_mask = bg_train_ids == background_index
+            class_train_indices = np.flatnonzero(
+                bg_train_ids == background_index
+            )
+            class_fit_indices = fit_indices[
+                np.isin(fit_indices, class_train_indices)
+            ]
+            class_heldout_indices = heldout_indices[
+                np.isin(heldout_indices, class_train_indices)
+            ]
             val_mask = bg_val_ids == background_index
 
-            num_train = int(np.count_nonzero(train_mask))
+            num_fit = int(len(class_fit_indices))
+            num_heldout = int(len(class_heldout_indices))
             num_val = int(np.count_nonzero(val_mask))
-            if num_train < 2 or num_val == 0:
+            if num_fit < 2 or num_heldout < 1 or num_val < 1:
                 warnings.warn(
                     "Skipping an insufficient class-specific Mahalanobis sample: "
-                    f"background={background_label}, train={num_train}, "
-                    f"val={num_val}."
+                    f"background={background_label}, fit={num_fit}, "
+                    f"heldout={num_heldout}, val={num_val}."
                 )
                 continue
 
-            # Fit this background class independently using all of its collected
-            # train events. This intentionally preserves the existing in-sample
-            # definition of the plotted train AUC.
             mean, precision = self.fit_mahalanobis_background(
-                bg_train_latents_np[train_mask]
+                bg_train_latents_np[class_fit_indices]
             )
-            background_train_scores = self.mahalanobis_scores(
-                bg_train_latents_np[train_mask],
+            background_train_heldout_scores = self.mahalanobis_scores(
+                bg_train_latents_np[class_heldout_indices],
                 mean,
                 precision,
             )
@@ -1830,8 +1856,8 @@ class TrainLeJEPAParticleTransformer:
 
                 signal_scores = all_signal_scores[signal_mask]
                 results[signal_label][background_label] = {
-                    "train": self.compute_auc(
-                        background_train_scores,
+                    "train_heldout": self.compute_auc(
+                        background_train_heldout_scores,
                         signal_scores,
                     ),
                     "val": self.compute_auc(
@@ -1890,10 +1916,56 @@ class TrainLeJEPAParticleTransformer:
             raise ValueError(f"Expected class ids or one-hot labels, got {labels.shape}.")
         return np.argmax(labels, axis=1).astype(np.int64, copy=False)
 
+    def _stratified_fit_heldout_indices(
+        self,
+        class_ids: np.ndarray,
+        *,
+        labels: Sequence[str],
+        fit_fraction: float,
+        seed: int,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Return deterministic class-stratified fit and held-out indices.
+
+        The implementation matches ``diagnose_lejepa_latents.py``: every
+        requested class contributes independently to both subsets, with at
+        least two events retained on each side.
+        """
+
+        if not 0.0 < fit_fraction < 1.0:
+            raise ValueError("fit_fraction must lie strictly between 0 and 1.")
+
+        class_ids = np.asarray(class_ids, dtype=np.int64)
+        rng = np.random.default_rng(int(seed))
+        fit_parts: List[np.ndarray] = []
+        heldout_parts: List[np.ndarray] = []
+
+        for label in labels:
+            label_index = self.dataset_label_axis.index(label)
+            indices = np.flatnonzero(class_ids == label_index)
+            if len(indices) < 4:
+                raise RuntimeError(
+                    f"Only {len(indices)} sampled train-evaluation events found "
+                    f"for {label}; at least four are required for a 50/50 "
+                    "fit/held-out split."
+                )
+            rng.shuffle(indices)
+            cut = min(
+                max(int(round(len(indices) * fit_fraction)), 2),
+                len(indices) - 2,
+            )
+            fit_parts.append(indices[:cut])
+            heldout_parts.append(indices[cut:])
+
+        fit_indices = np.concatenate(fit_parts)
+        heldout_indices = np.concatenate(heldout_parts)
+        rng.shuffle(fit_indices)
+        rng.shuffle(heldout_indices)
+        return fit_indices, heldout_indices
+
     def _empty_auc_history(self) -> Dict[str, Dict[str, Dict[str, List[float]]]]:
         return {
             signal_label: {
-                background_label: {"train": [], "val": []}
+                background_label: {"train_heldout": [], "val": []}
                 for background_label in self.background_labels
             }
             for signal_label in self.signal_labels
@@ -1953,6 +2025,16 @@ class TrainLeJEPAParticleTransformer:
             labels_to_numpy(background_val_labels)
         )
         signal_ids = self._dataset_label_ids(labels_to_numpy(signal_labels))
+        _, train_heldout_indices = self._stratified_fit_heldout_indices(
+            background_train_ids,
+            labels=self.background_labels,
+            fit_fraction=0.5,
+            seed=self.base_seed + 404,
+        )
+        train_heldout_mask = np.zeros(
+            len(background_train_ids), dtype=bool
+        )
+        train_heldout_mask[train_heldout_indices] = True
 
         results: Dict[str, Dict[str, Dict[str, float]]] = {}
         for signal_label in self.signal_labels:
@@ -1967,7 +2049,10 @@ class TrainLeJEPAParticleTransformer:
             per_background: Dict[str, Dict[str, float]] = {}
             for background_label in self.background_labels:
                 background_index = self.dataset_label_axis.index(background_label)
-                train_mask = background_train_ids == background_index
+                train_mask = (
+                    (background_train_ids == background_index)
+                    & train_heldout_mask
+                )
                 val_mask = background_val_ids == background_index
                 if not np.any(train_mask) or not np.any(val_mask):
                     warnings.warn(
@@ -1976,7 +2061,7 @@ class TrainLeJEPAParticleTransformer:
                     )
                     continue
                 per_background[background_label] = {
-                    "train": self.compute_auc(
+                    "train_heldout": self.compute_auc(
                         background_train_scores[train_mask], signal_scores[signal_mask]
                     ),
                     "val": self.compute_auc(
@@ -2079,6 +2164,13 @@ class TrainLeJEPAParticleTransformer:
 
             # Evaluation.
             "anomaly_score": self.args.anomaly_score,
+            "evaluation_num_workers": self.args.num_workers,
+            "evaluation_prefetch_factor": self.args.prefetch_factor,
+            "mahalanobis_fit_fraction": 0.5,
+            "mahalanobis_split_seed_offset": 404,
+            "mahalanobis_cov_eps": self.args.mahalanobis_cov_eps,
+            "pairwise_train_metric": "heldout_train",
+            "signal_test_seed_offset": 404,
 
             "base_seed": self.args.seed,
             "device": str(DEVICE),
@@ -2246,7 +2338,12 @@ class TrainLeJEPAParticleTransformer:
                     saved_pair = saved_signal.get(background_label, {})
                     if not isinstance(saved_pair, dict):
                         continue
-                    split_history["train"] = list(saved_pair.get("train", []))
+                    split_history["train_heldout"] = list(
+                        saved_pair.get(
+                            "train_heldout",
+                            saved_pair.get("train", []),
+                        )
+                    )
                     split_history["val"] = list(saved_pair.get("val", []))
             epoch_end_steps = list(payload.get("epoch_end_steps", []))
             roc_eval_steps = list(payload.get("roc_eval_steps", []))
@@ -2524,7 +2621,9 @@ class TrainLeJEPAParticleTransformer:
                     for signal_label, per_background in epoch_aucs.items():
                         for background_label, pair_auc in per_background.items():
                             pair_history = auc_history[signal_label][background_label]
-                            pair_history["train"].append(float(pair_auc["train"]))
+                            pair_history["train_heldout"].append(
+                                float(pair_auc["train_heldout"])
+                            )
                             pair_history["val"].append(float(pair_auc["val"]))
                     roc_eval_steps.append(len(train_history["total_loss"]))
 

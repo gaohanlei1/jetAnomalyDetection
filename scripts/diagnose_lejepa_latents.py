@@ -1470,7 +1470,7 @@ def main() -> None:
             loader=backend.make_loader(
                 split_name="test",
                 labels=signals,
-                seed=seed + 301,
+                seed=seed + 404,
                 **loader_common,
             ),
             steps=steps,
@@ -1647,10 +1647,10 @@ def main() -> None:
         heldout_score = mahalanobis_scores(
             train_z[heldout_idx], mean, precision_matrix
         )
-        val_score = mahalanobis_scores(val_z, mean, precision_matrix)
         train_signal_score = mahalanobis_scores(
             train_signal_z, mean, precision_matrix
         )
+        val_score = mahalanobis_scores(val_z, mean, precision_matrix)
         val_signal_score = mahalanobis_scores(val_signal_z, mean, precision_matrix)
         combined = {
             "auc_fit_subset_vs_signal": auc(fit_score, train_signal_score),
