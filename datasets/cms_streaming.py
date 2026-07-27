@@ -1,9 +1,11 @@
 """CMS DeepNTuplizer AK8 reader and DDP-safe streaming dataset.
 
-The dataset root contains one directory per jet type. Every ROOT shard has
-already been shuffled across production families and pT ranges, so train/val/test
-splits are random label-level file splits recorded in a manifest. Streaming uses
-one independent active shard pool per label, matching the JetClass loader.
+The dataset root contains one directory per jet type for MC, or a flat
+directory of ``data_*.root`` shards for real data (``label_Real``). Every
+ROOT shard has already been shuffled across production families and pT ranges,
+so train/val/test splits are random label-level file splits recorded in a
+manifest. Streaming uses one independent active shard pool per label, matching
+the JetClass loader.
 """
 
 from __future__ import annotations
@@ -137,6 +139,7 @@ CMS_LABELS = [
     "label_Wqq",
     "label_Zqq",
     "label_Tbqq",
+    "label_Real",
 ]
 
 CMS_LABEL_TO_DIRECTORY = {
@@ -145,6 +148,8 @@ CMS_LABEL_TO_DIRECTORY = {
     "label_Wqq": "wjets",
     "label_Zqq": "zjets",
     "label_Tbqq": "ttbar",
+    # Real data: flat dataset root with data_*.root shards (no physics subdirs).
+    "label_Real": ".",
 }
 
 CMS_LABEL_TO_FILENAME_PREFIX = {
@@ -153,6 +158,7 @@ CMS_LABEL_TO_FILENAME_PREFIX = {
     "label_Wqq": "wjets_",
     "label_Zqq": "zjets_",
     "label_Tbqq": "ttbar_",
+    "label_Real": "data_",
 }
 
 
@@ -372,6 +378,7 @@ def read_file(
     num_classes: Optional[int] = None,
     jet_eta_max: Optional[float] = 2.5,
     particle_dr_max: Optional[float] = 0.8,
+    max_events: Optional[int] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Load one CMS ROOT file with a JetClass-style return signature.
 
@@ -423,7 +430,10 @@ def read_file(
         logical_names = list(dict.fromkeys(logical_names))
         resolved = _resolve_branch_names(tree, logical_names)
         physical_names = sorted({name for name in resolved.values() if name is not None})
-        raw_physical = tree.arrays(physical_names, library="ak")
+        array_kwargs = {"library": "ak"}
+        if max_events is not None:
+            array_kwargs["entry_stop"] = int(max_events)
+        raw_physical = tree.arrays(physical_names, **array_kwargs)
 
     arrays: Dict[str, ak.Array] = {
         logical: raw_physical[physical]
@@ -673,6 +683,7 @@ def load_and_preprocess_cms_file(
     upperpt: Optional[float],
     min_nodes: int,
     eps: float = 1e-8,
+    max_events: Optional[int] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Load one shard and return canonical ``(events, particles, features)`` arrays."""
     del eps
@@ -685,6 +696,7 @@ def load_and_preprocess_cms_file(
         lowerpt=lowerpt,
         upperpt=upperpt,
         label_name=label_name,
+        max_events=max_events,
     )
     x_particles = np.transpose(x_particles, (0, 2, 1)).astype(
         np.float32, copy=False
