@@ -6,7 +6,8 @@
     "label_Hbb",
     "label_Wqq",
     "label_Zqq",
-    "label_Tbqq"
+    "label_Tbqq",
+    "label_Real"
   ],
   "feature_schema_version": "dataset-module-macros-v3",
   "source_particle_features": [
@@ -28,21 +29,53 @@
     "part_isMuon"
   ],
   "checkpoint": {
-    "path": null,
-    "loaded": false,
+    "path": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/all-cms-mc-shuffledata-nologsig-refill/last_checkpoint.pt",
+    "loaded": true,
+    "source_dataset": "cms",
+    "source_background_labels": [
+      "label_QCD",
+      "label_Hbb",
+      "label_Zqq",
+      "label_Tbqq",
+      "label_Wqq"
+    ],
+    "source_particle_features": [
+      "part_px",
+      "part_py",
+      "part_pz",
+      "part_energy",
+      "part_pt",
+      "log_pt_fraction",
+      "part_deta",
+      "part_dphi",
+      "Cpfcan_dxysig",
+      "Cpfcan_dzsig",
+      "part_charge",
+      "part_isChargedHadron",
+      "part_isNeutralHadron",
+      "part_isPhoton",
+      "part_isElectron",
+      "part_isMuon"
+    ],
+    "source_batch_standardized_particle_features": [
+      "log_pt_fraction",
+      "Cpfcan_dxysig",
+      "Cpfcan_dzsig"
+    ],
     "feature_schema_changed": false,
     "normalization_schema_changed": false,
     "node_embedding_reset": false,
     "feature_normalization_state_reset": false,
-    "classification_head_reset": false
+    "classification_head_reset": false,
+    "resume_training_state": true
   },
   "best_model_path": "plots/largerun/all-cms-mc-shuffledata-nologsig-refill/best_model.pth",
   "last_model_path": "plots/largerun/all-cms-mc-shuffledata-nologsig-refill/last_model.pth",
   "best_checkpoint_path": "plots/largerun/all-cms-mc-shuffledata-nologsig-refill/best_checkpoint.pt",
   "last_checkpoint_path": "plots/largerun/all-cms-mc-shuffledata-nologsig-refill/last_checkpoint.pt",
   "status": "training",
-  "current_epoch": 2,
-  "completed_epochs": 2,
+  "current_epoch": 22,
+  "completed_epochs": 22,
   "dataset_root": "/HEP/export/home/hgao50/jet-anomaly-data/ak8-v4",
   "background_labels": [
     "label_QCD",
@@ -97,7 +130,7 @@
   "num_layers": 8,
   "num_heads": 8,
   "ffn_mult": 4,
-  "dropout": 0.1,
+  "dropout": 0.01,
   "num_trainable_parameters": 2699793,
   "use_pairwise_bias": true,
   "pairwise_hidden_dim": 64,
@@ -105,7 +138,7 @@
   "max_num_particles": 128,
   "eps": 1e-08,
   "keep_dropped_features": false,
-  "epochs": 80,
+  "epochs": 40,
   "learning_rate": 0.001,
   "weight_decay": 0.05,
   "precision": "bf16",
@@ -137,26 +170,26 @@
   "base_seed": 42,
   "device": "cuda:0",
   "warmup_steps": 80000,
-  "current_learning_rate": 0.00020001250000000002,
-  "best_val_loss": 1.049765883922577,
-  "final_val_loss": 1.049765883922577,
+  "current_learning_rate": 0.0006548539886902863,
+  "best_val_loss": 0.6021235300501188,
+  "final_val_loss": 0.6021235300501188,
   "latest_train_losses": {
-    "total_loss": 1.0878726203069091,
-    "invariant_loss": 0.36263630609959363,
-    "sigreg_loss": 11.9053515625,
-    "triplet_loss": 0.002629354425451311,
-    "triplet_pos_distance": 0.1010995156429708,
-    "triplet_neg_distance": 1.3753526873588562,
-    "classification_loss": 1.2969992690086365
+    "total_loss": 0.5960309506841004,
+    "invariant_loss": 0.16169430339615792,
+    "sigreg_loss": 6.56743359375,
+    "triplet_loss": 0.003948247749605798,
+    "triplet_pos_distance": 0.031398806652287024,
+    "triplet_neg_distance": 1.5832397205978632,
+    "classification_loss": 1.0556608553156257
   },
   "latest_val_losses": {
-    "total_loss": 1.049765883922577,
-    "invariant_loss": 0.18140150511761508,
-    "sigreg_loss": 14.8078125,
-    "triplet_loss": 0.005062472086516209,
-    "triplet_pos_distance": 0.03167120196049412,
-    "triplet_neg_distance": 1.2610973363717397,
-    "classification_loss": 1.2744145686626434
+    "total_loss": 0.6021235300501188,
+    "invariant_loss": 0.14306141982227563,
+    "sigreg_loss": 6.803208333333333,
+    "triplet_loss": 0.003960013468749821,
+    "triplet_pos_distance": 0.023888155590742827,
+    "triplet_neg_distance": 1.6059296615918477,
+    "classification_loss": 1.1852222493688265
   },
   "distributed": true,
   "train_infinite_stream": true,
@@ -249,7 +282,7 @@
   "use_all_views_as_triplet_positives": false,
   "classification_weight": 0.1,
   "num_classification_classes": 5,
-  "total_training_steps": 640000,
-  "resumed_from_epoch": 0,
-  "global_step": 16000
+  "total_training_steps": 320000,
+  "resumed_from_epoch": 20,
+  "global_step": 176000
 }

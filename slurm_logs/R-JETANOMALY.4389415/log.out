@@ -1,0 +1,46 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 4389415
+##  Job Name : JETANOMALY
+##  Nodelist : gpu3004
+##      CPUs : 1
+##  Mem/Node : 131072 MB
+## Directory : /oscar/home/lwang223/jetAnomalyDetection
+##   Job Started : Thu Jul 30 04:36:30 AM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Thu Jul 30 04:36:30 AM EDT 2026
+Job ID: 4389415
+Node: gpu3004
+==========================================
+
+GPU Information (from host):
+Thu Jul 30 04:36:30 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:81:00.0 Off |                    0 |
+| N/A   26C    P8             31W /  350W |      75MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+|   1  NVIDIA L40S                    On  |   00000000:A1:00.0 Off |                    0 |
+| N/A   26C    P8             31W /  350W |      79MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          184125      G   /usr/libexec/Xorg                        64MiB |
+|    1   N/A  N/A          184125      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch version: 2.6.0+cu124
+Saved visualization to /oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-real-finetune/real_data_evaluation/real_test_top_2pct_events_random_visualization.png
+Selected event-array indices: [111, 267, 379, 458, 504, 719, 1110, 1116, 1250, 1393, 1493, 1497, 1658, 1740, 2043, 2137, 2647, 2756, 2849, 3211, 3307, 3383, 3415, 3628]

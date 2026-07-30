@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import random
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterator, List, Mapping, MutableMapping, Optional, Sequence, Tuple
 
@@ -100,8 +101,8 @@ CMS_FEATURE_SOURCES = {
     "part_energy": "concatenate(Cpfcan_e, Npfcan_e)",
     "part_pt": "concatenate(Cpfcan_pt, Npfcan_pt) / jet_pt",
     "log_pt_fraction": "log(clip(part_pt, 1e-8)) on valid candidates",
-    "part_deta": "concatenate(Cpfcan_etarel, Npfcan_etarel)",
-    "part_dphi": "concatenate(Cpfcan_phirel, Npfcan_phirel)",
+    "part_deta": "concatenate(Cpfcan_eta, Npfcan_eta) - jet_eta",
+    "part_dphi": "wrapped delta_phi(concatenate(Cpfcan_phi, Npfcan_phi), jet_phi)",
     "Cpfcan_dxysig": "ROOT Cpfcan_dxysig branch; neutral=0; no extra clipping",
     "log_Cpfcan_dxysig": "log(clip(Cpfcan_dxysig, 1e-8)); neutral=0",
     "Cpfcan_dzsig": "ROOT Cpfcan_dzsig branch; neutral=0; no extra clipping",
@@ -155,9 +156,9 @@ CMS_LABEL_TO_DIRECTORY = {
 CMS_LABEL_TO_FILENAME_PREFIX = {
     "label_QCD": "qcd_",
     "label_Hbb": "hbb_",
-    "label_Wqq": "wjets_",
-    "label_Zqq": "zjets_",
-    "label_Tbqq": "ttbar_",
+    "label_Wqq": "wqq_",
+    "label_Zqq": "zqq_",
+    "label_Tbqq": "tbqq_",
     "label_Real": "data_",
 }
 
@@ -170,6 +171,8 @@ _BRANCH_ALIASES: Dict[str, Tuple[str, ...]] = {
     "jet_qk_charge_05": ("jet_qk_charge_05",),
     "jet_qk_charge_10": ("jet_qk_charge_10",),
     "Cpfcan_pt": ("Cpfcan_pt",),
+    "Cpfcan_eta": ("Cpfcan_eta",),
+    "Cpfcan_phi": ("Cpfcan_phi",),
     "Cpfcan_etarel": ("Cpfcan_etarel",),
     "Cpfcan_phirel": ("Cpfcan_phirel",),
     "Cpfcan_charge": ("Cpfcan_charge",),
@@ -181,6 +184,8 @@ _BRANCH_ALIASES: Dict[str, Tuple[str, ...]] = {
     "Cpfcan_pz": ("Cpfcan_pz",),
     "Cpfcan_e": ("Cpfcan_e",),
     "Npfcan_pt": ("Npfcan_pt",),
+    "Npfcan_eta": ("Npfcan_eta",),
+    "Npfcan_phi": ("Npfcan_phi",),
     "Npfcan_etarel": ("Npfcan_etarel",),
     "Npfcan_phirel": ("Npfcan_phirel",),
     "Npfcan_pdgID": ("Npfcan_pdgID",),
@@ -194,7 +199,10 @@ _BRANCH_ALIASES: Dict[str, Tuple[str, ...]] = {
 _REQUIRED_PARTICLE_BRANCHES = (
     "jet_pt",
     "jet_eta",
+    "jet_phi",
     "Cpfcan_pt",
+    "Cpfcan_eta",
+    "Cpfcan_phi",
     "Cpfcan_etarel",
     "Cpfcan_phirel",
     "Cpfcan_charge",
@@ -206,6 +214,8 @@ _REQUIRED_PARTICLE_BRANCHES = (
     "Cpfcan_pz",
     "Cpfcan_e",
     "Npfcan_pt",
+    "Npfcan_eta",
+    "Npfcan_phi",
     "Npfcan_etarel",
     "Npfcan_phirel",
     "Npfcan_pdgID",
@@ -297,10 +307,17 @@ def _build_particle_table(
         [charged_pt_abs / safe_jet_pt, neutral_pt_abs / safe_jet_pt], axis=1
     )
     part_deta = ak.concatenate(
-        [arrays["Cpfcan_etarel"], arrays["Npfcan_etarel"]], axis=1
-    )
-    part_dphi = ak.concatenate(
-        [arrays["Cpfcan_phirel"], arrays["Npfcan_phirel"]], axis=1
+        [arrays["Cpfcan_eta"], arrays["Npfcan_eta"]], axis=1
+    ) - arrays["jet_eta"][:, None]
+    raw_part_dphi = ak.concatenate(
+        [arrays["Cpfcan_phi"], arrays["Npfcan_phi"]], axis=1
+    ) - arrays["jet_phi"][:, None]
+    # Wrap azimuthal differences to [-pi, pi). A direct subtraction produces
+    # spurious values near +/-2*pi when a jet and constituent straddle the
+    # periodic phi boundary.
+    part_dphi = np.arctan2(
+        np.sin(raw_part_dphi),
+        np.cos(raw_part_dphi),
     )
     part_charge = ak.concatenate(
         [arrays["Cpfcan_charge"], ak.zeros_like(neutral_pt_abs)], axis=1
@@ -379,6 +396,8 @@ def read_file(
     jet_eta_max: Optional[float] = 2.5,
     particle_dr_max: Optional[float] = 0.8,
     max_events: Optional[int] = None,
+    entry_start: Optional[int] = None,
+    entry_stop: Optional[int] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Load one CMS ROOT file with a JetClass-style return signature.
 
@@ -387,9 +406,24 @@ def read_file(
     semantics rather than being renamed to JetClass significance features.
 
     ``lowerpt`` and ``upperpt`` are optional event-level cuts on the actual
-    reconstructed ``jet_pt`` branch.  File names are never used as pT cuts.
-    One-hot labels follow the exact order of the supplied ``labels`` sequence.
+    reconstructed ``jet_pt`` branch. File names are never used as pT cuts.
+    ``entry_start`` and ``entry_stop`` select a half-open raw ROOT entry range
+    before preprocessing. ``max_events`` limits the number of raw entries
+    relative to ``entry_start``. One-hot labels follow the exact order of the
+    supplied ``labels`` sequence.
     """
+    if entry_start is not None and int(entry_start) < 0:
+        raise ValueError(f"entry_start must be non-negative, got {entry_start}.")
+    if entry_stop is not None and int(entry_stop) < 0:
+        raise ValueError(f"entry_stop must be non-negative, got {entry_stop}.")
+    if (
+        entry_start is not None
+        and entry_stop is not None
+        and int(entry_stop) < int(entry_start)
+    ):
+        raise ValueError(
+            f"entry_stop={entry_stop} is smaller than entry_start={entry_start}."
+        )
     requested_particles = list(
         PARTICLE_FEATURES
         if particle_features is None
@@ -431,8 +465,23 @@ def read_file(
         resolved = _resolve_branch_names(tree, logical_names)
         physical_names = sorted({name for name in resolved.values() if name is not None})
         array_kwargs = {"library": "ak"}
+        resolved_entry_start = 0 if entry_start is None else int(entry_start)
+        resolved_entry_stop = None if entry_stop is None else int(entry_stop)
         if max_events is not None:
-            array_kwargs["entry_stop"] = int(max_events)
+            if int(max_events) < 0:
+                raise ValueError(
+                    f"max_events must be non-negative, got {max_events}."
+                )
+            limited_stop = resolved_entry_start + int(max_events)
+            resolved_entry_stop = (
+                limited_stop
+                if resolved_entry_stop is None
+                else min(resolved_entry_stop, limited_stop)
+            )
+        if entry_start is not None:
+            array_kwargs["entry_start"] = resolved_entry_start
+        if resolved_entry_stop is not None:
+            array_kwargs["entry_stop"] = resolved_entry_stop
         raw_physical = tree.arrays(physical_names, **array_kwargs)
 
     arrays: Dict[str, ak.Array] = {
@@ -537,6 +586,124 @@ def validate_cms_labels(labels: Sequence[str]) -> None:
 
 FilesByLabel = Dict[str, List[str]]
 SplitFilesByLabel = Dict[str, FilesByLabel]
+
+
+@dataclass(frozen=True)
+class CMSShardSlice:
+    """One worker-owned half-open raw-entry range from a CMS ROOT shard."""
+
+    filepath: str
+    entry_start: Optional[int] = None
+    entry_stop: Optional[int] = None
+
+    def range_text(self) -> str:
+        if self.entry_start is None and self.entry_stop is None:
+            return "all entries"
+        return f"entries [{self.entry_start}, {self.entry_stop})"
+
+
+ShardSlicesByLabel = Dict[str, List[CMSShardSlice]]
+
+
+def _read_cms_tree_num_entries(filepath: str) -> int:
+    """Read only ROOT tree metadata; no event branches are materialized."""
+    with uproot.open(filepath) as handle:
+        tree = _resolve_tree(handle)
+        return int(tree.num_entries)
+
+
+def _assign_cms_worker_slices(
+    label_files: Sequence[str],
+    *,
+    global_worker_id: int,
+    global_num_workers: int,
+) -> List[CMSShardSlice]:
+    """Assign disjoint files or balanced raw-entry ranges to one consumer.
+
+    When there are at least as many files as DDP-rank/DataLoader-worker
+    consumers, this preserves the original file-level strided sharding. When
+    files are scarce, all label files are treated as one concatenated raw-entry
+    stream and divided into equal contiguous global ranges. A worker range may
+    cross a file boundary, in which case that worker owns two or more slices.
+
+    This fallback gives every consumer nearly the same number of raw entries,
+    avoids event overlap or omission, and prevents smaller per-worker slices
+    from cycling more frequently in an infinite stream. Since source shards are
+    already event-level shuffled, contiguous ranges remain randomized while
+    allowing efficient ROOT reads.
+    """
+    if global_num_workers <= 0:
+        raise ValueError(
+            f"global_num_workers must be positive, got {global_num_workers}."
+        )
+    if not 0 <= global_worker_id < global_num_workers:
+        raise ValueError(
+            f"global_worker_id={global_worker_id} outside "
+            f"[0, {global_num_workers})."
+        )
+
+    files = sorted(str(path) for path in label_files)
+    if not files:
+        raise ValueError("Cannot assign an empty CMS shard list.")
+
+    if len(files) >= global_num_workers:
+        assigned = files[global_worker_id::global_num_workers]
+        return [CMSShardSlice(filepath=filepath) for filepath in assigned]
+
+    entry_counts = [
+        _read_cms_tree_num_entries(filepath)
+        for filepath in files
+    ]
+    if any(count < 0 for count in entry_counts):
+        raise RuntimeError(
+            f"Negative ROOT entry count encountered: {entry_counts}."
+        )
+    total_entries = sum(entry_counts)
+    if total_entries < global_num_workers:
+        raise RuntimeError(
+            "CMS label has fewer raw events than global data consumers, so "
+            "at least one consumer would receive an empty range. "
+            f"num_files={len(files)}, total_entries={total_entries}, "
+            f"global_num_workers={global_num_workers}."
+        )
+
+    worker_global_start = (
+        total_entries * global_worker_id // global_num_workers
+    )
+    worker_global_stop = (
+        total_entries * (global_worker_id + 1) // global_num_workers
+    )
+
+    assigned_slices: List[CMSShardSlice] = []
+    file_global_start = 0
+    for filepath, num_entries in zip(files, entry_counts):
+        file_global_stop = file_global_start + num_entries
+        overlap_start = max(worker_global_start, file_global_start)
+        overlap_stop = min(worker_global_stop, file_global_stop)
+        if overlap_stop > overlap_start:
+            assigned_slices.append(
+                CMSShardSlice(
+                    filepath=filepath,
+                    entry_start=overlap_start - file_global_start,
+                    entry_stop=overlap_stop - file_global_start,
+                )
+            )
+        file_global_start = file_global_stop
+
+    assigned_entries = sum(
+        int(shard_slice.entry_stop) - int(shard_slice.entry_start)
+        for shard_slice in assigned_slices
+    )
+    expected_entries = worker_global_stop - worker_global_start
+    if not assigned_slices or assigned_entries != expected_entries:
+        raise RuntimeError(
+            "Internal error while partitioning CMS ROOT entry ranges. "
+            f"global_worker_id={global_worker_id}, "
+            f"expected_entries={expected_entries}, "
+            f"assigned_entries={assigned_entries}, "
+            f"assigned_slices={assigned_slices}."
+        )
+    return assigned_slices
 
 
 def discover_cms_files(
@@ -684,6 +851,8 @@ def load_and_preprocess_cms_file(
     min_nodes: int,
     eps: float = 1e-8,
     max_events: Optional[int] = None,
+    entry_start: Optional[int] = None,
+    entry_stop: Optional[int] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Load one shard and return canonical ``(events, particles, features)`` arrays."""
     del eps
@@ -697,6 +866,8 @@ def load_and_preprocess_cms_file(
         upperpt=upperpt,
         label_name=label_name,
         max_events=max_events,
+        entry_start=entry_start,
+        entry_stop=entry_stop,
     )
     x_particles = np.transpose(x_particles, (0, 2, 1)).astype(
         np.float32, copy=False
@@ -803,21 +974,17 @@ class CMSIterableDataset(IterableDataset):
         global_worker_id = self.rank * local_num_workers + local_worker_id
         global_num_workers = self.world_size * local_num_workers
 
-        worker_files_by_label: FilesByLabel = {}
+        # Preserve file-level sharding when enough files exist. If a label has
+        # fewer files than global consumers, partition those files into
+        # disjoint contiguous raw-entry ranges so every worker still sees every
+        # requested label without duplicating events within one dataset pass.
+        worker_slices_by_label: ShardSlicesByLabel = {}
         for label in self.labels_to_load:
-            label_files = sorted(self.files_by_label[label])
-            worker_label_files = label_files[
-                global_worker_id::global_num_workers
-            ]
-            if not worker_label_files:
-                raise RuntimeError(
-                    "This rank/DataLoader worker received no CMS ROOT shard for "
-                    f"label={label!r}; global_worker_id={global_worker_id}, "
-                    f"global_num_workers={global_num_workers}, "
-                    f"num_label_files={len(label_files)}. Reduce world_size × "
-                    "num_workers or produce more shards for this jet type."
-                )
-            worker_files_by_label[label] = worker_label_files
+            worker_slices_by_label[label] = _assign_cms_worker_slices(
+                self.files_by_label[label],
+                global_worker_id=global_worker_id,
+                global_num_workers=global_num_workers,
+            )
 
         worker_quota: Optional[int] = None
         if self.max_events is not None:
@@ -838,13 +1005,13 @@ class CMSIterableDataset(IterableDataset):
             rng = random.Random(
                 self.seed + 9176 * global_worker_id + 104729 * pass_index
             )
-            files_by_label = {
-                label: list(paths)
-                for label, paths in worker_files_by_label.items()
+            slices_by_label = {
+                label: list(slices)
+                for label, slices in worker_slices_by_label.items()
             }
             if self.shuffle_files:
-                for paths in files_by_label.values():
-                    rng.shuffle(paths)
+                for slices in slices_by_label.values():
+                    rng.shuffle(slices)
 
             yielded = 0
             if not self.shuffle_files:
@@ -853,9 +1020,9 @@ class CMSIterableDataset(IterableDataset):
                 ] = {}
                 for label in self.labels_to_load:
                     label_events: List[Tuple[torch.Tensor, torch.Tensor]] = []
-                    for filepath in files_by_label[label]:
+                    for shard_slice in slices_by_label[label]:
                         x_particles, y = load_and_preprocess_cms_file(
-                            filepath,
+                            shard_slice.filepath,
                             label_name=label,
                             label_axis=self.label_axis,
                             particle_features=self.particle_features,
@@ -863,6 +1030,8 @@ class CMSIterableDataset(IterableDataset):
                             lowerpt=self.lowerpt,
                             upperpt=self.upperpt,
                             min_nodes=self.min_nodes,
+                            entry_start=shard_slice.entry_start,
+                            entry_stop=shard_slice.entry_stop,
                         )
                         label_events.extend(
                             (
@@ -913,19 +1082,18 @@ class CMSIterableDataset(IterableDataset):
                     if not made_progress:
                         break
             else:
-                # Keep one independent file queue and active shard pool per
-                # label. In infinite mode, exhausting one label's local file
-                # queue refills only that label, so no class can disappear
-                # from the balanced label cycle while other classes continue.
-                file_queues_by_label = {
-                    label: list(files_by_label[label])
+                # Keep one independent slice queue and active pool per label.
+                # Refill is also label-local, preserving the balanced label
+                # cycle even when one class owns fewer physical ROOT files.
+                slice_queues_by_label = {
+                    label: list(slices_by_label[label])
                     for label in self.labels_to_load
                 }
-                total_local_files_by_label = {
-                    label: len(files_by_label[label])
+                total_local_slices_by_label = {
+                    label: len(slices_by_label[label])
                     for label in self.labels_to_load
                 }
-                empty_shard_streak = {
+                empty_slice_streak = {
                     label: 0 for label in self.labels_to_load
                 }
                 active_by_label: Dict[str, List[Dict[str, object]]] = {
@@ -933,19 +1101,19 @@ class CMSIterableDataset(IterableDataset):
                 }
 
                 def refill_label_queue(label: str) -> None:
-                    """Rebuild only one label's queue, excluding active paths."""
-                    active_paths = {
-                        str(shard["filepath"])
+                    """Rebuild one label queue, excluding active entry slices."""
+                    active_slices = {
+                        shard["slice"]
                         for shard in active_by_label[label]
                     }
                     candidates = [
-                        filepath
-                        for filepath in worker_files_by_label[label]
-                        if filepath not in active_paths
+                        shard_slice
+                        for shard_slice in worker_slices_by_label[label]
+                        if shard_slice not in active_slices
                     ]
                     if self.shuffle_files:
                         rng.shuffle(candidates)
-                    file_queues_by_label[label] = candidates
+                    slice_queues_by_label[label] = candidates
 
                 def load_next_shard(
                     label: str,
@@ -953,16 +1121,16 @@ class CMSIterableDataset(IterableDataset):
                     allow_refill: bool,
                 ) -> Optional[Dict[str, object]]:
                     while True:
-                        if not file_queues_by_label[label]:
+                        if not slice_queues_by_label[label]:
                             if not (self.infinite and allow_refill):
                                 return None
                             refill_label_queue(label)
-                            if not file_queues_by_label[label]:
+                            if not slice_queues_by_label[label]:
                                 return None
 
-                        filepath = file_queues_by_label[label].pop()
+                        shard_slice = slice_queues_by_label[label].pop()
                         x_particles, y = load_and_preprocess_cms_file(
-                            filepath,
+                            shard_slice.filepath,
                             label_name=label,
                             label_axis=self.label_axis,
                             particle_features=self.particle_features,
@@ -970,12 +1138,14 @@ class CMSIterableDataset(IterableDataset):
                             lowerpt=self.lowerpt,
                             upperpt=self.upperpt,
                             min_nodes=self.min_nodes,
+                            entry_start=shard_slice.entry_start,
+                            entry_stop=shard_slice.entry_stop,
                         )
                         if len(x_particles) == 0:
-                            empty_shard_streak[label] += 1
+                            empty_slice_streak[label] += 1
                             if (
-                                empty_shard_streak[label]
-                                >= total_local_files_by_label[label]
+                                empty_slice_streak[label]
+                                >= total_local_slices_by_label[label]
                             ):
                                 raise RuntimeError(
                                     "A complete local CMS class pass produced no "
@@ -987,7 +1157,7 @@ class CMSIterableDataset(IterableDataset):
                                 )
                             continue
 
-                        empty_shard_streak[label] = 0
+                        empty_slice_streak[label] = 0
                         order = np.arange(len(x_particles), dtype=np.int64)
                         np.random.default_rng(rng.randrange(2**32)).shuffle(order)
                         return {
@@ -995,15 +1165,16 @@ class CMSIterableDataset(IterableDataset):
                             "y": y,
                             "order": order,
                             "cursor": 0,
-                            "filepath": filepath,
+                            "slice": shard_slice,
+                            "filepath": shard_slice.filepath,
                         }
 
-                # Initial active pools are finite: each local path is loaded at
-                # most once during initialization. Independent refill begins
-                # only when an active shard from that same label is exhausted.
+                # Initial pools are finite: each local file/slice is loaded at
+                # most once. Independent refill begins only after an active
+                # slice from that same label is exhausted.
                 for label in self.labels_to_load:
                     budget = active_budget_by_label[label]
-                    for _ in range(min(budget, len(files_by_label[label]))):
+                    for _ in range(min(budget, len(slices_by_label[label]))):
                         shard = load_next_shard(
                             label,
                             allow_refill=False,
@@ -1052,7 +1223,7 @@ class CMSIterableDataset(IterableDataset):
                             elif self.infinite:
                                 raise RuntimeError(
                                     "Infinite CMS stream failed to refill a label "
-                                    "after its active shard was exhausted. "
+                                    "after its active slice was exhausted. "
                                     f"label={label!r}, "
                                     f"global_worker_id={global_worker_id}."
                                 )

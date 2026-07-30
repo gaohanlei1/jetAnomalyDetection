@@ -66,6 +66,18 @@ python -u \
     --checkpoint-summary plots/old-jetclass-run/summary.json \
     --output-dir plots/finetune-cms
 
+Fine-tune a CMS MC checkpoint on real data with a fresh 50/5/45 split:
+python -u scripts/run_train_lejepa_part.py \
+    --dataset cms \
+    --dataset-root /path/to/shuffled/real-data \
+    --background-labels label_Real \
+    --cms-val-fraction 0.05 \
+    --cms-test-fraction 0.45 \
+    --classification-weight 0 \
+    --checkpoint /path/to/cms-mc-run/best_model.pth \
+    --checkpoint-summary /path/to/cms-mc-run/summary.json \
+    --output-dir /path/to/new/real-data-finetune-run
+
 Use DDP training: (4 GPU example)
 Replace 
     python -u 
@@ -335,6 +347,32 @@ class TrainLeJEPAParticleTransformer:
         else:
             self.signal_labels = parse_csv_list(self.args.signal_labels)
 
+        # A one-class categorical objective is mathematically vacuous: with a
+        # single logit, cross-entropy is identically zero. Require an explicit
+        # opt-out so a real-data fine-tuning command cannot silently inherit the
+        # multi-class default classification weight.
+        if self.args.classification_weight is None:
+            if len(self.background_labels) == 1:
+                raise ValueError(
+                    "Single-label training requires explicitly passing "
+                    "--classification-weight 0. The classification objective "
+                    "is undefined as a useful learning signal with one class."
+                )
+            self.args.classification_weight = 0.1
+        elif (
+            len(self.background_labels) == 1
+            and not math.isclose(
+                float(self.args.classification_weight),
+                0.0,
+                rel_tol=0.0,
+                abs_tol=0.0,
+            )
+        ):
+            raise ValueError(
+                "Single-label training requires --classification-weight 0; "
+                f"got {self.args.classification_weight}."
+            )
+
         self.background_display_name = "+".join(
             label.removeprefix("label_") for label in self.background_labels
         )
@@ -409,6 +447,15 @@ class TrainLeJEPAParticleTransformer:
             raise ValueError(f"Unsupported dataset {self.dataset_name!r}.")
 
         self.output_dir = self.args.output_dir
+        if self.args.checkpoint is not None and not self.args.resume_training_state:
+            checkpoint_parent = Path(self.args.checkpoint).expanduser().resolve().parent
+            output_path = Path(self.output_dir).expanduser().resolve()
+            if checkpoint_parent == output_path:
+                raise ValueError(
+                    "Weight-only fine-tuning must use a new --output-dir. The "
+                    "checkpoint run directory is treated as immutable, including "
+                    "its cms_split_manifest.json."
+                )
         self.feature_plot_dir = os.path.join(self.output_dir, "features")
         self.augmentation_plot_dir = os.path.join(
             self.output_dir, "augmentation_views"
@@ -418,6 +465,10 @@ class TrainLeJEPAParticleTransformer:
         os.makedirs(self.augmentation_plot_dir, exist_ok=True)
 
         if self.is_main_process and self.cms_manifest is not None:
+            # This manifest is always built from the current dataset root,
+            # requested labels, split fractions, and split seed. Checkpoint
+            # metadata and any manifest beside the checkpoint are intentionally
+            # ignored for a new fine-tuning run.
             manifest_path = os.path.join(self.output_dir, "cms_split_manifest.json")
             with open(manifest_path + ".tmp", "w") as handle:
                 json.dump(self.cms_manifest, handle, indent=2)
@@ -2205,6 +2256,9 @@ class TrainLeJEPAParticleTransformer:
                     "cms_test_fraction": self.args.cms_test_fraction,
                     "cms_split_seed": self.args.cms_split_seed,
                     "cms_split_manifest_sha256": self.cms_manifest["sha256"],
+                    "cms_split_manifest_policy": (
+                        "fresh-current-run-manifest; checkpoint manifest ignored"
+                    ),
                     "cms_split_root_shard_counts": {
                         split_name: {
                             label: len(paths)
@@ -2221,7 +2275,7 @@ class TrainLeJEPAParticleTransformer:
                     ),
                 }
             )
-        
+
         # Negative augmentation settings for the supported model.
         summary.update(
             {
@@ -2277,7 +2331,7 @@ class TrainLeJEPAParticleTransformer:
 
         # Write a partial summary immediately, before optimization starts.
         update_summary()
-        
+
         optimizer = torch.optim.AdamW(
             self.model.parameters(),
             lr=self.args.learning_rate,
@@ -3017,8 +3071,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--classification-weight",
         type=float,
-        default=0.1,
-        help="Weight for classification loss. Default: 0.1.",
+        default=None,
+        help=(
+            "Weight for classification loss. Defaults to 0.1 for multi-class "
+            "training. Single-label training requires explicitly passing 0."
+        ),
     )
 
     # Triplet / corrupted-negative objective.

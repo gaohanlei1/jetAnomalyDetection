@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --nodes=1               # node count
-# SBATCH --nodelist=gpu2708      # the L40S GPU!! 3001-3005, 3101-3106, 2708-2709 are L40S
+# SBATCH --nodelist=gpu3102      # the L40S GPU!! 3001-3005, 3101-3106, 2708-2709 are L40S
 #SBATCH -p gpu --gres=gpu:2     # number of gpus per node
 #SBATCH --ntasks-per-node=1     # total number of tasks across all nodes
-#SBATCH --cpus-per-task=12       # cpu-cores per task (>1 if multi-threaded tasks)
+#SBATCH --cpus-per-task=6       # cpu-cores per task (>1 if multi-threaded tasks)
 #SBATCH -t 48:00:00             # total run time limit (HH:MM:SS)
 #SBATCH --mem=128GB           # CPU RAM
 #SBATCH --constraint=l40s
@@ -43,63 +43,21 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 # torchrun --standalone --nproc-per-node=2 \
 # "label_QCD,label_Hbb,label_Zqq,label_Wqq,label_Tbqq"
 # python -u \
-torchrun --standalone --nproc-per-node=2 \
-    scripts/run_train_lejepa_part.py \
-    --dataset cms \
-    --dataset-root "/HEP/export/home/hgao50/jet-anomaly-data/ak8-v4" \
-    --model semi-sup-triplet \
-    --background-labels "label_QCD,label_Hbb,label_Zqq,label_Tbqq,label_Wqq" \
-    --signal-labels "label_QCD,label_Hbb,label_Zqq,label_Tbqq,label_Wqq" \
-    --embed-dim 128 \
-    --representation-dim 128 \
-    --dropout 0.1 \
-    --num-layers 8 \
-    --num-heads 8 \
-    --batch-size 256 \
-    --steps-per-epoch 8000 \
-    --val-steps 3000 \
-    --eval-steps 3000 \
-    --epochs 80 \
-    --learning-rate 1e-3 \
-    --weight-decay 5e-2 \
-    --precision bf16 \
-    --num-global-views 2 \
-    --num-local-views 4 \
-    --num-negative-views 4 \
-    --batch-mix-prob 0.4 \
-    --pt-resample-prob 0.25 \
-    --node-deta-dphi-rotation-prob 0.1 \
-    --deta-dphi-shuffle-prob 0.1 \
-    --identity-shuffle-prob 0.15 \
-    --global-drop-pt-frac-min 0.0 \
-    --global-drop-pt-frac-max 0.3 \
-    --local-drop-pt-frac-min 0.3 \
-    --local-drop-pt-frac-max 0.75 \
-    --batch-mix-anchor-frac-min 0.4 \
-    --batch-mix-anchor-frac-max 0.6 \
-    --anomaly-score mahalanobis \
-    --pairwise-hidden-dim 64 \
-    --triplet-weight 0.1 \
-    --triplet-margin 0.2 \
-    --classification-weight 0.1 \
-    --num-workers 3 \
-    --prefetch-factor 2 \
-    --shuffle-active-shards 4 \
-    --output-dir "plots/largerun/all-cms-mc-shuffledata-nologsig-refill"
+# "/HEP/export/home/hgao50/jet-anomaly-data/ak8-data"
+# --cms-val-fraction 0.05 \
+#     --cms-test-fraction 0.45 \
 
-python -u \
-    scripts/diagnose_lejepa_latents.py \
-    "plots/largerun/all-cms-mc-shuffledata-nologsig-refill" \
-    --checkpoint "plots/largerun/all-cms-mc-shuffledata-nologsig-refill/last_model.pth" \
-    --eval-steps 3000
-
-# python -u \
+# torchrun --standalone --nproc-per-node=2 \
 #     scripts/run_train_lejepa_part.py \
-#     --dataset jetclass \
-#     --dataset-root "/HEP/export/home/lwang223/JetClass/JetClass/Pythia" \
+#     --dataset cms \
+#     --dataset-root "/HEP/export/home/lwang223/jet-anomaly-data/ak8-v5" \
+#     --checkpoint "plots/largerun/cms-correct-deta-dphi/last_checkpoint.pt" \
+#     --resume-training-state \
 #     --model semi-sup-triplet \
-#     --background-labels "label_QCD,label_Hbb,label_Hcc,label_Hgg,label_Wqq,label_H4q,label_Hqql,label_Zqq,label_Tbqq,label_Tbl" \
-#     --signal-labels "label_QCD,label_Hbb,label_Hcc,label_Hgg,label_Wqq,label_H4q,label_Hqql,label_Zqq,label_Tbqq,label_Tbl" \
+#     --background-labels "label_QCD,label_Hbb,label_Zqq,label_Wqq,label_Tbqq" \
+#     --signal-labels "label_QCD,label_Hbb,label_Zqq,label_Wqq,label_Tbqq" \
+#     --cms-val-fraction 0.1 \
+#     --cms-test-fraction 0.1 \
 #     --embed-dim 32 \
 #     --representation-dim 32 \
 #     --dropout 0.01 \
@@ -132,11 +90,65 @@ python -u \
 #     --triplet-weight 0.1 \
 #     --triplet-margin 0.2 \
 #     --classification-weight 0.1 \
-#     --num-workers 3 \
+#     --num-workers 2 \
 #     --prefetch-factor 2 \
-#     --shuffle-active-shards 4 \
-#     --output-dir "plots/quickrun/all-jetclass"
+#     --shuffle-active-shards 2 \
+#     --output-dir "plots/largerun/cms-correct-deta-dphi"
 
-# python -u \
-#     scripts/diagnose_lejepa_latents.py \
-#     "plots/quickrun/all-jetclass"
+# python -u scripts/diagnose_lejepa_latents.py \
+#     "plots/largerun/cms-correct-deta-dphi"
+
+# torchrun --standalone --nproc-per-node=2 \
+#     scripts/run_train_lejepa_part.py \
+#     --dataset cms \
+#     --dataset-root "/HEP/export/home/hgao50/jet-anomaly-data/ak8-data" \
+#     --model semi-sup-triplet \
+#     --checkpoint "plots/largerun/cms-correct-deta-dphi/last_checkpoint.pt" \
+#     --background-labels "label_Real" \
+#     --cms-val-fraction 0.05 \
+#     --cms-test-fraction 0.45 \
+#     --embed-dim 32 \
+#     --representation-dim 32 \
+#     --dropout 0.01 \
+#     --num-layers 4 \
+#     --num-heads 8 \
+#     --batch-size 128 \
+#     --steps-per-epoch 1000 \
+#     --val-steps 100 \
+#     --epochs 5 \
+#     --learning-rate 5e-5 \
+#     --weight-decay 5e-2 \
+#     --precision bf16 \
+#     --num-global-views 2 \
+#     --num-local-views 4 \
+#     --num-negative-views 4 \
+#     --batch-mix-prob 0.4 \
+#     --pt-resample-prob 0.25 \
+#     --node-deta-dphi-rotation-prob 0.1 \
+#     --deta-dphi-shuffle-prob 0.1 \
+#     --identity-shuffle-prob 0.15 \
+#     --global-drop-pt-frac-min 0.0 \
+#     --global-drop-pt-frac-max 0.3 \
+#     --local-drop-pt-frac-min 0.3 \
+#     --local-drop-pt-frac-max 0.75 \
+#     --batch-mix-anchor-frac-min 0.4 \
+#     --batch-mix-anchor-frac-max 0.6 \
+#     --anomaly-score mahalanobis \
+#     --pairwise-hidden-dim 32 \
+#     --triplet-weight 0.1 \
+#     --triplet-margin 0.2 \
+#     --classification-weight 0.0 \
+#     --num-workers 2 \
+#     --prefetch-factor 2 \
+#     --shuffle-active-shards 2 \
+#     --output-dir "plots/largerun/cms-correct-real-finetune"
+
+# python -u scripts/evaluate_label_real_anomalies.py \
+#     "plots/largerun/cms-correct-real-finetune" \
+#     --top-fraction 0.02
+
+python -u scripts/evaluate_label_real_anomalies.py \
+    --plot-events-npy plots/largerun/cms-correct-real-finetune/real_data_evaluation/real_test_top_2pct_events.npy \
+    --feature-list plots/largerun/cms-correct-real-finetune/real_data_evaluation/real_test_top_2pct_events_features.json \
+    --event-scores plots/largerun/cms-correct-real-finetune/real_data_evaluation/real_test_top_2pct_event_scores.npy \
+    --num-visualize 24

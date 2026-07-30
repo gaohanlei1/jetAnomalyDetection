@@ -3,7 +3,7 @@
 
 Markdown==3.10.2
 Werkzeug==3.1.8
-awkward_cpp==44
+awkward==2.7.4
 coffea==2024.11.0
 fast-histogram==0.14
 fsspec_xrootd==0.5.5
@@ -19,8 +19,7 @@ tensorboard==2.16.2
 torch==2.6.0
 torchvision==0.21.0
 torchaudio==2.6.0
-torch-geometric==2.8.0
 torch_cluster==1.6.3+pt26cu124
-uproot3==3.14.4
+uproot==5.6.6
 widgetsnbextension==4.0.15
 scikit-learn==1.4.0
