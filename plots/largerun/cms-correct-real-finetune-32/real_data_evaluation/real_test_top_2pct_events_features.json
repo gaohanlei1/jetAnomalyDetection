@@ -1,0 +1,27 @@
+{
+  "particle_features": [
+    "part_px",
+    "part_py",
+    "part_pz",
+    "part_energy",
+    "part_pt",
+    "log_pt_fraction",
+    "part_deta",
+    "part_dphi",
+    "Cpfcan_dxysig",
+    "Cpfcan_dzsig",
+    "part_charge",
+    "part_isChargedHadron",
+    "part_isNeutralHadron",
+    "part_isPhoton",
+    "part_isElectron",
+    "part_isMuon"
+  ],
+  "shape_semantics": [
+    "events",
+    "particles",
+    "features"
+  ],
+  "source_run": "/oscar/home/hgao50/jetAnomalyDetection/plots/largerun/cms-correct-real-finetune-32",
+  "source_summary": "/oscar/home/hgao50/jetAnomalyDetection/plots/largerun/cms-correct-real-finetune-32/summary.json"
+}
