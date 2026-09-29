@@ -93,10 +93,13 @@ def main():
     val_loaders = {label: run.loader("val", [label]) for label in run.backgrounds + run.signals}
     output.mkdir(parents=True, exist_ok=True)
     train_history, val_history = {"total_loss": []}, {"total_loss": []}
-    auc_history = {signal: {bg: {"val": []} for bg in run.backgrounds} for signal in run.signals}
+    # A display-only group: never add it to the dataset's physical jet labels.
+    pooled_background_label = "All backgrounds"
+    auc_background_labels = [*run.backgrounds, pooled_background_label]
+    auc_history = {signal: {bg: {"val": []} for bg in auc_background_labels} for signal in run.signals}
     epoch_end_steps, roc_eval_steps = [], []
     plot_context = SimpleNamespace(ssl_metric_keys=["total_loss"], signal_labels=run.signals,
-                                   background_labels=run.backgrounds, output_dir=str(output))
+                                   background_labels=auc_background_labels, output_dir=str(output))
     summary = {
         "model": "representation-affine-flow", "status": "initialized",
         "backbone_run_dir": str(run.run_dir), "backbone_checkpoint": str(run.checkpoint),
@@ -107,6 +110,8 @@ def main():
         "log_prob_definition": "-representation_dim * per_event_nll", "anomaly_score": "nll",
         "dataset": run.backend.dataset_name, "dataset_root": str(run.backend.dataset_root),
         "background_labels": run.backgrounds, "signal_labels": run.signals,
+        "pooled_auc_background_labels": run.backgrounds,
+        "pooled_auc_history_key": pooled_background_label,
         "particle_features": run.backend.feature_names,
         "batch_standardized_particle_features": run.backend.batch_standardized_feature_names,
         "max_num_particles": run.backend.max_num_particles,
@@ -161,15 +166,19 @@ def main():
         flow.eval()
         by_label = {label: evaluate(flow, run, loader, val_steps)
                     for label, loader in val_loaders.items()}
-        val_loss = float(np.concatenate([by_label[label] for label in run.backgrounds]).mean())
+        # Pool event scores, not per-type AUCs: preserve the sampled class counts.
+        pooled_background = np.concatenate([by_label[label] for label in run.backgrounds])
+        background_scores = {label: by_label[label] for label in run.backgrounds}
+        background_scores[pooled_background_label] = pooled_background
+        val_loss = float(pooled_background.mean())
         val_history["total_loss"].append(val_loss)
         epoch_end_steps.append(len(train_history["total_loss"]))
         roc_eval_steps.append(epoch_end_steps[-1])
         latest_auc = {}
         for signal in run.signals:
             latest_auc[signal] = {}
-            for background in run.backgrounds:
-                bg, sg = by_label[background], by_label[signal]
+            for background, bg in background_scores.items():
+                sg = by_label[signal]
                 auc = float(roc_auc_score(np.r_[np.zeros(len(bg)), np.ones(len(sg))], np.r_[bg, sg]))
                 auc_history[signal][background]["val"].append(auc)
                 latest_auc[signal][background] = auc
