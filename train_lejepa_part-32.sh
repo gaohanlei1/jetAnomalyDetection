@@ -27,22 +27,13 @@ nvidia-smi
 echo ""
 
 module load miniforge3/25.3.0-3
-
-# Slurm copies the batch script to a spool path, so do not derive the repo from BASH_SOURCE.
-REPO_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
-cd "${REPO_DIR}"
-
-if [[ -x "${REPO_DIR}/.venv/bin/python" ]]; then
-    source "${REPO_DIR}/.venv/bin/activate"
-    echo "Using project .venv: $(which python)"
-else
-    echo "ERROR: project .venv not found at ${REPO_DIR}/.venv"
-    echo "Available python: $(which python || true)"
-    exit 1
-fi
+source ${MAMBA_ROOT_PREFIX}/etc/profile.d/conda.sh
+# source /oscar/runtime/software/external/miniconda3/23.11.0/etc/profile.d/conda.sh
+# conda init
+conda activate jet
 
 # check pytorch version
-python -c "import torch; print(f'PyTorch version: {torch.__version__}, cuda={torch.cuda.is_available()}')"
+python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 
 # python -u \
 # torchrun --standalone --nproc-per-node=2 \

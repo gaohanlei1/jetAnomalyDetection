@@ -1,0 +1,493 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 4438198
+##  Job Name : JETANOMALY
+##  Nodelist : gpu3004
+##      CPUs : 1
+##  Mem/Node : 131072 MB
+## Directory : /oscar/home/lwang223/jetAnomalyDetection
+##   Job Started : Thu Jul 30 03:41:52 PM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Thu Jul 30 03:41:52 PM EDT 2026
+Job ID: 4438198
+Node: gpu3004
+==========================================
+
+GPU Information (from host):
+Thu Jul 30 15:41:52 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:01:00.0 Off |                    0 |
+| N/A   33C    P8             33W /  350W |      75MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+|   1  NVIDIA L40S                    On  |   00000000:21:00.0 Off |                    0 |
+| N/A   33C    P8             33W /  350W |      80MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          184125      G   /usr/libexec/Xorg                        64MiB |
+|    1   N/A  N/A          184125      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch version: 2.6.0+cu124
+Dataset: cms
+Dataset root: /HEP/export/home/lwang223/jet-anomaly-data/ak8-v5
+Background labels: ['label_QCD', 'label_Hbb', 'label_Zqq', 'label_Wqq', 'label_Tbqq']
+Signal labels: ['label_QCD', 'label_Hbb', 'label_Zqq', 'label_Wqq', 'label_Tbqq']
+Particle features: ['part_px', 'part_py', 'part_pz', 'part_energy', 'part_pt', 'log_pt_fraction', 'part_deta', 'part_dphi', 'Cpfcan_dxysig', 'Cpfcan_dzsig', 'part_charge', 'part_isChargedHadron', 'part_isNeutralHadron', 'part_isPhoton', 'part_isElectron', 'part_isMuon']
+Batch-normalized particle features: ['log_pt_fraction', 'Cpfcan_dxysig', 'Cpfcan_dzsig']
+Lazy cms datasets ready; no full split has been loaded into RAM.
+Background train ROOT shards: 870
+Background val ROOT shards: 109
+Background test ROOT shards: 109
+Signal test ROOT shards: 109
+Per-event particle shape: (128, 16)
+CMS active shards per worker: requested=2, effective=5; at least one active shard per requested jet type.
+Selected SSL model: semi-sup-triplet
+Number of trainable parameters: 2,699,793
+
+Epoch [1/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 1 train losses: {'total_loss': 5.88045114889741, 'invariant_loss': 0.5982355852557812, 'sigreg_loss': 102.4985625, 'triplet_loss': 0.058070366634521635, 'triplet_pos_distance': 0.1465464518450899, 'triplet_neg_distance': 0.6273010332481935, 'classification_loss': 1.5148469673395157}
+Epoch 1 val losses: {'total_loss': 1.9000670167207718, 'invariant_loss': 0.40369017657637596, 'sigreg_loss': 27.0295, 'triplet_loss': 0.026933912282809617, 'triplet_pos_distance': 0.07867295169085264, 'triplet_neg_distance': 0.8971624262332917, 'classification_loss': 1.4233968110084534}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [2/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 2 train losses: {'total_loss': 1.472369041353464, 'invariant_loss': 0.32815897741168737, 'sigreg_loss': 20.0108125, 'triplet_loss': 0.025274274460738523, 'triplet_pos_distance': 0.0655047580646351, 'triplet_neg_distance': 1.0994131706357002, 'classification_loss': 1.4114356388151645}
+Epoch 2 val losses: {'total_loss': 1.1760012241601945, 'invariant_loss': 0.28049386344850064, 'sigreg_loss': 15.0681875, 'triplet_loss': 0.025443753743544222, 'triplet_pos_distance': 0.04980338039249182, 'triplet_neg_distance': 1.2666312383413314, 'classification_loss': 1.3957626187801362}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [3/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 3 train losses: {'total_loss': 1.0584143514484168, 'invariant_loss': 0.2923633896224201, 'sigreg_loss': 12.552625, 'triplet_loss': 0.01784747729380615, 'triplet_pos_distance': 0.05927717747632414, 'triplet_neg_distance': 1.3131612141430378, 'classification_loss': 1.3663290850520133}
+Epoch 3 val losses: {'total_loss': 0.9681360206604004, 'invariant_loss': 0.2413412579894066, 'sigreg_loss': 11.858375, 'triplet_loss': 0.015944371099583805, 'triplet_pos_distance': 0.04309865088574588, 'triplet_neg_distance': 1.3228784002065659, 'classification_loss': 1.3232726769447327}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [4/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 4 train losses: {'total_loss': 0.886521801635623, 'invariant_loss': 0.25445418663695457, 'sigreg_loss': 10.0703671875, 'triplet_loss': 0.01199921296024695, 'triplet_pos_distance': 0.05316980324871838, 'triplet_neg_distance': 1.3852052766680718, 'classification_loss': 1.2732911000549794}
+Epoch 4 val losses: {'total_loss': 0.8409176839590072, 'invariant_loss': 0.1898441408276558, 'sigreg_loss': 10.44984375, 'triplet_loss': 0.012565434030257165, 'triplet_pos_distance': 0.03378116994164884, 'triplet_neg_distance': 1.346899046778679, 'classification_loss': 1.272603474855423}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [5/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 5 train losses: {'total_loss': 0.7898270007967949, 'invariant_loss': 0.21300275318324566, 'sigreg_loss': 9.0401171875, 'triplet_loss': 0.009902177972253411, 'triplet_pos_distance': 0.045971998170483856, 'triplet_neg_distance': 1.411343494951725, 'classification_loss': 1.2382718213796615}
+Epoch 5 val losses: {'total_loss': 0.7784617720842362, 'invariant_loss': 0.15529603376984596, 'sigreg_loss': 9.9965625, 'triplet_loss': 0.01252541868109256, 'triplet_pos_distance': 0.027496713502332567, 'triplet_neg_distance': 1.3436487501859664, 'classification_loss': 1.2207920726537704}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [6/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 6 train losses: {'total_loss': 0.7320621967464686, 'invariant_loss': 0.1888612837716937, 'sigreg_loss': 8.403484375, 'triplet_loss': 0.010127699720906094, 'triplet_pos_distance': 0.04167048480222001, 'triplet_neg_distance': 1.406285028576851, 'classification_loss': 1.2202651203870774}
+Epoch 6 val losses: {'total_loss': 0.7290605760216713, 'invariant_loss': 0.137630394667387, 'sigreg_loss': 9.39178125, 'triplet_loss': 0.01214579228591174, 'triplet_pos_distance': 0.024052305581979454, 'triplet_neg_distance': 1.3093847131729126, 'classification_loss': 1.2061403641700745}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [7/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 7 train losses: {'total_loss': 0.6908838798850775, 'invariant_loss': 0.17240046532452105, 'sigreg_loss': 7.9352109375, 'triplet_loss': 0.010632095297798514, 'triplet_pos_distance': 0.03862558782612905, 'triplet_neg_distance': 1.3957339127361774, 'classification_loss': 1.2066287334561347}
+Epoch 7 val losses: {'total_loss': 0.674608746111393, 'invariant_loss': 0.13560035426169634, 'sigreg_loss': 8.3568125, 'triplet_loss': 0.012746475372463465, 'triplet_pos_distance': 0.023455701464787124, 'triplet_neg_distance': 1.3773166110515596, 'classification_loss': 1.1991147631406784}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [8/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 8 train losses: {'total_loss': 0.6627693554461003, 'invariant_loss': 0.16433346305042507, 'sigreg_loss': 7.5558515625, 'triplet_loss': 0.011554960343870335, 'triplet_pos_distance': 0.037057732261251655, 'triplet_neg_distance': 1.3783819846510887, 'classification_loss': 1.1949669845998288}
+Epoch 8 val losses: {'total_loss': 0.6319549698829651, 'invariant_loss': 0.1163395230025053, 'sigreg_loss': 7.9074375, 'triplet_loss': 0.01335246383678168, 'triplet_pos_distance': 0.019446903315372764, 'triplet_neg_distance': 1.3179422553777695, 'classification_loss': 1.1893449540138246}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [9/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 9 train losses: {'total_loss': 0.6470294906198979, 'invariant_loss': 0.15970127706229686, 'sigreg_loss': 7.3497890625, 'triplet_loss': 0.011714198978501372, 'triplet_pos_distance': 0.036395963865797964, 'triplet_neg_distance': 1.3762439235150814, 'classification_loss': 1.1867387865185737}
+Epoch 9 val losses: {'total_loss': 0.6265955483317375, 'invariant_loss': 0.12035543176531792, 'sigreg_loss': 7.749125, 'triplet_loss': 0.013458839395083487, 'triplet_pos_distance': 0.02000849915295839, 'triplet_neg_distance': 1.3519364758729935, 'classification_loss': 1.1743133909702301}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [10/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 10 train losses: {'total_loss': 0.640702195674181, 'invariant_loss': 0.1577690209876746, 'sigreg_loss': 7.2712734375, 'triplet_loss': 0.011988352477084845, 'triplet_pos_distance': 0.03617924549942836, 'triplet_neg_distance': 1.366813818871975, 'classification_loss': 1.181718341767788}
+Epoch 10 val losses: {'total_loss': 0.660580689907074, 'invariant_loss': 0.11345425502210855, 'sigreg_loss': 8.57759375, 'triplet_loss': 0.012920483418740332, 'triplet_pos_distance': 0.019232347032055258, 'triplet_neg_distance': 1.2764687583446503, 'classification_loss': 1.1699649605751037}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [11/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 11 train losses: {'total_loss': 0.6317372682094574, 'invariant_loss': 0.15496144853904845, 'sigreg_loss': 7.15925, 'triplet_loss': 0.011866072174627334, 'triplet_pos_distance': 0.035694666958414015, 'triplet_neg_distance': 1.3658440831899643, 'classification_loss': 1.1761801739633084}
+Epoch 11 val losses: {'total_loss': 0.609027585864067, 'invariant_loss': 0.11911769078671933, 'sigreg_loss': 7.40296875, 'triplet_loss': 0.012849893745966255, 'triplet_pos_distance': 0.02044589812029153, 'triplet_neg_distance': 1.3266672625541687, 'classification_loss': 1.1846865310668946}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [12/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 12 train losses: {'total_loss': 0.6239019375890493, 'invariant_loss': 0.15310575597174467, 'sigreg_loss': 7.0562421875, 'triplet_loss': 0.012208621676894836, 'triplet_pos_distance': 0.03534545323019847, 'triplet_neg_distance': 1.3570015436708927, 'classification_loss': 1.1677355837523937}
+Epoch 12 val losses: {'total_loss': 0.5964378522634506, 'invariant_loss': 0.11002778434753419, 'sigreg_loss': 7.34178125, 'triplet_loss': 0.01391586829163134, 'triplet_pos_distance': 0.018051041156519204, 'triplet_neg_distance': 1.3580364880561828, 'classification_loss': 1.179149618625641}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [13/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 13 train losses: {'total_loss': 0.6202117251902819, 'invariant_loss': 0.1497249805498868, 'sigreg_loss': 7.0571328125, 'triplet_loss': 0.012124487859080546, 'triplet_pos_distance': 0.03463548288727179, 'triplet_neg_distance': 1.3541857571899891, 'classification_loss': 1.1641931251734494}
+Epoch 13 val losses: {'total_loss': 0.5977473365664482, 'invariant_loss': 0.11001576562970877, 'sigreg_loss': 7.43884375, 'triplet_loss': 0.014114018100313843, 'triplet_pos_distance': 0.018067588708363475, 'triplet_neg_distance': 1.3085599477291108, 'classification_loss': 1.143768069565296}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [14/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 14 train losses: {'total_loss': 0.6155849499702454, 'invariant_loss': 0.14816767164506017, 'sigreg_loss': 7.01371875, 'triplet_loss': 0.012075064184609801, 'triplet_pos_distance': 0.03439660833636299, 'triplet_neg_distance': 1.3473047268390657, 'classification_loss': 1.1553056992590427}
+Epoch 14 val losses: {'total_loss': 0.5935496389865875, 'invariant_loss': 0.10307154593616724, 'sigreg_loss': 7.4935625, 'triplet_loss': 0.014374303543008863, 'triplet_pos_distance': 0.017180578829720617, 'triplet_neg_distance': 1.2903927255868912, 'classification_loss': 1.1436487879753112}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [15/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 15 train losses: {'total_loss': 0.6101418460160494, 'invariant_loss': 0.146707577643916, 'sigreg_loss': 6.9425234375, 'triplet_loss': 0.011997640031040646, 'triplet_pos_distance': 0.03415035010315478, 'triplet_neg_distance': 1.3503840205967426, 'classification_loss': 1.151036425203085}
+Epoch 15 val losses: {'total_loss': 0.5793380786776543, 'invariant_loss': 0.11066040877252817, 'sigreg_loss': 7.0695, 'triplet_loss': 0.012812629111576825, 'triplet_pos_distance': 0.018351196503266692, 'triplet_neg_distance': 1.3608738961219788, 'classification_loss': 1.1393937165737151}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [16/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 16 train losses: {'total_loss': 0.6068084889352322, 'invariant_loss': 0.1453072115648538, 'sigreg_loss': 6.9085, 'triplet_loss': 0.011877208258840255, 'triplet_pos_distance': 0.03390445732651278, 'triplet_neg_distance': 1.352667799949646, 'classification_loss': 1.1490095591843128}
+Epoch 16 val losses: {'total_loss': 0.5902021405100822, 'invariant_loss': 0.10919104070961476, 'sigreg_loss': 7.3143125, 'triplet_loss': 0.01287159893475473, 'triplet_pos_distance': 0.018148723122663794, 'triplet_neg_distance': 1.3318389084339142, 'classification_loss': 1.140227638721466}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [17/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 17 train losses: {'total_loss': 0.6021776775270701, 'invariant_loss': 0.1428522128444165, 'sigreg_loss': 6.871359375, 'triplet_loss': 0.012173243037075735, 'triplet_pos_distance': 0.03346520138252527, 'triplet_neg_distance': 1.3434546447694302, 'classification_loss': 1.1454807914942502}
+Epoch 17 val losses: {'total_loss': 0.5777255986332893, 'invariant_loss': 0.10176099526882172, 'sigreg_loss': 7.22075, 'triplet_loss': 0.014211835852824152, 'triplet_pos_distance': 0.017200282806996255, 'triplet_neg_distance': 1.3569923771619796, 'classification_loss': 1.1349068117141723}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [18/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 18 train losses: {'total_loss': 0.5994703830033541, 'invariant_loss': 0.14220184538140893, 'sigreg_loss': 6.8380390625, 'triplet_loss': 0.012183436973835341, 'triplet_pos_distance': 0.03359779426269233, 'triplet_neg_distance': 1.3409718050062656, 'classification_loss': 1.1414540667533875}
+Epoch 18 val losses: {'total_loss': 0.5995261553525925, 'invariant_loss': 0.0971137514412403, 'sigreg_loss': 7.7570625, 'triplet_loss': 0.01362415938731283, 'triplet_pos_distance': 0.01595116555970162, 'triplet_neg_distance': 1.2500558587312698, 'classification_loss': 1.1320037504434586}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [19/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 19 train losses: {'total_loss': 0.595523984014988, 'invariant_loss': 0.14091051239706576, 'sigreg_loss': 6.7917421875, 'triplet_loss': 0.012218117767130025, 'triplet_pos_distance': 0.03330159414280206, 'triplet_neg_distance': 1.3343331796824933, 'classification_loss': 1.1380913844555616}
+Epoch 19 val losses: {'total_loss': 0.6128509463667869, 'invariant_loss': 0.09537097498774529, 'sigreg_loss': 8.01825, 'triplet_loss': 0.01447542358841747, 'triplet_pos_distance': 0.015783173184841872, 'triplet_neg_distance': 1.279751734137535, 'classification_loss': 1.1512227082252502}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [20/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 20 train losses: {'total_loss': 0.5914256259799003, 'invariant_loss': 0.13913320351205766, 'sigreg_loss': 6.748890625, 'triplet_loss': 0.012194799411692657, 'triplet_pos_distance': 0.03297808799054474, 'triplet_neg_distance': 1.3450310242176056, 'classification_loss': 1.1362958092242479}
+Epoch 20 val losses: {'total_loss': 0.5593824282586575, 'invariant_loss': 0.09897857324033976, 'sigreg_loss': 6.93653125, 'triplet_loss': 0.014494414904154837, 'triplet_pos_distance': 0.016475776915438473, 'triplet_neg_distance': 1.33471264898777, 'classification_loss': 1.1212823914885521}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [21/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 21 train losses: {'total_loss': 0.587376763433218, 'invariant_loss': 0.13752085953764617, 'sigreg_loss': 6.7063671875, 'triplet_loss': 0.0124224590244703, 'triplet_pos_distance': 0.0326508455676958, 'triplet_neg_distance': 1.3411333658993245, 'classification_loss': 1.1329822571724653}
+Epoch 21 val losses: {'total_loss': 0.5705537083148956, 'invariant_loss': 0.09247717981785536, 'sigreg_loss': 7.28640625, 'triplet_loss': 0.014253055294044316, 'triplet_pos_distance': 0.015173916026484222, 'triplet_neg_distance': 1.2947385748624802, 'classification_loss': 1.1231528161764144}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [22/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 22 train losses: {'total_loss': 0.5844781873524189, 'invariant_loss': 0.1367024803981185, 'sigreg_loss': 6.66978125, 'triplet_loss': 0.012140123379183933, 'triplet_pos_distance': 0.03260485163005069, 'triplet_neg_distance': 1.3512434062957763, 'classification_loss': 1.1308024752140045}
+Epoch 22 val losses: {'total_loss': 0.5617521541416645, 'invariant_loss': 0.09436900426447392, 'sigreg_loss': 7.07834375, 'triplet_loss': 0.013372341331560164, 'triplet_pos_distance': 0.015914470468182118, 'triplet_neg_distance': 1.3204977239370346, 'classification_loss': 1.1211622485518455}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [23/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 23 train losses: {'total_loss': 0.5790061076134443, 'invariant_loss': 0.13582454789429904, 'sigreg_loss': 6.587984375, 'triplet_loss': 0.012233068627072498, 'triplet_pos_distance': 0.03241271614050493, 'triplet_neg_distance': 1.3528530503809453, 'classification_loss': 1.1255590728372336}
+Epoch 23 val losses: {'total_loss': 0.5561290819346905, 'invariant_loss': 0.09570327354222537, 'sigreg_loss': 6.94303125, 'triplet_loss': 0.013937517534941435, 'triplet_pos_distance': 0.015971883513964714, 'triplet_neg_distance': 1.3124489414691924, 'classification_loss': 1.1189728655815125}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [24/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 24 train losses: {'total_loss': 0.5773045397475361, 'invariant_loss': 0.134914632236585, 'sigreg_loss': 6.5759296875, 'triplet_loss': 0.012388651936198584, 'triplet_pos_distance': 0.03238287120172754, 'triplet_neg_distance': 1.355009092003107, 'classification_loss': 1.1236441838741302}
+Epoch 24 val losses: {'total_loss': 0.5554804749190807, 'invariant_loss': 0.09325178914517164, 'sigreg_loss': 6.99190625, 'triplet_loss': 0.013847545739263296, 'triplet_pos_distance': 0.015668729548808186, 'triplet_neg_distance': 1.3203318227529526, 'classification_loss': 1.1126189689040185}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [25/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 25 train losses: {'total_loss': 0.5719957369118929, 'invariant_loss': 0.13271495831757785, 'sigreg_loss': 6.5199765625, 'triplet_loss': 0.012298831582069398, 'triplet_pos_distance': 0.03195472941081971, 'triplet_neg_distance': 1.366265589594841, 'classification_loss': 1.1204625404179096}
+Epoch 25 val losses: {'total_loss': 0.5489137536287307, 'invariant_loss': 0.09034626974910498, 'sigreg_loss': 6.915, 'triplet_loss': 0.013905946899205447, 'triplet_pos_distance': 0.014913366391789168, 'triplet_neg_distance': 1.3666455612182618, 'classification_loss': 1.1144055866003038}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [26/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 26 train losses: {'total_loss': 0.5685346034914255, 'invariant_loss': 0.1313273177500814, 'sigreg_loss': 6.4839765625, 'triplet_loss': 0.012333187285927125, 'triplet_pos_distance': 0.03166201109485701, 'triplet_neg_distance': 1.3597887618243694, 'classification_loss': 1.1177328134030105}
+Epoch 26 val losses: {'total_loss': 0.555000110566616, 'invariant_loss': 0.09116587112843991, 'sigreg_loss': 7.02671875, 'triplet_loss': 0.014254040742293, 'triplet_pos_distance': 0.015165919101797045, 'triplet_neg_distance': 1.335631997704506, 'classification_loss': 1.110865665256977}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [27/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 27 train losses: {'total_loss': 0.5640400990247726, 'invariant_loss': 0.13020677397213876, 'sigreg_loss': 6.420546875, 'triplet_loss': 0.012408944569411688, 'triplet_pos_distance': 0.03156688081752509, 'triplet_neg_distance': 1.3599477519392966, 'classification_loss': 1.1157045542746782}
+Epoch 27 val losses: {'total_loss': 0.5467776905894279, 'invariant_loss': 0.09623979784548282, 'sigreg_loss': 6.77321875, 'triplet_loss': 0.013379284329712391, 'triplet_pos_distance': 0.016241808568593114, 'triplet_neg_distance': 1.3012230087518692, 'classification_loss': 1.105280849635601}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [28/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 28 train losses: {'total_loss': 0.5610594599097967, 'invariant_loss': 0.12950921706296503, 'sigreg_loss': 6.3824609375, 'triplet_loss': 0.01207064052973874, 'triplet_pos_distance': 0.03136962434044108, 'triplet_neg_distance': 1.3672014647424222, 'classification_loss': 1.1123160330951214}
+Epoch 28 val losses: {'total_loss': 0.5464940887987614, 'invariant_loss': 0.08305434004962445, 'sigreg_loss': 7.033625, 'triplet_loss': 0.014168727537617087, 'triplet_pos_distance': 0.013513121079653502, 'triplet_neg_distance': 1.310508510351181, 'classification_loss': 1.1037443593144416}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [29/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 29 train losses: {'total_loss': 0.5568321238011121, 'invariant_loss': 0.12834265147149562, 'sigreg_loss': 6.32478125, 'triplet_loss': 0.01191115713713225, 'triplet_pos_distance': 0.03113412804203108, 'triplet_neg_distance': 1.3716363024413585, 'classification_loss': 1.1105543460696936}
+Epoch 29 val losses: {'total_loss': 0.5390980175435544, 'invariant_loss': 0.08559144564718008, 'sigreg_loss': 6.8345625, 'triplet_loss': 0.014031865571625531, 'triplet_pos_distance': 0.014290594485122711, 'triplet_neg_distance': 1.313865066409111, 'classification_loss': 1.1035728949308394}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [30/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 30 train losses: {'total_loss': 0.5524303604215384, 'invariant_loss': 0.12724363076500594, 'sigreg_loss': 6.264328125, 'triplet_loss': 0.012085802312125452, 'triplet_pos_distance': 0.03097711339686066, 'triplet_neg_distance': 1.3699637798666955, 'classification_loss': 1.1078478644043208}
+Epoch 30 val losses: {'total_loss': 0.5394604169428349, 'invariant_loss': 0.08726849535107613, 'sigreg_loss': 6.786, 'triplet_loss': 0.013518662945367396, 'triplet_pos_distance': 0.014551954997237772, 'triplet_neg_distance': 1.322978441476822, 'classification_loss': 1.1153145630359649}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [31/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 31 train losses: {'total_loss': 0.5479030442237854, 'invariant_loss': 0.12564740578457714, 'sigreg_loss': 6.212375, 'triplet_loss': 0.011979205559822731, 'triplet_pos_distance': 0.03064914307743311, 'triplet_neg_distance': 1.3698820077180862, 'classification_loss': 1.104422362267971}
+Epoch 31 val losses: {'total_loss': 0.5277858485281467, 'invariant_loss': 0.08938574877381325, 'sigreg_loss': 6.544, 'triplet_loss': 0.013021932949312032, 'triplet_pos_distance': 0.014997532524634153, 'triplet_neg_distance': 1.3473253129720688, 'classification_loss': 1.098791521191597}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [32/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 32 train losses: {'total_loss': 0.5443840381577612, 'invariant_loss': 0.1248317775838077, 'sigreg_loss': 6.16328125, 'triplet_loss': 0.011847710147267208, 'triplet_pos_distance': 0.03052559634950012, 'triplet_neg_distance': 1.3680778949558734, 'classification_loss': 1.1020415594279767}
+Epoch 32 val losses: {'total_loss': 0.5234137691557408, 'invariant_loss': 0.0832125246077776, 'sigreg_loss': 6.59128125, 'triplet_loss': 0.013172897971235215, 'triplet_pos_distance': 0.01385643756063655, 'triplet_neg_distance': 1.3312732328176498, 'classification_loss': 1.0929215591549872}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [33/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 33 train losses: {'total_loss': 0.5399825549647213, 'invariant_loss': 0.12418793714791536, 'sigreg_loss': 6.0916640625, 'triplet_loss': 0.01150692712853197, 'triplet_pos_distance': 0.030389723373111337, 'triplet_neg_distance': 1.3667833432853222, 'classification_loss': 1.100579843595624}
+Epoch 33 val losses: {'total_loss': 0.521173394292593, 'invariant_loss': 0.08166260313987732, 'sigreg_loss': 6.579375, 'triplet_loss': 0.013301900911144911, 'triplet_pos_distance': 0.013336684783920645, 'triplet_neg_distance': 1.3377985917329789, 'classification_loss': 1.0918645741939546}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [34/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 34 train losses: {'total_loss': 0.5363461438938976, 'invariant_loss': 0.12300356093980372, 'sigreg_loss': 6.0484375, 'triplet_loss': 0.01131885886855889, 'triplet_pos_distance': 0.03016439017187804, 'triplet_neg_distance': 1.3708394570350646, 'classification_loss': 1.0980761685073375}
+Epoch 34 val losses: {'total_loss': 0.5177082580327987, 'invariant_loss': 0.08082680456340313, 'sigreg_loss': 6.5316875, 'triplet_loss': 0.012960708281025291, 'triplet_pos_distance': 0.013295166299212725, 'triplet_neg_distance': 1.329273354768753, 'classification_loss': 1.090053014934063}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [35/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 35 train losses: {'total_loss': 0.5332636742815375, 'invariant_loss': 0.12260587630048395, 'sigreg_loss': 5.998109375, 'triplet_loss': 0.01131356110982597, 'triplet_pos_distance': 0.030119624752085655, 'triplet_neg_distance': 1.3645385630130769, 'classification_loss': 1.0962360608428716}
+Epoch 35 val losses: {'total_loss': 0.5132077485322952, 'invariant_loss': 0.08256961258500814, 'sigreg_loss': 6.4100625, 'triplet_loss': 0.012621054536662997, 'triplet_pos_distance': 0.013740585834253579, 'triplet_neg_distance': 1.3157733274698258, 'classification_loss': 1.0887016662955284}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [36/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 36 train losses: {'total_loss': 0.531580661073327, 'invariant_loss': 0.12231546915508806, 'sigreg_loss': 5.9768671875, 'triplet_loss': 0.011192284991033375, 'triplet_pos_distance': 0.03006557051325217, 'triplet_neg_distance': 1.363996670305729, 'classification_loss': 1.092809697777033}
+Epoch 36 val losses: {'total_loss': 0.5108890590667725, 'invariant_loss': 0.08118356461450457, 'sigreg_loss': 6.392, 'triplet_loss': 0.012603651446290314, 'triplet_pos_distance': 0.01329025223525241, 'triplet_neg_distance': 1.3289537363052368, 'classification_loss': 1.088103609263897}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [37/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 37 train losses: {'total_loss': 0.5279214598238469, 'invariant_loss': 0.12140730419009924, 'sigreg_loss': 5.9264140625, 'triplet_loss': 0.011213660957408137, 'triplet_pos_distance': 0.029897556978277864, 'triplet_neg_distance': 1.3624175281524658, 'classification_loss': 1.0907467016875745}
+Epoch 37 val losses: {'total_loss': 0.5119614795446396, 'invariant_loss': 0.07972818377614022, 'sigreg_loss': 6.4461875, 'triplet_loss': 0.01271414287108928, 'triplet_pos_distance': 0.013094267168547958, 'triplet_neg_distance': 1.3146487336158752, 'classification_loss': 1.0865328533649445}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [38/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 38 train losses: {'total_loss': 0.5264873026385903, 'invariant_loss': 0.12109133816324175, 'sigreg_loss': 5.9034921875, 'triplet_loss': 0.011221661387011408, 'triplet_pos_distance': 0.0299155248189345, 'triplet_neg_distance': 1.3638117239177228, 'classification_loss': 1.0909190972149372}
+Epoch 38 val losses: {'total_loss': 0.5117615666687488, 'invariant_loss': 0.08006337838247418, 'sigreg_loss': 6.436, 'triplet_loss': 0.012567709150724114, 'triplet_pos_distance': 0.013204114286694676, 'triplet_neg_distance': 1.3169703702926636, 'classification_loss': 1.0864649215340614}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [39/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/best_model.pth and plots/largerun/cms-correct-deta-dphi-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 39 train losses: {'total_loss': 0.5257237243577838, 'invariant_loss': 0.12114279329031706, 'sigreg_loss': 5.8910546875, 'triplet_loss': 0.011122089577838778, 'triplet_pos_distance': 0.02985328725678846, 'triplet_neg_distance': 1.3662203024625779, 'classification_loss': 1.0890841554403305}
+Epoch 39 val losses: {'total_loss': 0.5090635474622249, 'invariant_loss': 0.07962836063653231, 'sigreg_loss': 6.39134375, 'triplet_loss': 0.0126108608385548, 'triplet_pos_distance': 0.012938891015015542, 'triplet_neg_distance': 1.3252232828140258, 'classification_loss': 1.0859987995624543}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+
+Epoch [40/40]
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved run summary to plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-deta-dphi-128/last_model.pth and plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Epoch 40 train losses: {'total_loss': 0.5245420140326023, 'invariant_loss': 0.12098433092981577, 'sigreg_loss': 5.86896875, 'triplet_loss': 0.01119548059173394, 'triplet_pos_distance': 0.02981928929546848, 'triplet_neg_distance': 1.365882908910513, 'classification_loss': 1.0899623655080795}
+Epoch 40 val losses: {'total_loss': 0.5093070657551289, 'invariant_loss': 0.07941032180935144, 'sigreg_loss': 6.40190625, 'triplet_loss': 0.012596024239435791, 'triplet_pos_distance': 0.013030949173495173, 'triplet_neg_distance': 1.3244464178085327, 'classification_loss': 1.0852971708774566}
+Updated run summary at plots/largerun/cms-correct-deta-dphi-128/summary.json
+Saved run summary to plots/largerun/cms-correct-deta-dphi-128/summary.json
+Dataset backend: cms
+Dataset root: /HEP/export/home/lwang223/jet-anomaly-data/ak8-v5
+Loading /oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-deta-dphi-128/best_model.pth on cuda:0
+Sampling 1000 x 128 events from each source stream
+Full-jet density latent space: representation
+Training labels: QCD+Hbb+Zqq+Wqq+Tbqq
+Visualization signal labels: QCD+Hbb+Zqq+Wqq+Tbqq
+Dataset label axis: ['label_QCD', 'label_Hbb', 'label_Wqq', 'label_Zqq', 'label_Tbqq', 'label_Real']
+Particle feature order:
+   0: part_px
+   1: part_py
+   2: part_pz
+   3: part_energy
+   4: part_pt
+   5: log_pt_fraction
+   6: part_deta
+   7: part_dphi
+   8: Cpfcan_dxysig
+   9: Cpfcan_dzsig
+  10: part_charge
+  11: part_isChargedHadron
+  12: part_isNeutralHadron
+  13: part_isPhoton
+  14: part_isElectron
+  15: part_isMuon
+Batch-standardized particle features: ['log_pt_fraction', 'Cpfcan_dxysig', 'Cpfcan_dzsig']
+CMS split source: /oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-deta-dphi-128/cms_split_manifest.json; sha256=3a10607b80775bbeb1843e66c9fa25431a5f1f3a21c3f48dbe73fde2903b458d
+
+Collecting full-event latents...
+Collected full latents: train=128000, validation=128000, shared signal test=128000
+Global AUC fit=0.503794, held-out=0.498187, validation=0.500831
+
+Rotating pairwise class-specific Mahalanobis diagnostics
+signal=QCD, background=Hbb: train AUC=0.879131, validation AUC=0.877860
+signal=QCD, background=Zqq: train AUC=0.554800, validation AUC=0.557544
+signal=QCD, background=Wqq: train AUC=0.607629, validation AUC=0.604862
+signal=QCD, background=Tbqq: train AUC=0.903620, validation AUC=0.903310
+signal=Hbb, background=QCD: train AUC=0.860097, validation AUC=0.862546
+signal=Hbb, background=Zqq: train AUC=0.780039, validation AUC=0.781526
+signal=Hbb, background=Wqq: train AUC=0.799832, validation AUC=0.797945
+signal=Hbb, background=Tbqq: train AUC=0.710901, validation AUC=0.710928
+signal=Zqq, background=QCD: train AUC=0.665012, validation AUC=0.667495
+signal=Zqq, background=Hbb: train AUC=0.836660, validation AUC=0.835173
+signal=Zqq, background=Wqq: train AUC=0.526591, validation AUC=0.523519
+signal=Zqq, background=Tbqq: train AUC=0.844376, validation AUC=0.843957
+signal=Wqq, background=QCD: train AUC=0.670474, validation AUC=0.673163
+signal=Wqq, background=Hbb: train AUC=0.833836, validation AUC=0.832354
+signal=Wqq, background=Zqq: train AUC=0.487334, validation AUC=0.490487
+signal=Wqq, background=Tbqq: train AUC=0.840618, validation AUC=0.840219
+signal=Tbqq, background=QCD: train AUC=0.886431, validation AUC=0.888805
+signal=Tbqq, background=Hbb: train AUC=0.591782, validation AUC=0.587722
+signal=Tbqq, background=Zqq: train AUC=0.794276, validation AUC=0.795672
+signal=Tbqq, background=Wqq: train AUC=0.798331, validation AUC=0.796406
+
+Saved diagnostics to /oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-deta-dphi-128/latent_diagnostics
+Dataset: cms
+Dataset root: /HEP/export/home/hgao50/jet-anomaly-data/ak8-data
+Background labels: ['label_Real']
+Signal labels: []
+Particle features: ['part_px', 'part_py', 'part_pz', 'part_energy', 'part_pt', 'log_pt_fraction', 'part_deta', 'part_dphi', 'Cpfcan_dxysig', 'Cpfcan_dzsig', 'part_charge', 'part_isChargedHadron', 'part_isNeutralHadron', 'part_isPhoton', 'part_isElectron', 'part_isMuon']
+Batch-normalized particle features: ['log_pt_fraction', 'Cpfcan_dxysig', 'Cpfcan_dzsig']
+Lazy cms datasets ready; no full split has been loaded into RAM.
+Background train ROOT shards: 50
+Background val ROOT shards: 5
+Background test ROOT shards: 45
+Signal test stream: disabled
+Per-event particle shape: (128, 16)
+CMS active shards per worker: requested=2, effective=2; at least one active shard per requested jet type.
+Loaded checkpoint: /oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt
+Classification head remains at its new random initialization.
+Selected SSL model: semi-sup-triplet
+Number of trainable parameters: 2,699,277
+
+Epoch [1/5]
+Updated run summary at plots/largerun/cms-correct-real-finetune-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-real-finetune-128/best_model.pth and plots/largerun/cms-correct-real-finetune-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-real-finetune-128/last_model.pth and plots/largerun/cms-correct-real-finetune-128/last_checkpoint.pt
+Epoch 1 train losses: {'total_loss': 0.5767594495117664, 'invariant_loss': 0.15347813995182513, 'sigreg_loss': 8.444, 'triplet_loss': 0.011055277331732213, 'triplet_pos_distance': 0.03340451352111995, 'triplet_neg_distance': 1.3548012783527374, 'classification_loss': 0.0}
+Epoch 1 val losses: {'total_loss': 0.4799955034554005, 'invariant_loss': 0.1196817909181118, 'sigreg_loss': 7.1813125, 'triplet_loss': 0.012375383385457099, 'triplet_pos_distance': 0.01855731104686856, 'triplet_neg_distance': 1.366766559958458, 'classification_loss': 0.0}
+Updated run summary at plots/largerun/cms-correct-real-finetune-128/summary.json
+
+Epoch [2/5]
+Updated run summary at plots/largerun/cms-correct-real-finetune-128/summary.json
+Saved new best model state_dict/full checkpoint to plots/largerun/cms-correct-real-finetune-128/best_model.pth and plots/largerun/cms-correct-real-finetune-128/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-real-finetune-128/last_model.pth and plots/largerun/cms-correct-real-finetune-128/last_checkpoint.pt
+Epoch 2 train losses: {'total_loss': 0.45999253112077715, 'invariant_loss': 0.15793728490173817, 'sigreg_loss': 6.019, 'triplet_loss': 0.010864928598050027, 'triplet_pos_distance': 0.03500321442633867, 'triplet_neg_distance': 1.4281524358987807, 'classification_loss': 0.0}
+Epoch 2 val losses: {'total_loss': 0.46417311319708826, 'invariant_loss': 0.12063480108231306, 'sigreg_loss': 6.84590625, 'triplet_loss': 0.012570596419274807, 'triplet_pos_distance': 0.018724114106968046, 'triplet_neg_distance': 1.400590362906456, 'classification_loss': 0.0}
+Updated run summary at plots/largerun/cms-correct-real-finetune-128/summary.json
+
+Epoch [3/5]
+Updated run summary at plots/largerun/cms-correct-real-finetune-128/summary.json
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-real-finetune-128/last_model.pth and plots/largerun/cms-correct-real-finetune-128/last_checkpoint.pt
+Epoch 3 train losses: {'total_loss': 0.4548927414417267, 'invariant_loss': 0.15776946203410624, 'sigreg_loss': 5.92, 'triplet_loss': 0.011066751575097442, 'triplet_pos_distance': 0.03496168470941484, 'triplet_neg_distance': 1.4388399275541306, 'classification_loss': 0.0}
+Epoch 3 val losses: {'total_loss': 0.46564215499162676, 'invariant_loss': 0.11871753768622875, 'sigreg_loss': 6.91378125, 'triplet_loss': 0.012683633940294385, 'triplet_pos_distance': 0.018565318448469044, 'triplet_neg_distance': 1.4001005489826202, 'classification_loss': 0.0}
+Updated run summary at plots/largerun/cms-correct-real-finetune-128/summary.json
+
+Epoch [4/5]
+Updated run summary at plots/largerun/cms-correct-real-finetune-128/summary.json
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-real-finetune-128/last_model.pth and plots/largerun/cms-correct-real-finetune-128/last_checkpoint.pt
+Epoch 4 train losses: {'total_loss': 0.44871472573280335, 'invariant_loss': 0.15607051099836827, 'sigreg_loss': 5.8306875, 'triplet_loss': 0.011031961943022906, 'triplet_pos_distance': 0.0343824503775686, 'triplet_neg_distance': 1.4395749233961106, 'classification_loss': 0.0}
+Epoch 4 val losses: {'total_loss': 0.4642037304639816, 'invariant_loss': 0.11697685281187296, 'sigreg_loss': 6.9191875, 'triplet_loss': 0.012639839343726636, 'triplet_pos_distance': 0.018120835491456093, 'triplet_neg_distance': 1.3785100589990615, 'classification_loss': 0.0}
+Updated run summary at plots/largerun/cms-correct-real-finetune-128/summary.json
+
+Epoch [5/5]
+Updated run summary at plots/largerun/cms-correct-real-finetune-128/summary.json
+Saved run summary to plots/largerun/cms-correct-real-finetune-128/summary.json
+Saved last model state_dict/full checkpoint to plots/largerun/cms-correct-real-finetune-128/last_model.pth and plots/largerun/cms-correct-real-finetune-128/last_checkpoint.pt
+Epoch 5 train losses: {'total_loss': 0.44670442274212835, 'invariant_loss': 0.15489717684686183, 'sigreg_loss': 5.8143125, 'triplet_loss': 0.011050947575829924, 'triplet_pos_distance': 0.03453440807014704, 'triplet_neg_distance': 1.4356994758844375, 'classification_loss': 0.0}
+Epoch 5 val losses: {'total_loss': 0.4838026189506054, 'invariant_loss': 0.11486535474658012, 'sigreg_loss': 7.3535625, 'triplet_loss': 0.012731999739073217, 'triplet_pos_distance': 0.0178044101158157, 'triplet_neg_distance': 1.3756216815710067, 'classification_loss': 0.0}
+Updated run summary at plots/largerun/cms-correct-real-finetune-128/summary.json
+Saved run summary to plots/largerun/cms-correct-real-finetune-128/summary.json
+Run directory: /oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-real-finetune-128
+Checkpoint: /oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-real-finetune-128/best_model.pth
+Dataset root: /HEP/export/home/hgao50/jet-anomaly-data/ak8-data
+Manifest: /oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-real-finetune-128/cms_split_manifest.json
+label_Real test shards: 45
+Device: cuda:0; batch size: 128; workers: 2
+Fit fraction: 0.5; top fraction: 0.02
+Evaluation scope: complete finite label_Real test split
+Finite held-out test events: 184,344
+Processed 100,096/184,344 events; current top cut=168.965
+Saved evaluation outputs to /oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-real-finetune-128/real_data_evaluation
+Top-event cut: 177.357
+Top events: 3,687 -> /oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-real-finetune-128/real_data_evaluation/real_test_top_2pct_events.npy
