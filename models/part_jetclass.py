@@ -2752,7 +2752,7 @@ class LeJEPATripletParticleTransformerRepresentation(MinimalParticleTransformer)
             positives = global views;
             negatives = corrupted views.
 
-    During representation extraction, use the inherited forward method.
+    For projected representations, use forward_representation().
     """
 
     def __init__(
@@ -2785,6 +2785,19 @@ class LeJEPATripletParticleTransformerRepresentation(MinimalParticleTransformer)
             representation_dim=model_config.representation_dim,
             dropout=model_config.dropout,
         )
+
+    def forward_representation(
+        self,
+        x: torch.Tensor,
+        padding_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Encode one full view: final CLS state followed by representation head.
+
+        No augmentation or pretraining loss is computed. The inherited forward
+        keeps returning the pre-projection CLS for existing training callers.
+        """
+        cls = self.forward(x, padding_mask=padding_mask)
+        return self.representation_head(cls)
 
     def forward_pretrain(
         self,
