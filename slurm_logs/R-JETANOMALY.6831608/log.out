@@ -1,0 +1,46 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 6831608
+##  Job Name : JETANOMALY
+##  Nodelist : gpu2105
+##      CPUs : 1
+##  Mem/Node : 65536 MB
+## Directory : /oscar/home/lwang223/jetAnomalyDetection
+##   Job Started : Tue Sep 29 09:48:17 PM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Tue Sep 29 09:48:17 PM EDT 2026
+Job ID: 6831608
+Node: gpu2105
+==========================================
+
+GPU Information (from host):
+Tue Sep 29 21:48:17 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA GeForce RTX 3090        On  |   00000000:41:00.0 Off |                  N/A |
+| 58%   47C    P8             37W /  350W |      19MiB /  24576MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          160710      G   /usr/libexec/Xorg                         5MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch version: 2.6.0+cu124
+Number of params: 67840, trainable: 67840
+Epoch 1: training done; validating mixed backgrounds.
+Validation background loss: 100 mixed batches; starting streaming loader (4 workers).
+Validation background loss: 12,800 events in 55.3s.
+Validation background ROC: 100 mixed batches; starting streaming loader (4 workers).
+Validation background ROC: 12,800 events in 39.4s.
+Validation signal ROC: 100 mixed batches; starting streaming loader (4 workers).

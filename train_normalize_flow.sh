@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=6       # cpu-cores per task (>1 if multi-threaded tasks)
 #SBATCH -t 12:00:00             # total run time limit (HH:MM:SS)
 #SBATCH --mem=64GB           # CPU RAM
-#SBATCH --constraint=l40s
+# SBATCH --constraint=l40s
 #SBATCH --job-name='JETANOMALY'
 #SBATCH --output=slurm_logs/R-%x.%j/log.out
 #SBATCH --error=slurm_logs/R-%x.%j/log.err
@@ -40,7 +40,7 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 python scripts/run_train_representation_flow.py \
   plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb-long \
   --output-dir plots/run-flow-jetclass-hbb \
-  --num-layers 32
+  --num-layers 8
 
 # python scripts/plot_lejepa_tsne.py \
 #   plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb-long

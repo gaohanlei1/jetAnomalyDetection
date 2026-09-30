@@ -1,6 +1,6 @@
 {
   "model": "representation-affine-flow",
-  "status": "training",
+  "status": "initialized",
   "backbone_run_dir": "/oscar/home/lwang223/jetAnomalyDetection/plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb-long",
   "backbone_checkpoint": "/oscar/home/lwang223/jetAnomalyDetection/plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb-long/best_model.pth",
   "backbone_summary": "/oscar/home/lwang223/jetAnomalyDetection/plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb-long/summary.json",
@@ -8,7 +8,7 @@
   "latent_space": "representation_head_of_cls",
   "flow_config": {
     "dim": 32,
-    "num_layers": 32,
+    "num_layers": 8,
     "hidden_dim": 128,
     "seed": 42
   },
@@ -64,13 +64,20 @@
   "cms_split_manifest_sha256": null,
   "cms_split_manifest_source": null,
   "validation_split": "val",
-  "val_steps_per_label": 100,
+  "signal_eval_split": "val",
+  "val_steps": 100,
+  "eval_steps": 100,
+  "validation_batching": "mixed_background_labels; separate_mixed_signal_loader",
+  "roc_grouping": "group_by_label_after_forward",
+  "max_val_events": null,
+  "max_signal_eval_events": null,
   "batch_size": 128,
   "num_workers": 4,
   "prefetch_factor": 2,
   "validation_streaming": true,
-  "validation_active_shards_per_label_per_worker": 1,
-  "validation_prefetch_factor": 1,
+  "shuffle_active_shards": 3,
+  "validation_prefetch_factor": 2,
+  "validation_persistent_workers": false,
   "worker_start_method": "spawn",
   "epochs": 20,
   "steps_per_epoch": 2000,
@@ -79,42 +86,18 @@
   "base_seed": 42,
   "learning_rate": 0.0003,
   "weight_decay": 1e-05,
+  "grad_clip_norm": 1.0,
   "final_lr_ratio": 0.001,
   "precision": "fp32",
   "backbone_precision": "bf16",
   "device": "cuda",
   "distributed": false,
   "world_size": 1,
-  "num_trainable_parameters": 271360,
+  "num_trainable_parameters": 67840,
   "best_model_path": "/oscar/home/lwang223/jetAnomalyDetection/plots/run-flow-jetclass-hbb/best_model.pth",
   "last_model_path": "/oscar/home/lwang223/jetAnomalyDetection/plots/run-flow-jetclass-hbb/last_model.pth",
   "best_checkpoint_path": "/oscar/home/lwang223/jetAnomalyDetection/plots/run-flow-jetclass-hbb/best_checkpoint.pt",
   "last_checkpoint_path": "/oscar/home/lwang223/jetAnomalyDetection/plots/run-flow-jetclass-hbb/last_checkpoint.pt",
-  "completed_epochs": 2,
-  "best_val_loss": 0.5774720311164856,
-  "current_epoch": 2,
-  "final_val_loss": 0.5774720311164856,
-  "current_learning_rate": 0.0003,
-  "latest_train_losses": {
-    "total_loss": 2.646070712864399
-  },
-  "latest_val_losses": {
-    "total_loss": 0.5774720311164856
-  },
-  "latest_val_auc": {
-    "label_Hbb": {
-      "label_QCD": 0.617581884765625,
-      "label_Wqq": 0.5339615081787109,
-      "label_Hcc": 0.5116171966552734,
-      "label_Hgg": 0.4991504760742187,
-      "All backgrounds": 0.540577766418457
-    }
-  },
-  "validation_events_by_label": {
-    "label_QCD": 12800,
-    "label_Wqq": 12800,
-    "label_Hcc": 12800,
-    "label_Hgg": 12800,
-    "label_Hbb": 12800
-  }
+  "completed_epochs": 0,
+  "best_val_loss": null
 }

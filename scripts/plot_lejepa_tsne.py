@@ -23,7 +23,7 @@ from scripts.lejepa_run import LeJEPARun, add_backbone_arguments
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     add_backbone_arguments(parser)
-    parser.add_argument("--perplexity", type=float, default=30.0)
+    parser.add_argument("--perplexity", type=float, default=300.0)
     args = parser.parse_args()
     if args.perplexity <= 0:
         parser.error("--perplexity must be positive")
@@ -93,7 +93,7 @@ def main():
     for index, label in enumerate(labels):
         selected = y == run.backend.label_axis.index(label)
         if selected.any():
-            ax.scatter(embedding[selected, 0], embedding[selected, 1], s=3,
+            ax.scatter(embedding[selected, 0], embedding[selected, 1], s=8,
                        alpha=0.5, color=colors(index % 20), rasterized=True,
                        label=f"{label.removeprefix('label_')} (n={selected.sum():,})")
     ax.set(xlabel="t-SNE 1", ylabel="t-SNE 2", title="Validation projected CLS representations")
