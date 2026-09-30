@@ -1,0 +1,5 @@
+/oscar/home/lwang223/jetAnomalyDetection/scripts/lejepa_run.py:46: UserWarning: Legacy summary: using dataset-module batch-normalized features.
+  warnings.warn("Legacy summary: using dataset-module batch-normalized features.")
+/oscar/home/lwang223/jetAnomalyDetection/scripts/lejepa_run.py:64: UserWarning: Legacy checkpoint without running statistics: use per-batch feature normalization.
+  warnings.warn("Legacy checkpoint without running statistics: use per-batch feature normalization.")
+All validation projected CLS states: 0it [00:00, ?it/s]
