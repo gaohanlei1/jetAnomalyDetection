@@ -43,33 +43,36 @@ def main():
     generator = torch.Generator().manual_seed(run.seed)
     x = y = priorities = None
     total_events = 0
+    started = perf_counter()
+    label_counts = torch.zeros(len(run.backend.label_axis), dtype=torch.long)
+    print(f"Mixed validation: {len(labels)} jet types, {run.num_workers} workers; "
+          "loading the initial active shards.", flush=True)
+    # Keep all validation types in the same batch-normalization population.
+    # Split/group only after inference, using the aligned dataset labels.
+    loader = run.loader("val", labels, infinite=False, drop_last=False,
+                        persistent_workers=False)
+    for batch in tqdm(loader, desc="Mixed validation representations", unit="batch"):
+        representations = run.encode(batch).cpu()
+        if not torch.isfinite(representations).all():
+            raise ValueError("Non-finite backbone representations in mixed validation.")
+        batch_targets = batch["y"].argmax(dim=-1).cpu()
+        batch_priorities = torch.rand(len(representations), generator=generator,
+                                      dtype=torch.float64)
+        total_events += len(representations)
+        label_counts += torch.bincount(batch_targets, minlength=len(label_counts))
+        if x is None:
+            x, y, priorities = representations, batch_targets, batch_priorities
+        else:
+            x = torch.cat((x, representations))
+            y = torch.cat((y, batch_targets))
+            priorities = torch.cat((priorities, batch_priorities))
+        if len(x) > sample_limit:
+            selected = priorities.topk(sample_limit).indices
+            x, y, priorities = x[selected], y[selected], priorities[selected]
+    print(f"Mixed validation completed in {perf_counter() - started:.1f}s.", flush=True)
     for label in labels:
-        started = perf_counter()
-        label_events = 0
-        print(f"Validation {label}: starting loader ({run.num_workers} workers; "
-              "one active shard per worker).", flush=True)
-        # Each worker loads only this type's shard before its first batch.
-        loader = run.loader("val", [label])
-        for batch in tqdm(loader, desc=f"Validation {label}", unit="batch"):
-            representations = run.encode(batch).cpu()
-            if not torch.isfinite(representations).all():
-                raise ValueError(f"Non-finite backbone representations for {label}.")
-            batch_targets = batch["y"].argmax(dim=-1).cpu()
-            batch_priorities = torch.rand(len(representations), generator=generator,
-                                          dtype=torch.float64)
-            total_events += len(representations)
-            label_events += len(representations)
-            if x is None:
-                x, y, priorities = representations, batch_targets, batch_priorities
-            else:
-                x = torch.cat((x, representations))
-                y = torch.cat((y, batch_targets))
-                priorities = torch.cat((priorities, batch_priorities))
-            if len(x) > sample_limit:
-                selected = priorities.topk(sample_limit).indices
-                x, y, priorities = x[selected], y[selected], priorities[selected]
-        print(f"Validation {label}: {label_events:,} events in "
-              f"{perf_counter() - started:.1f}s.", flush=True)
+        count = int(label_counts[run.backend.label_axis.index(label)])
+        print(f"  {label}: {count:,} events encoded.", flush=True)
     if x is None or len(x) < 2:
         raise ValueError("t-SNE requires at least two validation events.")
     print(f"Encoded all {total_events:,} validation events; retained {len(x):,} "
@@ -79,7 +82,7 @@ def main():
     if not torch.isfinite(x).all():
         raise ValueError("Non-finite backbone CLS states.")
     print(f"Running t-SNE on {len(x):,} validation events.", flush=True)
-    # Import only in the parent, after data loading (workers use spawn).
+    # Fit once to the mixed sample; group by the saved labels only for plotting.
     embedding = TSNE(n_components=2, perplexity=min(args.perplexity, len(x) - 1),
                     ).fit_transform(x)
     if isinstance(embedding, torch.Tensor):
