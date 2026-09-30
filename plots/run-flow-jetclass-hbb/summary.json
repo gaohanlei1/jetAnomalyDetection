@@ -8,7 +8,7 @@
   "latent_space": "representation_head_of_cls",
   "flow_config": {
     "dim": 32,
-    "num_layers": 8,
+    "num_layers": 32,
     "hidden_dim": 128,
     "seed": 42
   },
@@ -85,29 +85,29 @@
   "device": "cuda",
   "distributed": false,
   "world_size": 1,
-  "num_trainable_parameters": 67840,
+  "num_trainable_parameters": 271360,
   "best_model_path": "/oscar/home/lwang223/jetAnomalyDetection/plots/run-flow-jetclass-hbb/best_model.pth",
   "last_model_path": "/oscar/home/lwang223/jetAnomalyDetection/plots/run-flow-jetclass-hbb/last_model.pth",
   "best_checkpoint_path": "/oscar/home/lwang223/jetAnomalyDetection/plots/run-flow-jetclass-hbb/best_checkpoint.pt",
   "last_checkpoint_path": "/oscar/home/lwang223/jetAnomalyDetection/plots/run-flow-jetclass-hbb/last_checkpoint.pt",
-  "completed_epochs": 7,
-  "best_val_loss": 0.006880150642246008,
-  "current_epoch": 7,
-  "final_val_loss": 0.006880150642246008,
-  "current_learning_rate": 0.00024647172331152787,
+  "completed_epochs": 2,
+  "best_val_loss": 0.5774720311164856,
+  "current_epoch": 2,
+  "final_val_loss": 0.5774720311164856,
+  "current_learning_rate": 0.0003,
   "latest_train_losses": {
-    "total_loss": 0.029779810066334903
+    "total_loss": 2.646070712864399
   },
   "latest_val_losses": {
-    "total_loss": 0.006880150642246008
+    "total_loss": 0.5774720311164856
   },
   "latest_val_auc": {
     "label_Hbb": {
-      "label_QCD": 0.6363876068115234,
-      "label_Wqq": 0.5417509521484376,
-      "label_Hcc": 0.5171868286132812,
-      "label_Hgg": 0.5121629882812501,
-      "All backgrounds": 0.551872093963623
+      "label_QCD": 0.617581884765625,
+      "label_Wqq": 0.5339615081787109,
+      "label_Hcc": 0.5116171966552734,
+      "label_Hgg": 0.4991504760742187,
+      "All backgrounds": 0.540577766418457
     }
   },
   "validation_events_by_label": {

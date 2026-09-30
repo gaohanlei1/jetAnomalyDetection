@@ -37,9 +37,10 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 # python -u \
 # torchrun --standalone --nproc-per-node=2 \
 
-# python scripts/run_train_representation_flow.py \
-#   plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb-long \
-#   --output-dir plots/run-flow-jetclass-hbb
+python scripts/run_train_representation_flow.py \
+  plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb-long \
+  --output-dir plots/run-flow-jetclass-hbb \
+  --num-layers 32
 
-python scripts/plot_lejepa_tsne.py \
-  plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb-long
+# python scripts/plot_lejepa_tsne.py \
+#   plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb-long

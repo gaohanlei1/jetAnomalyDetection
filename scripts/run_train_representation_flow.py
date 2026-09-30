@@ -201,6 +201,7 @@ def main():
     flow_config = dict(dim=run.model.config.representation_dim, num_layers=args.num_layers,
                        hidden_dim=args.hidden_dim, seed=run.seed)
     flow = RepresentationFlow(**flow_config).to(run.device)
+    print(f"Number of params: {sum(p.numel() for p in flow.parameters())}, trainable: {sum(p.numel() for p in flow.parameters() if p.requires_grad)}")
     optimizer = torch.optim.AdamW(flow.parameters(), lr=args.learning_rate,
                                   weight_decay=args.weight_decay)
     scheduler = make_warmup_cosine_scheduler(optimizer, total_steps, warmup, args.final_lr_ratio)
