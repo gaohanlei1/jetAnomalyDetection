@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import sys
 from types import SimpleNamespace
+from time import perf_counter
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -35,17 +36,25 @@ def write_json(path, payload):
 
 
 @torch.no_grad()
-def evaluate(flow, run, loader, steps):
+def evaluate(flow, run, loader, steps, *, label="validation"):
     scores = []
+    started = perf_counter()
+    budget = f"up to {steps} batches" if steps else "complete finite split"
+    print(f"Validation {label}: {budget}; starting streaming loader "
+          f"({loader.num_workers} workers).", flush=True)
     batches = loader if steps == 0 else islice(loader, steps)
-    for batch in batches:
-        nll = flow.forward_pretrain(run.encode(batch))["nll"]
-        if not torch.isfinite(nll).all():
-            raise FloatingPointError("Non-finite validation NLL.")
-        scores.append(nll.cpu().numpy())
+    with tqdm(batches, total=steps or None, desc=f"Val {label}", unit="batch") as progress:
+        for batch in progress:
+            nll = flow.forward_pretrain(run.encode(batch))["nll"]
+            if not torch.isfinite(nll).all():
+                raise FloatingPointError("Non-finite validation NLL.")
+            scores.append(nll.cpu().numpy())
     if not scores:
         raise RuntimeError("Validation stream has no events.")
-    return np.concatenate(scores)
+    result = np.concatenate(scores)
+    print(f"Validation {label}: {len(result):,} events in "
+          f"{perf_counter() - started:.1f}s.", flush=True)
+    return result
 
 
 def main():
@@ -121,6 +130,8 @@ def main():
         "validation_split": "val", "val_steps_per_label": val_steps,
         "batch_size": run.batch_size, "num_workers": run.num_workers,
         "prefetch_factor": run.summary.get("prefetch_factor", 2),
+        "validation_streaming": True, "validation_active_shards_per_label_per_worker": 1,
+        "validation_prefetch_factor": 1, "worker_start_method": "spawn",
         "epochs": args.epochs, "steps_per_epoch": steps, "warmup_steps": warmup,
         "total_training_steps": total_steps, "base_seed": run.seed,
         "learning_rate": args.learning_rate, "weight_decay": args.weight_decay,
@@ -163,9 +174,13 @@ def main():
             scheduler.step()
             train_history["total_loss"].append(loss.item())
             progress.set_postfix(nll=f"{loss.item():.5g}")
-        flow.eval() # evaluate roc 
-        by_label = {label: evaluate(flow, run, loader, val_steps)
+        flow.eval()
+        print(f"Epoch {epoch}: training done; validating {len(val_loaders)} jet types.", flush=True)
+        validation_started = perf_counter()
+        by_label = {label: evaluate(flow, run, loader, val_steps, label=label)
                     for label, loader in val_loaders.items()}
+        print(f"Epoch {epoch}: validation done in "
+              f"{perf_counter() - validation_started:.1f}s; computing ROC AUC.", flush=True)
         # Pool event scores, not per-type AUCs: preserve the sampled class counts.
         pooled_background = np.concatenate([by_label[label] for label in run.backgrounds])
         background_scores = {label: by_label[label] for label in run.backgrounds}
@@ -197,12 +212,14 @@ def main():
         checkpoint = dict(model_state_dict=flow.state_dict(), optimizer_state_dict=optimizer.state_dict(),
                           scheduler_state_dict=scheduler.state_dict(), epoch=epoch,
                           metadata=dict(summary), **history)
+        print(f"Epoch {epoch}: saving flow checkpoints and history.", flush=True)
         # Flow parameters only: the frozen backbone is referenced, never copied.
         for prefix in (["last", "best"] if improved else ["last"]):
             torch.save(flow.state_dict(), output / f"{prefix}_model.pth")
             torch.save(checkpoint, output / f"{prefix}_checkpoint.pt")
         write_json(output / "history.json", history)
         write_json(output / "summary.json", summary)
+        print(f"Epoch {epoch}: plotting progress.", flush=True)
         plot_progress(plot_context, train_history, val_history, epoch_end_steps,
                       best, auc_history, roc_eval_steps, suptitle="Representation Flow Training Progress")
         print(f"Epoch {epoch}: validation NLL={val_loss:.6f}, best={best:.6f}")

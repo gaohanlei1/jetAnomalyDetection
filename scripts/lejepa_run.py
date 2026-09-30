@@ -75,14 +75,27 @@ class LeJEPARun:
         dataset.infinite = infinite
         dataset.max_events = max_events
         # Finite iterators visit each event once; retain the final partial batch.
-        dataset.shuffle_files = infinite
+        # Both dataset backends preload the ENTIRE split when shuffle_files
+        # is False. Use their active-pool streaming path even for finite eval.
+        # The fixed dataset seed makes evaluation order repeatable; infinite
+        # alone controls repetition, so finite evaluation still visits once.
+        dataset.shuffle_files = True
+        if not infinite:
+            # One active shard per label/worker rather than inheriting the
+            # training pool size for every single-label validation loader.
+            dataset.shuffle_active_shards = len(labels)
         module = cms_streaming if self.backend.dataset_name == "cms" else jetclass_streaming
         collate = module.collate_cms_tensors if self.backend.dataset_name == "cms" else module.collate_jetclass_tensors
         kwargs = dict(batch_size=self.batch_size, num_workers=self.num_workers,
                       pin_memory=self.device.type == "cuda", collate_fn=collate,
                       drop_last=False, persistent_workers=infinite and self.num_workers > 0)
         if self.num_workers:
-            kwargs["prefetch_factor"] = int(self.summary.get("prefetch_factor", 2))
+            kwargs["prefetch_factor"] = (
+                int(self.summary.get("prefetch_factor", 2)) if infinite else 1
+            )
+            # Evaluation workers start after CUDA/CPU thread pools are active.
+            # Avoid inheriting their state via the Linux default fork method.
+            kwargs["multiprocessing_context"] = "spawn"
         return DataLoader(dataset, **kwargs)
 
     @torch.no_grad()
