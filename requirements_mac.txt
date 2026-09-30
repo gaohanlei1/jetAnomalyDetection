@@ -21,6 +21,7 @@ tensorboard==2.16.2
 torch==2.6.0
 torchvision==0.21.0
 torchaudio==2.6.0
+tsne-torch==1.0.1
 
 uproot==5.6.6
 widgetsnbextension==4.0.15

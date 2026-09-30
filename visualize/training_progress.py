@@ -14,6 +14,7 @@ def plot_progress(
     best_val_loss: float,
     auc_history: Dict[str, Dict[str, Dict[str, List[float]]]],
     roc_eval_steps: List[int],
+    suptitle: str="LeJEPA + Triplet + Semi-Supervised Classification Training Progress",
 ) -> None:
     """Plot loss curves and one pairwise ROC-AUC panel per signal type."""
 
@@ -172,7 +173,7 @@ def plot_progress(
         top_ax.set_xlabel("Epoch")
 
     fig.suptitle(
-        "LeJEPA + Triplet + Semi-Supervised Classification Training Progress",
+        suptitle,
         fontsize=15
     )
     fig.savefig(

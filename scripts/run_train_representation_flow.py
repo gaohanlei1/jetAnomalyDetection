@@ -163,7 +163,7 @@ def main():
             scheduler.step()
             train_history["total_loss"].append(loss.item())
             progress.set_postfix(nll=f"{loss.item():.5g}")
-        flow.eval()
+        flow.eval() # evaluate roc 
         by_label = {label: evaluate(flow, run, loader, val_steps)
                     for label, loader in val_loaders.items()}
         # Pool event scores, not per-type AUCs: preserve the sampled class counts.
@@ -204,7 +204,7 @@ def main():
         write_json(output / "history.json", history)
         write_json(output / "summary.json", summary)
         plot_progress(plot_context, train_history, val_history, epoch_end_steps,
-                      best, auc_history, roc_eval_steps)
+                      best, auc_history, roc_eval_steps, suptitle="Representation Flow Training Progress")
         print(f"Epoch {epoch}: validation NLL={val_loss:.6f}, best={best:.6f}")
     summary["status"] = "completed"
     write_json(output / "summary.json", summary)
