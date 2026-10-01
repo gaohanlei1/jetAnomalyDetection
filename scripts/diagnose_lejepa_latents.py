@@ -6,6 +6,15 @@ label axis, and CMS per-type shuffled-shard split are reconstructed from the
 training ``summary.json``.  A command-line dataset override is available for
 explicit recovery workflows, but normal use requires only the run directory.
 
+All representations are collected once from validation and retained in RAM;
+representations are never serialized. Background validation is both the fitting
+and scoring sample (kNN excludes each background event itself). Each signal has
+its own ROC/distribution pair per score. Gaussian mixtures use negative log
+probability density so that higher values consistently mean more anomalous.
+The labeled mixture fixes one Gaussian per background class, with empirical
+class-frequency weights; component count, EM iterations and restarts apply
+only to the unlabeled mixture. Covariance type and regularization are shared.
+
 Example:
     python -u scripts/diagnose_lejepa_latents.py \
         plots/run-lejepa-semi-sup-triplet
@@ -219,11 +228,7 @@ class DiagnosticDatasetBackend:
 
     def _initialize_dataset(self, cms_manifest_override: Optional[Path]) -> None:
         if self.dataset_name == "jetclass":
-            for split_name, directory_name in (
-                ("train", "train_100M"),
-                ("val", "val_5M"),
-                ("test", "test_20M"),
-            ):
+            for split_name, directory_name in (("val", "val_5M"),):
                 directory = self.dataset_root / directory_name
                 if not directory.is_dir():
                     raise FileNotFoundError(
@@ -335,7 +340,7 @@ class DiagnosticDatasetBackend:
                             candidate = (
                                 self.dataset_root / directory_name / path.name
                             ).resolve()
-                    if not candidate.is_file():
+                    if split_name == "val" and not candidate.is_file():
                         missing.append(str(candidate))
                     resolved_paths.append(str(candidate))
                 resolved[split_name][label] = resolved_paths
@@ -515,7 +520,21 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--device", type=str, default="auto")
-    parser.add_argument("--fit-fraction", type=float, default=0.5)
+    parser.add_argument("--knn-k", type=int, default=30)
+    parser.add_argument("--knn-reduction", choices=("mean", "kth"), default="mean",
+                        help="Mean of k Euclidean distances or kth-neighbor distance; background excludes itself.")
+    parser.add_argument("--score-batch-size", type=int, default=1024)
+    parser.add_argument("--knn-reference-batch-size", type=int, default=8192)
+    parser.add_argument("--gmm-n-components", type=int, default=4,
+                        help="Unlabeled EM components; labeled mixture always has one component per background class.")
+    parser.add_argument("--gmm-covariance-type", choices=("full", "diag"), default="full")
+    parser.add_argument("--gmm-reg-covar", type=float, default=1e-4)
+    parser.add_argument("--gmm-max-iter", type=int, default=100,
+                        help="Unlabeled EM iteration limit (fixed-label fit is closed-form).")
+    parser.add_argument("--gmm-tol", type=float, default=1e-3)
+    parser.add_argument("--gmm-n-init", type=int, default=1,
+                        help="Unlabeled EM restarts (fixed-label fit is deterministic).")
+    parser.add_argument("--score-hist-bins", type=int, default=80)
     parser.add_argument("--mahalanobis-cov-eps", type=float, default=None)
     parser.add_argument(
         "--max-num-particles",
@@ -790,65 +809,222 @@ def labels_mask(
     return np.isin(ids, requested_ids)
 
 
-def stratified_split(
-    y: np.ndarray,
-    labels: Sequence[str],
-    label_axis: Sequence[str],
-    fit_fraction: float,
-    seed: int,
-) -> Tuple[np.ndarray, np.ndarray]:
-    if not 0.0 < fit_fraction < 1.0:
-        raise ValueError("--fit-fraction must lie strictly between 0 and 1.")
-    ids = label_ids(y, label_axis)
-    rng = np.random.default_rng(seed)
-    fit, heldout = [], []
-    for label in labels:
-        indices = np.flatnonzero(ids == list(label_axis).index(label))
-        if len(indices) < 4:
-            raise RuntimeError(f"Only {len(indices)} sampled events found for {label}.")
-        rng.shuffle(indices)
-        cut = min(max(int(round(len(indices) * fit_fraction)), 2), len(indices) - 2)
-        fit.append(indices[:cut])
-        heldout.append(indices[cut:])
-    fit_idx, heldout_idx = np.concatenate(fit), np.concatenate(heldout)
-    rng.shuffle(fit_idx)
-    rng.shuffle(heldout_idx)
-    return fit_idx, heldout_idx
-
-def fit_mahalanobis(
-    latents: np.ndarray, cov_eps: float
-) -> Tuple[np.ndarray, np.ndarray, Dict[str, float]]:
-    x = np.asarray(latents, dtype=np.float64)
-    mean = x.mean(axis=0)
-    cov = np.asarray(np.cov(x - mean, rowvar=False), dtype=np.float64)
-    if cov.ndim == 0:
-        cov = np.asarray([[float(cov)]], dtype=np.float64)
-    reg_cov = cov + cov_eps * np.eye(cov.shape[0], dtype=np.float64)
-    precision = np.linalg.pinv(reg_cov)
-
-    eig = np.linalg.eigvalsh(cov)
-    reg_eig = np.linalg.eigvalsh(reg_cov)
-    positive = eig[eig > 0]
+@torch.no_grad()
+def fit_mahalanobis(latents: torch.Tensor, cov_eps: float):
+    if len(latents) < 2:
+        raise ValueError("Mahalanobis fitting requires at least two background events.")
+    mean = latents.mean(0)
+    centered = latents - mean
+    cov = centered.T @ centered / (len(latents) - 1)
+    reg_cov = cov + cov_eps * torch.eye(cov.shape[0], device=cov.device, dtype=cov.dtype)
+    precision = torch.linalg.pinv(reg_cov, hermitian=True)
+    eig = torch.linalg.eigvalsh(reg_cov)
     return mean, precision, {
-        "num_fit_events": int(len(x)),
-        "latent_dim": int(x.shape[1]),
-        "raw_min_eigenvalue": float(eig.min()),
-        "raw_max_eigenvalue": float(eig.max()),
-        "raw_condition_number_positive_spectrum": (
-            float(eig.max() / positive.min()) if len(positive) else float("inf")
-        ),
-        "regularized_min_eigenvalue": float(reg_eig.min()),
-        "regularized_max_eigenvalue": float(reg_eig.max()),
-        "regularized_condition_number": float(reg_eig.max() / reg_eig.min()),
-        "cov_eps": float(cov_eps),
+        "num_fit_events": len(latents), "latent_dim": latents.shape[1],
+        "cov_eps": cov_eps, "regularized_min_eigenvalue": eig.min().item(),
+        "regularized_max_eigenvalue": eig.max().item(),
     }
 
 
-def mahalanobis_scores(
-    latents: np.ndarray, mean: np.ndarray, precision: np.ndarray
+@torch.no_grad()
+def mahalanobis_scores(latents, mean, precision, batch_size=1024):
+    scores = []
+    for start in range(0, len(latents), batch_size):
+        delta = latents[start:start + batch_size] - mean
+        scores.append(((delta @ precision) * delta).sum(1).clamp_min(0).cpu().numpy())
+    return np.concatenate(scores)
+
+
+@torch.no_grad()
+def knn_scores(
+    query: torch.Tensor,
+    reference: torch.Tensor,
+    k: int,
+    batch_size: int,
+    reference_batch_size: int,
+    reduction: str = "mean",
+    exclude_self: bool = False,
 ) -> np.ndarray:
-    centered = np.asarray(latents, dtype=np.float64) - mean
-    return np.einsum("ni,ij,nj->n", centered, precision, centered)
+    """Exact Euclidean kNN with bounded query/reference blocks.
+
+    exclude_self requires query to be the reference in the same row order.
+    Only the matching row is excluded; duplicate representations remain valid.
+    """
+    available = len(reference) - int(exclude_self)
+    if not 1 <= k <= available:
+        raise ValueError(f"kNN k={k} requires at least {k + int(exclude_self)} background events.")
+    if exclude_self and query is not reference:
+        raise ValueError("Self exclusion requires the same reference tensor as query.")
+    result = []
+    for start in range(0, len(query), batch_size):
+        q = query[start:start + batch_size]
+        best = q.new_full((len(q), k), float("inf"))
+        for offset in range(0, len(reference), reference_batch_size):
+            ref = reference[offset:offset + reference_batch_size]
+            distances = torch.cdist(q, ref)
+            if exclude_self:
+                rows = torch.arange(start, start + len(q), device=q.device)
+                inside = (rows >= offset) & (rows < offset + len(ref))
+                distances[torch.arange(len(q), device=q.device)[inside], rows[inside] - offset] = float("inf")
+            candidates = distances.topk(min(k, len(ref)), largest=False).values
+            best = torch.cat((best, candidates), dim=1).topk(k, largest=False).values
+        values = best.mean(dim=1) if reduction == "mean" else best.max(dim=1).values
+        result.append(values.cpu().numpy())
+    return np.concatenate(result)
+
+
+class TorchGaussianMixture:
+    """Chunked, device-native Gaussian fitting and negative log density.
+
+    With labels, responsibilities are fixed one-hot assignments (one Gaussian
+    per class). Otherwise EM learns responsibilities without any class labels.
+    Both paths use MLE covariance plus reg_covar * I and empirical weights.
+    """
+
+    def __init__(self, n_components, covariance_type, reg_covar, max_iter, tol,
+                 n_init, batch_size, seed):
+        self.n_components = n_components
+        self.covariance_type = covariance_type
+        self.reg_covar = reg_covar
+        self.max_iter = max_iter
+        self.tol = tol
+        self.n_init = n_init
+        self.batch_size = batch_size
+        self.seed = seed
+
+    def _set_parameters(self, means, covariances, weights):
+        self.means = means
+        self.covariances = covariances
+        self.weights = weights
+        if self.covariance_type == "full":
+            self.cholesky = torch.linalg.cholesky(covariances)
+            self.logdet = 2 * self.cholesky.diagonal(dim1=-2, dim2=-1).log().sum(-1)
+        else:
+            self.logdet = covariances.log().sum(-1)
+
+    def _log_components(self, x):
+        # Loop over components to avoid allocating a B x K x D x D tensor.
+        columns = []
+        constant = x.shape[1] * np.log(2 * np.pi)
+        for j in range(len(self.means)):
+            delta = x - self.means[j]
+            if self.covariance_type == "full":
+                whitened = torch.linalg.solve_triangular(self.cholesky[j], delta.T, upper=False)
+                distance = whitened.square().sum(0)
+            else:
+                distance = (delta.square() / self.covariances[j]).sum(1)
+            columns.append(self.weights[j].log() - 0.5 * (constant + self.logdet[j] + distance))
+        return torch.stack(columns, dim=1)
+
+    def _covariance(self, delta, weights, count):
+        if self.covariance_type == "full":
+            cov = delta.T @ (delta * weights[:, None]) / count
+            return cov + self.reg_covar * torch.eye(delta.shape[1], device=delta.device, dtype=delta.dtype)
+        return (delta.square() * weights[:, None]).sum(0) / count + self.reg_covar
+
+    @torch.no_grad()
+    def fit(self, x, labels=None):
+        if len(x) < 2 or not torch.isfinite(x).all():
+            raise ValueError("Gaussian mixture requires at least two finite background representations.")
+        # Center once to keep sufficient-statistic subtraction well conditioned.
+        self.origin = x.mean(0)
+        x = x - self.origin
+        if labels is not None:
+            classes = torch.unique(labels, sorted=True)
+            means, covariances, counts = [], [], []
+            for label in classes:
+                points = x[labels == label]
+                if len(points) < 2:
+                    raise ValueError(f"Gaussian class {label.item()} needs at least two events.")
+                mean = points.mean(0)
+                means.append(mean)
+                covariances.append(self._covariance(points - mean, points.new_ones(len(points)), len(points)))
+                counts.append(len(points))
+            self._set_parameters(torch.stack(means), torch.stack(covariances), x.new_tensor(counts) / len(x))
+            self.n_iter_, self.converged_ = 0, True
+            self.lower_bound_ = self._mean_log_density(x)
+            return self
+        if not 1 <= self.n_components <= len(x):
+            raise ValueError("--gmm-n-components must be between 1 and the background event count.")
+        generator = torch.Generator(device=x.device).manual_seed(self.seed)
+        global_cov = self._covariance(x, x.new_ones(len(x)), len(x))
+        best = None
+        for _ in range(self.n_init):
+            # k-means++ seeding uses only representations, never class labels.
+            indices = [int(torch.randint(len(x), (1,), generator=generator, device=x.device).item())]
+            nearest = (x - x[indices[0]]).square().sum(1)
+            for _ in range(1, self.n_components):
+                if nearest.sum() > 0:
+                    index = int(torch.multinomial(nearest, 1, generator=generator).item())
+                else:
+                    remaining = torch.ones(len(x), device=x.device, dtype=torch.bool)
+                    remaining[indices] = False
+                    index = int(torch.nonzero(remaining)[0].item())
+                indices.append(index)
+                nearest = torch.minimum(nearest, (x - x[index]).square().sum(1))
+            self._set_parameters(x[indices].clone(), global_cov.unsqueeze(0).repeat(self.n_components, *([1] * global_cov.ndim)), x.new_full((self.n_components,), 1 / self.n_components))
+            previous = self._mean_log_density(x)
+            converged = False
+            for iteration in range(1, self.max_iter + 1):
+                counts = x.new_zeros(self.n_components)
+                sums = torch.zeros_like(self.means)
+                moments = torch.zeros_like(self.covariances)
+                # Accumulate around each OLD mean rather than raw x*x moments.
+                for start in range(0, len(x), self.batch_size):
+                    points = x[start:start + self.batch_size]
+                    responsibilities = self._log_components(points).softmax(1)
+                    counts += responsibilities.sum(0)
+                    for j in range(self.n_components):
+                        delta = points - self.means[j]
+                        weighted = delta * responsibilities[:, j:j + 1]
+                        sums[j] += weighted.sum(0)
+                        if self.covariance_type == "full":
+                            moments[j] += delta.T @ weighted
+                        else:
+                            moments[j] += (delta * weighted).sum(0)
+                counts = counts.clamp_min(torch.finfo(x.dtype).eps)
+                shifts = sums / counts[:, None]
+                means = self.means + shifts
+                if self.covariance_type == "full":
+                    cov = moments / counts[:, None, None] - shifts[:, :, None] * shifts[:, None, :]
+                    # Roundoff can introduce tiny negative eigenvalues.
+                    eig, vectors = torch.linalg.eigh((cov + cov.transpose(-1, -2)) / 2)
+                    cov = (vectors * eig.clamp_min(0).unsqueeze(-2)) @ vectors.transpose(-1, -2)
+                    cov += self.reg_covar * torch.eye(x.shape[1], device=x.device, dtype=x.dtype)
+                else:
+                    cov = (moments / counts[:, None] - shifts.square()).clamp_min(0) + self.reg_covar
+                self._set_parameters(means, cov, counts / counts.sum())
+                current = self._mean_log_density(x)
+                if abs(current - previous) < self.tol:
+                    converged = True
+                    break
+                previous = current
+            if best is None or current > best[0]:
+                best = (current, self.means.clone(), self.covariances.clone(), self.weights.clone(), iteration, converged)
+        self.lower_bound_, means, covariances, weights, self.n_iter_, self.converged_ = best
+        self._set_parameters(means, covariances, weights)
+        if not self.converged_:
+            warnings.warn("Unlabeled GMM did not converge; consider increasing --gmm-max-iter.")
+        return self
+
+    def _mean_log_density(self, x):
+        total = x.new_zeros(())
+        for start in range(0, len(x), self.batch_size):
+            total += self._log_components(x[start:start + self.batch_size]).logsumexp(1).sum()
+        return float((total / len(x)).item())
+
+    @torch.no_grad()
+    def scores(self, x):
+        return np.concatenate([
+            (-self._log_components(x[start:start + self.batch_size] - self.origin).logsumexp(1)).cpu().numpy()
+            for start in range(0, len(x), self.batch_size)
+        ])
+
+    def diagnostics(self):
+        return {"n_components": len(self.means), "covariance_type": self.covariance_type,
+                "reg_covar": self.reg_covar, "weights": self.weights.cpu().tolist(),
+                "n_iter": self.n_iter_, "converged": self.converged_,
+                "mean_fit_log_density": self.lower_bound_}
 
 
 def auc(background: np.ndarray, signal: np.ndarray) -> float:
@@ -1194,50 +1370,25 @@ def plot_grouped_latent_space(
 
 
 def plot_score_distribution(
-    background: np.ndarray,
-    signal: np.ndarray,
-    title: str,
-    xlabel: str,
-    path: Path,
-    background_label: str = "Background (validation)",
-    signal_label: str = "signal",
+    curves: Sequence[Tuple[str, np.ndarray, np.ndarray]],
+    title: str, xlabel: str, path: Path, signal_label: str, bins: int = 80,
 ) -> None:
-    """Plot two score distributions with robust common histogram limits."""
-
-    background = np.asarray(background, dtype=np.float64)
-    signal = np.asarray(signal, dtype=np.float64)
-    combined = np.concatenate([background, signal])
-
-    low, high = np.quantile(combined, [0.0025, 0.9975])
-    if not np.isfinite(low) or not np.isfinite(high) or high <= low:
-        low = float(np.min(combined))
-        high = float(np.max(combined))
-    if high <= low:
-        high = low + 1.0
-
-    bins = np.linspace(low, high, 81)
-    fig, ax = plt.subplots(figsize=(7.0, 4.8))
-    ax.hist(
-        np.clip(background, low, high),
-        bins=bins,
-        density=True,
-        histtype="step",
-        linewidth=1.7,
-        label=background_label,
-    )
-    ax.hist(
-        np.clip(signal, low, high),
-        bins=bins,
-        density=True,
-        histtype="step",
-        linewidth=1.7,
-        label=signal_label,
-    )
-    ax.set_title(title)
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel("Density")
-    ax.legend()
-    ax.grid(False)
+    """One panel per background, common bins within each BG/signal pair."""
+    columns = min(3, len(curves))
+    rows = (len(curves) + columns - 1) // columns
+    fig, axes = plt.subplots(rows, columns, figsize=(6 * columns, 4.8 * rows), squeeze=False)
+    for ax, (name, background, signal) in zip(axes.flat, curves):
+        combined = np.concatenate([background, signal])
+        edges = np.histogram_bin_edges(combined, bins=bins)
+        ax.hist(background, bins=edges, density=True, color="tab:blue", alpha=0.55,
+                label=f"{name} (background)")
+        ax.hist(signal, bins=edges, density=True, color="tab:orange", alpha=0.55,
+                label=f"{signal_label} (signal)")
+        ax.set(title=name, xlabel=xlabel, ylabel="Density")
+        ax.legend(fontsize=8)
+    for ax in list(axes.flat)[len(curves):]:
+        ax.set_visible(False)
+    fig.suptitle(title)
     fig.tight_layout()
     fig.savefig(path, dpi=180)
     plt.close(fig)
@@ -1259,26 +1410,13 @@ def plot_comparison(
         ax.plot(fpr, tpr, label=f"{name} (AUC={roc_auc_score(y, scores):.4f})")
     ax.plot([0, 1], [0, 1], linestyle="--", linewidth=1)
     ax.set(xlim=(0, 1), ylim=(0, 1), xlabel="False Positive Rate", ylabel="True Positive Rate")
+    ax.set_aspect("equal", adjustable="box")
     ax.set_title(title)
-    ax.legend()
+    ax.legend(fontsize=8)
     ax.grid(False)
     fig.tight_layout()
     fig.savefig(path, dpi=180)
     plt.close(fig)
-
-
-def centroid_info(train_z: np.ndarray, val_z: np.ndarray) -> Dict[str, object]:
-    train_c = train_z.mean(axis=0, dtype=np.float64)
-    val_c = val_z.mean(axis=0, dtype=np.float64)
-    return {
-        "train_count": int(len(train_z)),
-        "validation_count": int(len(val_z)),
-        "train_centroid": train_c.tolist(),
-        "validation_centroid": val_c.tolist(),
-        "train_centroid_l2_norm": float(np.linalg.norm(train_c)),
-        "validation_centroid_l2_norm": float(np.linalg.norm(val_c)),
-        "train_validation_centroid_l2_distance": float(np.linalg.norm(val_c - train_c)),
-    }
 
 
 def safe_json(value):
@@ -1300,6 +1438,14 @@ def safe_json(value):
 
 def main() -> None:
     args = parse_args()
+    for name in ("knn_k", "score_batch_size", "knn_reference_batch_size", "gmm_n_components",
+                 "gmm_max_iter", "gmm_n_init", "score_hist_bins"):
+        if getattr(args, name) < 1:
+            raise ValueError(f"--{name.replace('_', '-')} must be positive.")
+    if not np.isfinite(args.gmm_reg_covar) or args.gmm_reg_covar <= 0:
+        raise ValueError("--gmm-reg-covar must be finite and positive.")
+    if not np.isfinite(args.gmm_tol) or args.gmm_tol < 0:
+        raise ValueError("--gmm-tol must be finite and non-negative.")
     run_dir = args.run_dir.expanduser().resolve()
     summary_path = run_dir / "summary.json"
     checkpoint_path = (
@@ -1333,6 +1479,10 @@ def main() -> None:
     backgrounds = list(dict.fromkeys(summary["background_labels"]))
     signals = list(dict.fromkeys(summary.get("signal_labels", [])))
     backend.validate_requested_labels(list(dict.fromkeys(backgrounds + signals)))
+    if not backgrounds:
+        raise ValueError("At least one background label is required.")
+    if set(backgrounds) & set(signals):
+        raise ValueError("Background and signal labels must be disjoint.")
     signal_was_configured = bool(signals)
     signal_rotation = signals if signal_was_configured else list(backgrounds)
 
@@ -1358,6 +1508,8 @@ def main() -> None:
         if args.mahalanobis_cov_eps is not None
         else summary.get("mahalanobis_cov_eps", 1e-4)
     )
+    if not np.isfinite(cov_eps) or cov_eps <= 0:
+        raise ValueError("Mahalanobis covariance regularization must be finite and positive.")
     precision = str(summary.get("precision", "fp32"))
     max_pair_points = int(summary.get("max_latent_plot_points", 5000))
 
@@ -1432,102 +1584,32 @@ def main() -> None:
         "pin_memory": device.type == "cuda",
     }
 
-    print("\nCollecting full-event latents...")
+    print("\nCollecting validation representations once per source...")
+    val_z, val_y = collect_full_latents(
+        model=model,
+        loader=backend.make_loader(split_name="val", labels=backgrounds, seed=seed + 202, **loader_common),
+        steps=steps, device=device, precision=precision,
+        description="Full latent: background validation",
+    )
     if signal_was_configured:
-        # Collect each source independently. The current model uses frozen
-        # evaluation-time feature statistics, so background and signal events
-        # do not need to share a forward batch. Most importantly, the signal
-        # test latent sample is collected exactly once and reused for every
-        # train/validation comparison.
-        train_z, train_y = collect_full_latents(
+        val_signal_z, val_signal_y = collect_full_latents(
             model=model,
-            loader=backend.make_loader(
-                split_name="train",
-                labels=backgrounds,
-                seed=seed + 101,
-                **loader_common,
-            ),
-            steps=steps,
-            device=device,
-            precision=precision,
-            description="Full latent: background train",
+            loader=backend.make_loader(split_name="val", labels=signals, seed=seed + 404, **loader_common),
+            steps=steps, device=device, precision=precision,
+            description="Full latent: signal validation",
         )
-        val_z, val_y = collect_full_latents(
-            model=model,
-            loader=backend.make_loader(
-                split_name="val",
-                labels=backgrounds,
-                seed=seed + 202,
-                **loader_common,
-            ),
-            steps=steps,
-            device=device,
-            precision=precision,
-            description="Full latent: background validation",
-        )
-        signal_test_z, signal_test_y = collect_full_latents(
-            model=model,
-            loader=backend.make_loader(
-                split_name="test",
-                labels=signals,
-                seed=seed + 404,
-                **loader_common,
-            ),
-            steps=steps,
-            device=device,
-            precision=precision,
-            description="Full latent: shared signal test",
-        )
-
-        # Keep the historical variable names used by the plotting and scoring
-        # code, but point both contexts to the exact same arrays.
-        train_signal_z = signal_test_z
-        train_signal_y = signal_test_y
-        val_signal_z = signal_test_z
-        val_signal_y = signal_test_y
     else:
-        train_z, train_y = collect_full_latents(
-            model=model,
-            loader=backend.make_loader(
-                split_name="train",
-                labels=backgrounds,
-                seed=seed + 101,
-                **loader_common,
-            ),
-            steps=steps,
-            device=device,
-            precision=precision,
-            description="Full latent: all training types",
-        )
-        val_z, val_y = collect_full_latents(
-            model=model,
-            loader=backend.make_loader(
-                split_name="val",
-                labels=backgrounds,
-                seed=seed + 202,
-                **loader_common,
-            ),
-            steps=steps,
-            device=device,
-            precision=precision,
-            description="Full latent: all validation types",
-        )
-        train_signal_z = np.empty((0, train_z.shape[1]), dtype=train_z.dtype)
-        train_signal_y = np.empty((0, len(backend.label_axis)), dtype=train_y.dtype)
         val_signal_z = np.empty((0, val_z.shape[1]), dtype=val_z.dtype)
         val_signal_y = np.empty((0, len(backend.label_axis)), dtype=val_y.dtype)
-
-    if len(train_z) == 0 or len(val_z) == 0:
-        raise RuntimeError(
-            f"Collected empty training/validation samples: train={len(train_z)}, "
-            f"validation={len(val_z)}."
-        )
-
-    print(
-        "Collected full latents: "
-        f"train={len(train_z)}, validation={len(val_z)}, "
-        f"shared signal test={len(train_signal_z)}"
-    )
+    if len(val_z) == 0:
+        raise RuntimeError("Collected empty background validation sample.")
+    for label in backgrounds:
+        if class_mask(val_y, label, backend.label_axis).sum() < 2:
+            raise ValueError(f"Need at least two validation events for background {label}.")
+    for label in signals:
+        if not class_mask(val_signal_y, label, backend.label_axis).any():
+            raise ValueError(f"No validation events for signal {label}.")
+    print(f"Collected validation latents: background={len(val_z)}, signal={len(val_signal_z)}")
 
     def all_type_groups(
         base_z: np.ndarray,
@@ -1546,29 +1628,16 @@ def main() -> None:
         if signal_was_configured:
             for label in signals:
                 values = signal_z[class_mask(signal_y, label, backend.label_axis)]
-                groups.append((f"{display_label(label)} (Signal Test)", values, "x"))
+                groups.append((f"{display_label(label)} (Signal Validation)", values, "x"))
         return groups
 
-    plot_grouped_latent_space(
-        groups=all_type_groups(
-            train_z, train_y, "Background Train", train_signal_z, train_signal_y
-        ),
-        path=output_dir / "01_all_type_train_pca.png",
-        title=(
-            "All-type train latent space with signal test"
-            if signal_was_configured
-            else "All-type train latent space"
-        ),
-        seed=seed + 430,
-        max_points=max_pair_points,
-    )
     plot_grouped_latent_space(
         groups=all_type_groups(
             val_z, val_y, "Background Validation", val_signal_z, val_signal_y
         ),
         path=output_dir / "02_all_type_validation_pca.png",
         title=(
-            "All-type validation latent space with signal test"
+            "All-type validation latent space with signal validation"
             if signal_was_configured
             else "All-type validation latent space"
         ),
@@ -1630,190 +1699,94 @@ def main() -> None:
             annotate_roles=signal_was_configured,
         )
 
-    fit_idx, heldout_idx = stratified_split(
-        train_y,
-        backgrounds,
-        backend.label_axis,
-        args.fit_fraction,
-        seed + 404,
-    )
+    # All scores consume these same cached representations; no encoder calls below.
+    score_dtype = torch.float64 if device.type != "mps" else torch.float32
+    background_tensor = torch.as_tensor(val_z, dtype=score_dtype, device=device)
+    signal_tensor = torch.as_tensor(val_signal_z, dtype=score_dtype, device=device)
+    ids = label_ids(val_y, backend.label_axis)
+    global_results = {}
+    pairwise_results = {}
+    global_cache = {}
+    class_cache = {}
 
-    combined = None
-    if signal_was_configured:
-        mean, precision_matrix, cov_diag = fit_mahalanobis(
-            train_z[fit_idx], cov_eps
-        )
-        fit_score = mahalanobis_scores(train_z[fit_idx], mean, precision_matrix)
-        heldout_score = mahalanobis_scores(
-            train_z[heldout_idx], mean, precision_matrix
-        )
-        train_signal_score = mahalanobis_scores(
-            train_signal_z, mean, precision_matrix
-        )
-        val_score = mahalanobis_scores(val_z, mean, precision_matrix)
-        val_signal_score = mahalanobis_scores(val_signal_z, mean, precision_matrix)
-        combined = {
-            "auc_fit_subset_vs_signal": auc(fit_score, train_signal_score),
-            "auc_heldout_train_vs_signal": auc(
-                heldout_score, train_signal_score
-            ),
-            "auc_validation_vs_signal": auc(val_score, val_signal_score),
-            "fit_background_scores": score_stats(fit_score),
-            "heldout_train_background_scores": score_stats(heldout_score),
-            "validation_background_scores": score_stats(val_score),
-            "train_context_signal_scores": score_stats(train_signal_score),
-            "validation_context_signal_scores": score_stats(val_signal_score),
-            "covariance": cov_diag,
-        }
-        plot_comparison(
-            [
-                ("Held-out train", heldout_score, train_signal_score),
-                ("Validation", val_score, val_signal_score),
-            ],
-            "Mahalanobis ROC from an all-type train-fit Gaussian",
-            output_dir / "05_combined_mahalanobis_comparison.png",
-        )
-        print(
-            f"Global AUC fit={combined['auc_fit_subset_vs_signal']:.6f}, "
-            f"held-out={combined['auc_heldout_train_vs_signal']:.6f}, "
-            f"validation={combined['auc_validation_vs_signal']:.6f}"
-        )
+    def emit_pair(curves, title, stem, xlabel, signal_name):
+        plot_comparison(curves, title, output_dir / f"{stem}_roc.png")
+        plot_score_distribution(curves, title.replace("ROC", "score distributions"), xlabel,
+                                output_dir / f"{stem}_score_distribution.png",
+                                signal_name, args.score_hist_bins)
 
-    centroids = {
-        label: centroid_info(
-            train_z[class_mask(train_y, label, backend.label_axis)],
-            val_z[class_mask(val_y, label, backend.label_axis)],
-        )
-        for label in backgrounds
-    }
+    def result_stats(background_score, signal_score):
+        return {"auc_validation_vs_signal": auc(background_score, signal_score),
+                "validation_background_scores": score_stats(background_score),
+                "validation_signal_scores": score_stats(signal_score)}
 
-    print("\nRotating pairwise class-specific Mahalanobis diagnostics")
-    pairwise_results: Dict[str, Dict[str, Dict[str, object]]] = {}
-    for signal_index, signal_label in enumerate(signal_rotation):
+    for signal_label in signal_rotation:
         signal_name = display_label(signal_label)
-        train_curves = []
-        validation_curves = []
-        per_background: Dict[str, Dict[str, object]] = {}
-
+        active_backgrounds = [label for label in backgrounds if label != signal_label]
+        if not active_backgrounds:
+            raise ValueError("Signal rotation requires at least one other background class.")
+        selected = np.isin(ids, [backend.label_axis.index(label) for label in active_backgrounds])
+        reference = background_tensor[torch.as_tensor(selected, device=device)]
+        reference_labels = torch.as_tensor(ids[selected], device=device)
         if signal_was_configured:
-            signal_train_values = train_signal_z[
-                class_mask(train_signal_y, signal_label, backend.label_axis)
-            ]
-            signal_val_values = val_signal_z[
-                class_mask(val_signal_y, signal_label, backend.label_axis)
-            ]
+            signal_mask = class_mask(val_signal_y, signal_label, backend.label_axis)
+            query = signal_tensor[torch.as_tensor(signal_mask, device=device)]
         else:
-            signal_train_mask = class_mask(train_y, signal_label, backend.label_axis)
-            signal_train_indices = np.flatnonzero(signal_train_mask)
-            signal_train_heldout_idx = heldout_idx[
-                np.isin(heldout_idx, signal_train_indices)
-            ]
-            signal_train_values = train_z[signal_train_heldout_idx]
-            signal_val_values = val_z[
-                class_mask(val_y, signal_label, backend.label_axis)
-            ]
+            query = background_tensor[torch.as_tensor(class_mask(val_y, signal_label, backend.label_axis), device=device)]
+        if len(query) == 0:
+            raise ValueError(f"No validation events for signal {signal_label}.")
+        cache_key = tuple(active_backgrounds)
+        if cache_key not in global_cache:
+            print(f"\nFitting validation background scores: {', '.join(active_backgrounds)}")
+            mean, matrix, covariance = fit_mahalanobis(reference, cov_eps)
+            knn_background = knn_scores(reference, reference, args.knn_k, args.score_batch_size,
+                                        args.knn_reference_batch_size, args.knn_reduction, exclude_self=True)
+            gmm_kwargs = dict(n_components=args.gmm_n_components, covariance_type=args.gmm_covariance_type,
+                              reg_covar=args.gmm_reg_covar, max_iter=args.gmm_max_iter, tol=args.gmm_tol,
+                              n_init=args.gmm_n_init, batch_size=args.score_batch_size, seed=seed)
+            unlabeled = TorchGaussianMixture(**gmm_kwargs).fit(reference)
+            labeled = TorchGaussianMixture(**gmm_kwargs).fit(reference, reference_labels)
+            global_cache[cache_key] = (reference, mean, matrix, covariance, unlabeled, labeled, {
+                "combined_mahalanobis": mahalanobis_scores(reference, mean, matrix, args.score_batch_size),
+                "knn": knn_background, "gmm": unlabeled.scores(reference),
+                "labeled_gmm": labeled.scores(reference),
+            })
+        reference, mean, matrix, covariance, unlabeled, labeled, bg_scores = global_cache[cache_key]
+        signal_scores = {
+            "combined_mahalanobis": mahalanobis_scores(query, mean, matrix, args.score_batch_size),
+            "knn": knn_scores(query, reference, args.knn_k, args.score_batch_size,
+                              args.knn_reference_batch_size, args.knn_reduction),
+            "gmm": unlabeled.scores(query), "labeled_gmm": labeled.scores(query),
+        }
+        metadata = {"combined_mahalanobis": covariance,
+                    "knn": {"k": args.knn_k, "reduction": args.knn_reduction, "exclude_background_self": True},
+                    "gmm": unlabeled.diagnostics(), "labeled_gmm": labeled.diagnostics()}
+        metadata["labeled_gmm"]["component_labels"] = [backend.label_axis[int(i)] for i in torch.unique(reference_labels).cpu()]
+        per_global = {}
+        for name, scores in signal_scores.items():
+            curves = [("All background", bg_scores[name], scores)]
+            xlabel = "Negative log density" if "gmm" in name else ("Euclidean kNN distance" if name == "knn" else "Squared Mahalanobis distance")
+            emit_pair(curves, f"{name} ROC vs {signal_name}",
+                      f"05_{name}_signal_{signal_name.lower()}", xlabel, signal_name)
+            per_global[name] = {**result_stats(bg_scores[name], scores), "fit": metadata[name]}
+            print(f"signal={signal_name}, {name}: AUC={per_global[name]['auc_validation_vs_signal']:.6f}")
+        global_results[signal_label] = per_global
 
-        if len(signal_train_values) == 0 or len(signal_val_values) == 0:
-            raise RuntimeError(
-                f"No signal-rotation samples collected for {signal_label}."
-            )
-
-        for background_label in backgrounds:
-            if background_label == signal_label:
-                continue
-            background_name = display_label(background_label)
-            train_mask = class_mask(train_y, background_label, backend.label_axis)
-            val_mask = class_mask(val_y, background_label, backend.label_axis)
-            class_train_indices = np.flatnonzero(train_mask)
-            class_fit_idx = fit_idx[np.isin(fit_idx, class_train_indices)]
-            class_heldout_idx = heldout_idx[
-                np.isin(heldout_idx, class_train_indices)
-            ]
-
-            class_mean, class_precision, class_cov_diag = fit_mahalanobis(
-                train_z[class_fit_idx], cov_eps
-            )
-            class_fit_score = mahalanobis_scores(
-                train_z[class_fit_idx], class_mean, class_precision
-            )
-            class_heldout_score = mahalanobis_scores(
-                train_z[class_heldout_idx], class_mean, class_precision
-            )
-            class_val_score = mahalanobis_scores(
-                val_z[val_mask], class_mean, class_precision
-            )
-            train_signal_score = mahalanobis_scores(
-                signal_train_values, class_mean, class_precision
-            )
-            val_signal_score = mahalanobis_scores(
-                signal_val_values, class_mean, class_precision
-            )
-
-            result = {
-                "auc_fit_subset_vs_train_signal": auc(
-                    class_fit_score, train_signal_score
-                ),
-                "auc_heldout_train_vs_train_signal": auc(
-                    class_heldout_score, train_signal_score
-                ),
-                "auc_validation_vs_validation_signal": auc(
-                    class_val_score, val_signal_score
-                ),
-                "fit_background_scores": score_stats(class_fit_score),
-                "heldout_train_background_scores": score_stats(
-                    class_heldout_score
-                ),
-                "validation_background_scores": score_stats(class_val_score),
-                "train_signal_scores": score_stats(train_signal_score),
-                "validation_signal_scores": score_stats(val_signal_score),
-                "covariance": class_cov_diag,
-                "centroid": centroids[background_label],
-            }
-            per_background[background_label] = result
-
-            plot_comparison(
-                [
-                    ("Held-out train", class_heldout_score, train_signal_score),
-                    ("Validation", class_val_score, val_signal_score),
-                ],
-                f"{background_name}-specific Mahalanobis ROC vs {signal_name}",
-                output_dir
-                / f"06_{background_name.lower()}_vs_{signal_name.lower()}_"
-                "train_validation_comparison.png",
-            )
-            train_curves.append(
-                (
-                    f"{background_name} held-out train",
-                    class_heldout_score,
-                    train_signal_score,
-                )
-            )
-            validation_curves.append(
-                (
-                    f"{background_name} validation",
-                    class_val_score,
-                    val_signal_score,
-                )
-            )
-            print(
-                f"signal={signal_name}, background={background_name}: "
-                f"train AUC={result['auc_heldout_train_vs_train_signal']:.6f}, "
-                f"validation AUC="
-                f"{result['auc_validation_vs_validation_signal']:.6f}"
-            )
-
+        curves = []
+        per_background = {}
+        for background_label in active_backgrounds:
+            if background_label not in class_cache:
+                class_values = background_tensor[torch.as_tensor(class_mask(val_y, background_label, backend.label_axis), device=device)]
+                class_mean, class_precision, class_cov = fit_mahalanobis(class_values, cov_eps)
+                class_scores = mahalanobis_scores(class_values, class_mean, class_precision, args.score_batch_size)
+                class_cache[background_label] = class_mean, class_precision, class_cov, class_scores
+            class_mean, class_precision, class_cov, class_scores = class_cache[background_label]
+            signal_scores = mahalanobis_scores(query, class_mean, class_precision, args.score_batch_size)
+            curves.append((display_label(background_label), class_scores, signal_scores))
+            per_background[background_label] = {**result_stats(class_scores, signal_scores), "covariance": class_cov}
+        emit_pair(curves, f"Per-class Mahalanobis ROC vs {signal_name}",
+                  f"08_multiclass_validation_signal_{signal_name.lower()}", "Squared Mahalanobis distance", signal_name)
         pairwise_results[signal_label] = per_background
-        plot_comparison(
-            train_curves,
-            f"Multi-class held-out train ROC with {signal_name} as signal",
-            output_dir / f"07_multiclass_train_signal_{signal_name.lower()}.png",
-        )
-        plot_comparison(
-            validation_curves,
-            f"Multi-class validation ROC with {signal_name} as signal",
-            output_dir
-            / f"08_multiclass_validation_signal_{signal_name.lower()}.png",
-        )
 
     results = {
         "run_dir": str(run_dir),
@@ -1833,7 +1806,8 @@ def main() -> None:
             "batch_size": batch_size,
             "events_per_source_stream": steps * batch_size,
             "num_workers": num_workers,
-            "fit_fraction": float(args.fit_fraction),
+            "split": "val",
+            "background_fit_and_evaluation_use_same_sample": True,
             "seed": seed,
             "max_num_particles": backend.max_num_particles,
         },
@@ -1844,24 +1818,19 @@ def main() -> None:
         },
         "signal_was_configured": signal_was_configured,
         "sample_counts": {
-            "background_train_total": int(len(train_z)),
-            "background_train_fit": int(len(fit_idx)),
-            "background_train_heldout": int(len(heldout_idx)),
-            "background_validation_total": int(len(val_z)),
-            "signal_total": int(len(train_signal_z)),
-            "shared_signal_test_total": int(len(train_signal_z)),
-            # Retained for compatibility with older result consumers. Both
-            # values now refer to the same shared signal-test sample.
-            "train_context_signal_test_total": int(len(train_signal_z)),
-            "validation_context_signal_test_total": int(len(val_signal_z)),
+            "background_validation_total": len(val_z),
+            "signal_validation_total": len(val_signal_z),
         },
-        "combined_mahalanobis": combined,
+        "score_parameters": {key: value for key, value in vars(args).items()
+                             if key.startswith(("knn_", "gmm_", "score_"))},
+        "global_scores_by_signal": global_results,
+        "combined_mahalanobis": {label: values["combined_mahalanobis"]
+                                 for label, values in global_results.items()},
         "per_class": (
             pairwise_results[signals[0]]
             if len(signals) == 1
             else pairwise_results
         ),
-        "centroids": centroids,
         "pairwise_mahalanobis_by_signal": pairwise_results,
     }
     with (output_dir / "diagnostic_results.json").open("w") as handle:
