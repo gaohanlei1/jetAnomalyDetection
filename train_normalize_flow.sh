@@ -39,8 +39,9 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 
 python scripts/run_train_representation_flow.py \
   plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb-long \
-  --output-dir plots/run-flow-jetclass-hbb \
-  --num-layers 8
+  --output-dir plots/run-flow-jetclass-hbb-d24 \
+  --num-layers 24
 
 # python scripts/plot_lejepa_tsne.py \
-#   plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb-long
+#   plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb-long \
+#   --perplexity 100

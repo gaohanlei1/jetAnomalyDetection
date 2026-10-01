@@ -1,0 +1,82 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 6926060
+##  Job Name : JETANOMALY
+##  Nodelist : gpu1501
+##      CPUs : 1
+##  Mem/Node : 65536 MB
+## Directory : /oscar/home/lwang223/jetAnomalyDetection
+##   Job Started : Thu Oct  1 03:59:19 PM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Thu Oct  1 03:59:19 PM EDT 2026
+Job ID: 6926060
+Node: gpu1501
+==========================================
+
+GPU Information (from host):
+Thu Oct  1 15:59:19 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA RTX A6000               On  |   00000000:A1:00.0 Off |                    0 |
+| 30%   34C    P8             22W /  300W |      21MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          181486      G   /usr/libexec/Xorg                         8MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch version: 2.6.0+cu124
+Dataset backend: jetclass
+Dataset root: /HEP/export/home/lwang223/JetClass/JetClass/Pythia
+Loading /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdHccHggWqq/best_model.pth on cuda:0
+Sampling 100 x 128 events from each source stream
+Full-jet density latent space: representation
+Training labels: QCD+Hcc+Hgg+Wqq
+Visualization signal labels: Hbb+Tbqq
+Dataset label axis: ['label_QCD', 'label_Hbb', 'label_Hcc', 'label_Hgg', 'label_H4q', 'label_Hqql', 'label_Zqq', 'label_Wqq', 'label_Tbqq', 'label_Tbl']
+Particle feature order:
+   0: part_px
+   1: part_py
+   2: part_pz
+   3: part_energy
+   4: part_pt
+   5: log_pt_fraction
+   6: part_deta
+   7: part_dphi
+   8: d0_sig
+   9: dz_sig
+  10: part_charge
+  11: part_isChargedHadron
+  12: part_isNeutralHadron
+  13: part_isPhoton
+  14: part_isElectron
+  15: part_isMuon
+Batch-standardized particle features: ['log_pt_fraction', 'd0_sig', 'dz_sig']
+
+Collecting full-event latents...
+Collected full latents: train=12800, validation=12800, shared signal test=12800
+Global AUC fit=0.479000, held-out=0.469148, validation=0.470247
+
+Rotating pairwise class-specific Mahalanobis diagnostics
+signal=Hbb, background=QCD: train AUC=0.927005, validation AUC=0.921798
+signal=Hbb, background=Hcc: train AUC=0.364475, validation AUC=0.372887
+signal=Hbb, background=Hgg: train AUC=0.833336, validation AUC=0.839901
+signal=Hbb, background=Wqq: train AUC=0.786717, validation AUC=0.801680
+signal=Tbqq, background=QCD: train AUC=0.840952, validation AUC=0.831705
+signal=Tbqq, background=Hcc: train AUC=0.518983, validation AUC=0.526866
+signal=Tbqq, background=Hgg: train AUC=0.726624, validation AUC=0.733428
+signal=Tbqq, background=Wqq: train AUC=0.832314, validation AUC=0.843757
+
+Saved diagnostics to /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdHccHggWqq/latent_diagnostics
+Mixed validation: 10 jet types, 4 workers; loading the initial active shards.

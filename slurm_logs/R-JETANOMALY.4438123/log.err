@@ -1,5 +1,0 @@
-W0730 15:39:24.604000 3173302 /oscar/home/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/distributed/run.py:792] 
-W0730 15:39:24.604000 3173302 /oscar/home/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/distributed/run.py:792] *****************************************
-W0730 15:39:24.604000 3173302 /oscar/home/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/distributed/run.py:792] Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed. 
-W0730 15:39:24.604000 3173302 /oscar/home/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/distributed/run.py:792] *****************************************
-[2026-07-30T15:39:36.541] error: *** JOB 4438123 ON gpu3005 CANCELLED AT 2026-07-30T15:39:36 DUE to SIGNAL Terminated ***

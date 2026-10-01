@@ -40,8 +40,8 @@ def main():
     # Forward every validation event, retaining only the 3000 plotting points
     # on CPU; never accumulate the full validation representation set on GPU.
     sample_limit = 3000
-    generator = torch.Generator().manual_seed(run.seed)
-    x = y = priorities = None
+    batch_limit = sample_limit // run.batch_size + 1
+    x, y = [], []
     total_events = 0
     started = perf_counter()
     label_counts = torch.zeros(len(run.backend.label_axis), dtype=torch.long)
@@ -51,24 +51,26 @@ def main():
     # Split/group only after inference, using the aligned dataset labels.
     loader = run.loader("val", labels, infinite=False, drop_last=False,
                         persistent_workers=False)
+    batch_count = 0
     for batch in tqdm(loader, desc="Mixed validation representations", unit="batch"):
-        representations = run.encode(batch).cpu()
+        representations = run.encode(batch) # run.encode sends batch to gpu and returns GPU tensor
         if not torch.isfinite(representations).all():
             raise ValueError("Non-finite backbone representations in mixed validation.")
-        batch_targets = batch["y"].argmax(dim=-1).cpu()
-        batch_priorities = torch.rand(len(representations), generator=generator,
-                                      dtype=torch.float64)
+        batch_targets = batch["y"].argmax(dim=-1)
+        
+        x.append(representations)
+        y.append(batch_targets)
+        
         total_events += len(representations)
-        label_counts += torch.bincount(batch_targets, minlength=len(label_counts))
-        if x is None:
-            x, y, priorities = representations, batch_targets, batch_priorities
-        else:
-            x = torch.cat((x, representations))
-            y = torch.cat((y, batch_targets))
-            priorities = torch.cat((priorities, batch_priorities))
-        if len(x) > sample_limit:
-            selected = priorities.topk(sample_limit).indices
-            x, y, priorities = x[selected], y[selected], priorities[selected]
+        batch_count += 1
+        label_counts += torch.bincount(batch_targets.cpu(), minlength=len(label_counts))
+        
+        if batch_count >= batch_limit:
+            break
+    
+
+    x = torch.cat(x).to(run.device)
+    y = torch.cat(y).to(run.device)
     print(f"Mixed validation completed in {perf_counter() - started:.1f}s.", flush=True)
     for label in labels:
         count = int(label_counts[run.backend.label_axis.index(label)])
@@ -77,13 +79,13 @@ def main():
         raise ValueError("t-SNE requires at least two validation events.")
     print(f"Encoded all {total_events:,} validation events; retained {len(x):,} "
           f"points ({x.shape[1]} representation dimensions).", flush=True)
-    x = x.to(run.device)
 
     if not torch.isfinite(x).all():
         raise ValueError("Non-finite backbone CLS states.")
     print(f"Running t-SNE on {len(x):,} validation events.", flush=True)
     # Fit once to the mixed sample; group by the saved labels only for plotting.
-    embedding = TSNE(n_components=2, perplexity=min(args.perplexity, len(x) - 1),
+    perplexity = min(args.perplexity, len(x) - 1)
+    embedding = TSNE(n_components=2, perplexity=perplexity,
                     ).fit_transform(x)
     if isinstance(embedding, torch.Tensor):
         embedding = embedding.detach().cpu().numpy()
@@ -93,13 +95,13 @@ def main():
     for index, label in enumerate(labels):
         selected = y == run.backend.label_axis.index(label)
         if selected.any():
-            ax.scatter(embedding[selected, 0], embedding[selected, 1], s=8,
+            ax.scatter(embedding[selected, 0], embedding[selected, 1], s=10,
                        alpha=0.5, color=colors(index % 20), rasterized=True,
                        label=f"{label.removeprefix('label_')} (n={selected.sum():,})")
     ax.set(xlabel="t-SNE 1", ylabel="t-SNE 2", title="Validation projected CLS representations")
     ax.legend(markerscale=4, fontsize=8, loc="best")
     fig.tight_layout()
-    output = run.run_dir / "validation_representation_tsne.png"
+    output = run.run_dir / f"validation_representation_tsne_p{perplexity:.0f}.png"
     fig.savefig(output, dpi=200)
     plt.close(fig)
     print(f"Saved {output}")

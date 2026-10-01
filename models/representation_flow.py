@@ -15,15 +15,21 @@ class CouplingMLP(nn.Module):
 
     def __init__(self, dim: int, hidden_dim: int):
         super().__init__()
-        self.input = nn.Linear(dim, 2 * hidden_dim)
-        self.output = nn.Linear(hidden_dim, 2 * dim)
-        # Paper §2.4: zero the FINAL projection, not the SwiGLU hidden layer.
-        nn.init.zeros_(self.output.weight)
-        nn.init.zeros_(self.output.bias)
+        self.ln1 = nn.LayerNorm(dim)
+        self.input1 = nn.Linear(dim, 2 * hidden_dim)
+        self.output1 = nn.Linear(hidden_dim, dim)
+        self.ln2 = nn.LayerNorm(dim)
+        self.input2 = nn.Linear(dim, 2 * hidden_dim)
+        self.output2 = nn.Linear(hidden_dim, 2 * dim)
+        # Paper §2.4: zero the FINAL projection.
+        nn.init.zeros_(self.output2.weight)
+        nn.init.zeros_(self.output2.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        gate, value = self.input(x).chunk(2, dim=-1)
-        return self.output(F.silu(gate) * value)
+        gate, value = self.input1(self.ln1(x)).chunk(2, dim=-1)
+        x = self.output1(F.silu(gate) * value)
+        gate, value = self.input2(self.ln2(x)).chunk(2, dim=-1)
+        return self.output2(F.silu(gate) * value)
 
 
 class AffineCoupling(nn.Module):

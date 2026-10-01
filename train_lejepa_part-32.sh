@@ -149,7 +149,3 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #     --feature-list plots/largerun/cms-correct-real-finetune/real_data_evaluation/real_test_top_2pct_events_features.json \
 #     --event-scores plots/largerun/cms-correct-real-finetune/real_data_evaluation/real_test_top_2pct_event_scores.npy \
 #     --num-visualize 24
-
-python scripts/run_train_representation_flow.py \
-  plots/run-lejepa-semi-sup-triplet-jetclass-ddp-fast-hbb-long \
-  --output-dir plots/run-flow-hbb
