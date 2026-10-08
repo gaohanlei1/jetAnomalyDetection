@@ -14,6 +14,8 @@ probability density so that higher values consistently mean more anomalous.
 The labeled mixture fixes one Gaussian per background class, with empirical
 class-frequency weights; component count, EM iterations and restarts apply
 only to the unlabeled mixture. Covariance type and regularization are shared.
+Joint-class Mahalanobis calibrates each class distance against that class's
+own background distances, then scores 1 - max_k(2 * min(q_k, 1 - q_k)).
 
 Example:
     python -u scripts/diagnose_lejepa_latents.py \
@@ -833,6 +835,25 @@ def mahalanobis_scores(latents, mean, precision, batch_size=1024):
         delta = latents[start:start + batch_size] - mean
         scores.append(((delta @ precision) * delta).sum(1).clamp_min(0).cpu().numpy())
     return np.concatenate(scores)
+
+
+def mahalanobis_compatibility(class_scores: np.ndarray, scores: np.ndarray) -> np.ndarray:
+    """Two-sided compatibility using the class's empirical distance percentile.
+
+    q = (number strictly below + half the number equal) / class sample count.
+    Midpoint ties treat both tails symmetrically; scores outside the observed
+    range have zero compatibility. These are not class posterior probabilities.
+    """
+    reference = np.sort(np.asarray(class_scores, dtype=np.float64))
+    scores = np.asarray(scores, dtype=np.float64)
+    if reference.ndim != 1 or reference.size == 0:
+        raise ValueError("Class calibration scores must be a non-empty 1D array.")
+    if not np.isfinite(reference).all() or not np.isfinite(scores).all():
+        raise ValueError("Mahalanobis calibration and query scores must be finite.")
+    left = np.searchsorted(reference, scores, side="left")
+    right = np.searchsorted(reference, scores, side="right")
+    percentile = (left + right) / (2.0 * reference.size)
+    return 2.0 * np.minimum(percentile, 1.0 - percentile)
 
 
 @torch.no_grad()
@@ -1772,6 +1793,10 @@ def main() -> None:
 
         curves = []
         per_background = {}
+        joint_name = "joint_class_mahalanobis"
+        calibrate_background = joint_name not in bg_scores
+        max_background_compatibility = np.zeros(len(reference), dtype=np.float64)
+        max_signal_compatibility = np.zeros(len(query), dtype=np.float64)
         for background_label in active_backgrounds:
             if background_label not in class_cache:
                 class_values = background_tensor[torch.as_tensor(class_mask(val_y, background_label, backend.label_axis), device=device)]
@@ -1780,11 +1805,49 @@ def main() -> None:
                 class_cache[background_label] = class_mean, class_precision, class_cov, class_scores
             class_mean, class_precision, class_cov, class_scores = class_cache[background_label]
             signal_scores = mahalanobis_scores(query, class_mean, class_precision, args.score_batch_size)
+            max_signal_compatibility = np.maximum(
+                max_signal_compatibility,
+                mahalanobis_compatibility(class_scores, signal_scores),
+            )
+            if calibrate_background:
+                # Every background jet is compared to every active class,
+                # regardless of its own label. Calibration uses only that class.
+                background_distances = mahalanobis_scores(
+                    reference, class_mean, class_precision, args.score_batch_size
+                )
+                max_background_compatibility = np.maximum(
+                    max_background_compatibility,
+                    mahalanobis_compatibility(class_scores, background_distances),
+                )
             curves.append((display_label(background_label), class_scores, signal_scores))
             per_background[background_label] = {**result_stats(class_scores, signal_scores), "covariance": class_cov}
         emit_pair(curves, f"Per-class Mahalanobis ROC vs {signal_name}",
                   f"08_multiclass_validation_signal_{signal_name.lower()}", "Squared Mahalanobis distance", signal_name)
         pairwise_results[signal_label] = per_background
+
+        if calibrate_background:
+            bg_scores[joint_name] = 1.0 - max_background_compatibility
+        joint_signal_scores = 1.0 - max_signal_compatibility
+        emit_pair(
+            [("All background", bg_scores[joint_name], joint_signal_scores)],
+            f"Joint-class Mahalanobis ROC vs {signal_name}",
+            f"05_{joint_name}_signal_{signal_name.lower()}",
+            "Joint-class Mahalanobis anomaly score", signal_name,
+        )
+        per_global[joint_name] = {
+            **result_stats(bg_scores[joint_name], joint_signal_scores),
+            "fit": {
+                "component_labels": active_backgrounds,
+                "percentile": "(count_less + 0.5 * count_equal) / class_count",
+                "compatibility": "p_k = 2 * min(q_k, 1 - q_k)",
+                "anomaly_score": "1 - max_k(p_k)",
+                "calibration": "own-class background validation distances",
+                "num_calibration_events_by_class": {
+                    label: len(class_cache[label][3]) for label in active_backgrounds
+                },
+            },
+        }
+        print(f"signal={signal_name}, {joint_name}: AUC={per_global[joint_name]['auc_validation_vs_signal']:.6f}")
 
     results = {
         "run_dir": str(run_dir),
