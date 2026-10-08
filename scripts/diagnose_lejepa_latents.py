@@ -837,12 +837,12 @@ def mahalanobis_scores(latents, mean, precision, batch_size=1024):
     return np.concatenate(scores)
 
 
-def mahalanobis_compatibility(class_scores: np.ndarray, scores: np.ndarray) -> np.ndarray:
-    """Two-sided compatibility using the class's empirical distance percentile.
+def mahalanobis_percentiles(class_scores: np.ndarray, scores: np.ndarray) -> np.ndarray:
+    """Empirical distance percentiles, retaining the lower/upper tail direction.
 
     q = (number strictly below + half the number equal) / class sample count.
     Midpoint ties treat both tails symmetrically; scores outside the observed
-    range have zero compatibility. These are not class posterior probabilities.
+    range have percentile zero or one. These are not posterior probabilities.
     """
     reference = np.sort(np.asarray(class_scores, dtype=np.float64))
     scores = np.asarray(scores, dtype=np.float64)
@@ -852,7 +852,12 @@ def mahalanobis_compatibility(class_scores: np.ndarray, scores: np.ndarray) -> n
         raise ValueError("Mahalanobis calibration and query scores must be finite.")
     left = np.searchsorted(reference, scores, side="left")
     right = np.searchsorted(reference, scores, side="right")
-    percentile = (left + right) / (2.0 * reference.size)
+    return (left + right) / (2.0 * reference.size)
+
+
+def mahalanobis_compatibility(class_scores: np.ndarray, scores: np.ndarray) -> np.ndarray:
+    """Two-sided compatibility using the class's empirical distance percentile."""
+    percentile = mahalanobis_percentiles(class_scores, scores)
     return 2.0 * np.minimum(percentile, 1.0 - percentile)
 
 
@@ -1727,6 +1732,7 @@ def main() -> None:
     pairwise_results = {}
     global_cache = {}
     class_cache = {}
+    percentile_model_cache = {}
 
     def emit_pair(curves, title, stem, xlabel, signal_name):
         plot_comparison(curves, title, output_dir / f"{stem}_roc.png")
@@ -1795,6 +1801,10 @@ def main() -> None:
         per_background = {}
         joint_name = "joint_class_mahalanobis"
         calibrate_background = joint_name not in bg_scores
+        percentile_name = "joint_class_percentile_mahalanobis"
+        fit_percentile_models = cache_key not in percentile_model_cache
+        background_percentile_columns = []
+        signal_percentile_columns = []
         max_background_compatibility = np.zeros(len(reference), dtype=np.float64)
         max_signal_compatibility = np.zeros(len(query), dtype=np.float64)
         for background_label in active_backgrounds:
@@ -1805,15 +1815,19 @@ def main() -> None:
                 class_cache[background_label] = class_mean, class_precision, class_cov, class_scores
             class_mean, class_precision, class_cov, class_scores = class_cache[background_label]
             signal_scores = mahalanobis_scores(query, class_mean, class_precision, args.score_batch_size)
+            signal_percentile_columns.append(mahalanobis_percentiles(class_scores, signal_scores))
             max_signal_compatibility = np.maximum(
                 max_signal_compatibility,
                 mahalanobis_compatibility(class_scores, signal_scores),
             )
-            if calibrate_background:
+            if calibrate_background or fit_percentile_models:
                 # Every background jet is compared to every active class,
                 # regardless of its own label. Calibration uses only that class.
                 background_distances = mahalanobis_scores(
                     reference, class_mean, class_precision, args.score_batch_size
+                )
+                background_percentile_columns.append(
+                    mahalanobis_percentiles(class_scores, background_distances)
                 )
                 max_background_compatibility = np.maximum(
                     max_background_compatibility,
@@ -1848,6 +1862,67 @@ def main() -> None:
             },
         }
         print(f"signal={signal_name}, {joint_name}: AUC={per_global[joint_name]['auc_validation_vs_signal']:.6f}")
+
+        # Second layer: model the full K-dimensional percentile vector within
+        # each background class, preserving correlations between its entries.
+        signal_percentiles = torch.as_tensor(
+            np.column_stack(signal_percentile_columns), dtype=score_dtype, device=device
+        )
+        if fit_percentile_models:
+            background_percentiles = torch.as_tensor(
+                np.column_stack(background_percentile_columns), dtype=score_dtype, device=device
+            )
+            percentile_models = {}
+            max_compatibility = np.zeros(len(reference), dtype=np.float64)
+            for label in active_backgrounds:
+                own_class = reference_labels == backend.label_axis.index(label)
+                own_percentiles = background_percentiles[own_class]
+                p_mean, p_precision, p_cov = fit_mahalanobis(own_percentiles, cov_eps)
+                calibration = mahalanobis_scores(
+                    own_percentiles, p_mean, p_precision, args.score_batch_size
+                )
+                distances = mahalanobis_scores(
+                    background_percentiles, p_mean, p_precision, args.score_batch_size
+                )
+                max_compatibility = np.maximum(
+                    max_compatibility, mahalanobis_compatibility(calibration, distances)
+                )
+                percentile_models[label] = p_mean, p_precision, p_cov, calibration
+            percentile_model_cache[cache_key] = percentile_models
+            bg_scores[percentile_name] = 1.0 - max_compatibility
+        percentile_models = percentile_model_cache[cache_key]
+        max_compatibility = np.zeros(len(query), dtype=np.float64)
+        for label in active_backgrounds:
+            p_mean, p_precision, _, calibration = percentile_models[label]
+            distances = mahalanobis_scores(
+                signal_percentiles, p_mean, p_precision, args.score_batch_size
+            )
+            max_compatibility = np.maximum(
+                max_compatibility, mahalanobis_compatibility(calibration, distances)
+            )
+        percentile_signal_scores = 1.0 - max_compatibility
+        emit_pair(
+            [("All background", bg_scores[percentile_name], percentile_signal_scores)],
+            f"Joint-class percentile Mahalanobis ROC vs {signal_name}",
+            f"05_{percentile_name}_signal_{signal_name.lower()}",
+            "Joint-class percentile Mahalanobis anomaly score", signal_name,
+        )
+        per_global[percentile_name] = {
+            **result_stats(bg_scores[percentile_name], percentile_signal_scores),
+            "fit": {
+                "percentile_vector_labels": active_backgrounds,
+                "percentile": "(count_less + 0.5 * count_equal) / class_count",
+                "first_layer": "own-class latent Mahalanobis distance percentiles",
+                "second_layer": "per-class Mahalanobis of full percentile vectors",
+                "calibration": "own-class background validation distances at both layers",
+                "compatibility": "p_k = 2 * min(q_k, 1 - q_k)",
+                "anomaly_score": "1 - max_k(p_k)",
+                "covariance_by_class": {
+                    label: percentile_models[label][2] for label in active_backgrounds
+                },
+            },
+        }
+        print(f"signal={signal_name}, {percentile_name}: AUC={per_global[percentile_name]['auc_validation_vs_signal']:.6f}")
 
     results = {
         "run_dir": str(run_dir),
