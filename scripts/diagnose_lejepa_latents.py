@@ -1733,6 +1733,8 @@ def main() -> None:
     global_cache = {}
     class_cache = {}
     percentile_model_cache = {}
+    raw_model_cache = {}
+    raw_pairwise_results = {}
 
     def emit_pair(curves, title, stem, xlabel, signal_name):
         plot_comparison(curves, title, output_dir / f"{stem}_roc.png")
@@ -1803,6 +1805,10 @@ def main() -> None:
         calibrate_background = joint_name not in bg_scores
         percentile_name = "joint_class_percentile_mahalanobis"
         fit_percentile_models = cache_key not in percentile_model_cache
+        raw_name = "joint_class_raw_mahalanobis"
+        fit_raw_models = cache_key not in raw_model_cache
+        background_raw_columns = []
+        signal_raw_columns = []
         background_percentile_columns = []
         signal_percentile_columns = []
         max_background_compatibility = np.zeros(len(reference), dtype=np.float64)
@@ -1815,17 +1821,19 @@ def main() -> None:
                 class_cache[background_label] = class_mean, class_precision, class_cov, class_scores
             class_mean, class_precision, class_cov, class_scores = class_cache[background_label]
             signal_scores = mahalanobis_scores(query, class_mean, class_precision, args.score_batch_size)
+            signal_raw_columns.append(signal_scores)
             signal_percentile_columns.append(mahalanobis_percentiles(class_scores, signal_scores))
             max_signal_compatibility = np.maximum(
                 max_signal_compatibility,
                 mahalanobis_compatibility(class_scores, signal_scores),
             )
-            if calibrate_background or fit_percentile_models:
+            if calibrate_background or fit_percentile_models or fit_raw_models:
                 # Every background jet is compared to every active class,
                 # regardless of its own label. Calibration uses only that class.
                 background_distances = mahalanobis_scores(
                     reference, class_mean, class_precision, args.score_batch_size
                 )
+                background_raw_columns.append(background_distances)
                 background_percentile_columns.append(
                     mahalanobis_percentiles(class_scores, background_distances)
                 )
@@ -1924,6 +1932,82 @@ def main() -> None:
         }
         print(f"signal={signal_name}, {percentile_name}: AUC={per_global[percentile_name]['auc_validation_vs_signal']:.6f}")
 
+        # Raw variant: retain squared distances as vector entries, without
+        # percentile transforms. Fit each class on its own full score vectors.
+        signal_raw_vectors = torch.as_tensor(
+            np.column_stack(signal_raw_columns), dtype=score_dtype, device=device
+        )
+        if fit_raw_models:
+            background_raw_vectors = torch.as_tensor(
+                np.column_stack(background_raw_columns), dtype=score_dtype, device=device
+            )
+            raw_models = {}
+            max_compatibility = np.zeros(len(reference), dtype=np.float64)
+            for label in active_backgrounds:
+                own_class = reference_labels == backend.label_axis.index(label)
+                own_vectors = background_raw_vectors[own_class]
+                raw_mean, raw_precision, raw_cov = fit_mahalanobis(own_vectors, cov_eps)
+                calibration = mahalanobis_scores(
+                    own_vectors, raw_mean, raw_precision, args.score_batch_size
+                )
+                distances = mahalanobis_scores(
+                    background_raw_vectors, raw_mean, raw_precision, args.score_batch_size
+                )
+                max_compatibility = np.maximum(
+                    max_compatibility, mahalanobis_compatibility(calibration, distances)
+                )
+                raw_models[label] = raw_mean, raw_precision, raw_cov, calibration
+            raw_model_cache[cache_key] = raw_models
+            bg_scores[raw_name] = 1.0 - max_compatibility
+        raw_models = raw_model_cache[cache_key]
+        raw_curves = []
+        raw_per_background = {}
+        max_compatibility = np.zeros(len(query), dtype=np.float64)
+        for label in active_backgrounds:
+            raw_mean, raw_precision, raw_cov, calibration = raw_models[label]
+            distances = mahalanobis_scores(
+                signal_raw_vectors, raw_mean, raw_precision, args.score_batch_size
+            )
+            # Pairwise diagnostics use only this class's background scores;
+            # the global score above evaluates all backgrounds against all classes.
+            raw_curves.append((display_label(label), calibration, distances))
+            raw_per_background[label] = {
+                **result_stats(calibration, distances), "covariance": raw_cov,
+                "score_vector_labels": active_backgrounds,
+            }
+            max_compatibility = np.maximum(
+                max_compatibility, mahalanobis_compatibility(calibration, distances)
+            )
+        emit_pair(
+            raw_curves, f"Per-class raw-score-vector Mahalanobis ROC vs {signal_name}",
+            f"08_multiclass_raw_mahalanobis_signal_{signal_name.lower()}",
+            "Squared Mahalanobis distance in raw score-vector space", signal_name,
+        )
+        raw_pairwise_results[signal_label] = raw_per_background
+        raw_signal_scores = 1.0 - max_compatibility
+        emit_pair(
+            [("All background", bg_scores[raw_name], raw_signal_scores)],
+            f"Joint-class raw Mahalanobis ROC vs {signal_name}",
+            f"05_{raw_name}_signal_{signal_name.lower()}",
+            "Joint-class raw Mahalanobis anomaly score", signal_name,
+        )
+        per_global[raw_name] = {
+            **result_stats(bg_scores[raw_name], raw_signal_scores),
+            "fit": {
+                "score_vector_labels": active_backgrounds,
+                "first_layer": "raw squared latent Mahalanobis distances to all active classes",
+                "second_layer": "per-class Mahalanobis of full raw score vectors",
+                "calibration": "own-class background validation second-layer distances",
+                "percentile": "(count_less + 0.5 * count_equal) / class_count",
+                "compatibility": "p_k = 2 * min(q_k, 1 - q_k)",
+                "anomaly_score": "1 - max_k(p_k)",
+                "covariance_by_class": {
+                    label: raw_models[label][2] for label in active_backgrounds
+                },
+            },
+        }
+        print(f"signal={signal_name}, {raw_name}: AUC={per_global[raw_name]['auc_validation_vs_signal']:.6f}")
+
     results = {
         "run_dir": str(run_dir),
         "checkpoint": str(checkpoint_path),
@@ -1968,6 +2052,7 @@ def main() -> None:
             else pairwise_results
         ),
         "pairwise_mahalanobis_by_signal": pairwise_results,
+        "pairwise_raw_mahalanobis_by_signal": raw_pairwise_results,
     }
     with (output_dir / "diagnostic_results.json").open("w") as handle:
         json.dump(safe_json(results), handle, indent=2)
