@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=6       # cpu-cores per task (>1 if multi-threaded tasks)
 #SBATCH -t 48:00:00             # total run time limit (HH:MM:SS)
 #SBATCH --mem=64GB           # CPU RAM
-#SBATCH --constraint=l40s
+# SBATCH --constraint=l40s
 #SBATCH --job-name='JETANOMALY'
 #SBATCH --output=slurm_logs/R-%x.%j/log.out
 #SBATCH --error=slurm_logs/R-%x.%j/log.err
@@ -110,4 +110,4 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 # done
 
 python -u scripts/diagnose_lejepa_latents.py \
-    plots/jetclass/32-QcdHccZqqWqq
+    plots/jetclass/32-QcdTbqqHggWqq
