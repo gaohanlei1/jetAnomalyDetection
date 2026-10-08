@@ -1,0 +1,78 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 7174990
+##  Job Name : JETANOMALY
+##  Nodelist : gpu2255
+##      CPUs : 1
+##  Mem/Node : 65536 MB
+## Directory : /oscar/home/lwang223/jetAnomalyDetection
+##   Job Started : Thu Oct  8 04:38:46 PM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Thu Oct  8 04:38:46 PM EDT 2026
+Job ID: 7174990
+Node: gpu2255
+==========================================
+
+GPU Information (from host):
+Thu Oct  8 16:38:46 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA RTX A5000               On  |   00000000:83:00.0 Off |                    0 |
+| 30%   24C    P8             20W /  230W |      24MiB /  23028MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          181522      G   /usr/libexec/Xorg                         8MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch version: 2.6.0+cu124
+Dataset backend: jetclass
+Dataset root: /HEP/export/home/lwang223/JetClass/JetClass/Pythia
+Loading /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/best_model.pth on cuda:0
+Sampling 100 x 128 events from each source stream
+Full-jet density latent space: representation
+Training labels: QCD+Tbqq+Hgg+Wqq
+Visualization signal labels: Hbb
+Dataset label axis: ['label_QCD', 'label_Hbb', 'label_Hcc', 'label_Hgg', 'label_H4q', 'label_Hqql', 'label_Zqq', 'label_Wqq', 'label_Tbqq', 'label_Tbl']
+Particle feature order:
+   0: part_px
+   1: part_py
+   2: part_pz
+   3: part_energy
+   4: part_pt
+   5: log_pt_fraction
+   6: part_deta
+   7: part_dphi
+   8: d0_sig
+   9: dz_sig
+  10: part_charge
+  11: part_isChargedHadron
+  12: part_isNeutralHadron
+  13: part_isPhoton
+  14: part_isElectron
+  15: part_isMuon
+Batch-standardized particle features: ['log_pt_fraction', 'd0_sig', 'dz_sig']
+
+Collecting validation representations once per source...
+Collected validation latents: background=12800, signal=12800
+
+Fitting validation background scores: label_QCD, label_Tbqq, label_Hgg, label_Wqq
+signal=Hbb, combined_mahalanobis: AUC=0.465676
+signal=Hbb, knn: AUC=0.575957
+signal=Hbb, gmm: AUC=0.571974
+signal=Hbb, labeled_gmm: AUC=0.611518
+signal=Hbb, joint_class_mahalanobis: AUC=0.471531
+signal=Hbb, joint_class_percentile_mahalanobis: AUC=0.497472
+
+Saved diagnostics to /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/latent_diagnostics

@@ -243,6 +243,69 @@
             "label_Wqq": 3200
           }
         }
+      },
+      "joint_class_percentile_mahalanobis": {
+        "auc_validation_vs_signal": 0.49747167358398436,
+        "validation_background_scores": {
+          "count": 12800,
+          "mean": 0.3581922119140625,
+          "std": 0.24092342738182151,
+          "median": 0.3310937500000001,
+          "q05": 0.026874999999999982,
+          "q95": 0.7878125
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": 0.3612970703124999,
+          "std": 0.25885084023231514,
+          "median": 0.32062500000000005,
+          "q05": 0.022499999999999964,
+          "q95": 0.8194062499999996
+        },
+        "fit": {
+          "percentile_vector_labels": [
+            "label_QCD",
+            "label_Tbqq",
+            "label_Hgg",
+            "label_Wqq"
+          ],
+          "percentile": "(count_less + 0.5 * count_equal) / class_count",
+          "first_layer": "own-class latent Mahalanobis distance percentiles",
+          "second_layer": "per-class Mahalanobis of full percentile vectors",
+          "calibration": "own-class background validation distances at both layers",
+          "compatibility": "p_k = 2 * min(q_k, 1 - q_k)",
+          "anomaly_score": "1 - max_k(p_k)",
+          "covariance_by_class": {
+            "label_QCD": {
+              "num_fit_events": 3200,
+              "latent_dim": 4,
+              "cov_eps": 0.0001,
+              "regularized_min_eigenvalue": 0.015252141616608431,
+              "regularized_max_eigenvalue": 0.11543200703648478
+            },
+            "label_Tbqq": {
+              "num_fit_events": 3200,
+              "latent_dim": 4,
+              "cov_eps": 0.0001,
+              "regularized_min_eigenvalue": 0.007110570089088074,
+              "regularized_max_eigenvalue": 0.09500313940173487
+            },
+            "label_Hgg": {
+              "num_fit_events": 3200,
+              "latent_dim": 4,
+              "cov_eps": 0.0001,
+              "regularized_min_eigenvalue": 0.011819421520856783,
+              "regularized_max_eigenvalue": 0.09572946937546033
+            },
+            "label_Wqq": {
+              "num_fit_events": 3200,
+              "latent_dim": 4,
+              "cov_eps": 0.0001,
+              "regularized_min_eigenvalue": 0.006508895495104288,
+              "regularized_max_eigenvalue": 0.08857712907731603
+            }
+          }
+        }
       }
     }
   },
