@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=6       # cpu-cores per task (>1 if multi-threaded tasks)
 #SBATCH -t 48:00:00             # total run time limit (HH:MM:SS)
 #SBATCH --mem=64GB           # CPU RAM
-# SBATCH --constraint=l40s
+#SBATCH --constraint=l40s
 #SBATCH --job-name='JETANOMALY'
 #SBATCH --output=slurm_logs/R-%x.%j/log.out
 #SBATCH --error=slurm_logs/R-%x.%j/log.err
@@ -51,7 +51,7 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #     --dataset jetclass \
 #     --dataset-root "/HEP/export/home/lwang223/JetClass/JetClass/Pythia" \
 #     --model semi-sup-triplet \
-#     --background-labels "label_QCD,label_Tbqq,label_Hgg,label_Wqq" \
+#     --background-labels "label_QCD,label_Wqq" \
 #     --signal-labels "label_Hbb" \
 #     --embed-dim 32 \
 #     --representation-dim 32 \
@@ -88,11 +88,26 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #     --num-workers 4 \
 #     --prefetch-factor 2 \
 #     --shuffle-active-shards 3 \
-#     --output-dir "plots/jetclass/32-QcdTbqqHggWqq"
+#     --output-dir "plots/jetclass/32-QcdWqq"
+
+# # eval
+# for run_dir in \
+#     "plots/jetclass/32-QcdWqq"
+# do
+#     python -u scripts/diagnose_lejepa_latents.py \
+#         "$run_dir" \
+#         --knn-k 10 \
+#         --knn-reduction kth
+# done
+
+# # plot tsne
+# for run_dir in \
+#     "plots/jetclass/32-QcdWqq"
+# do
+#     python scripts/plot_lejepa_tsne.py \
+#         "$run_dir" \
+#         --perplexity 100
+# done
 
 python -u scripts/diagnose_lejepa_latents.py \
-    "plots/jetclass/32-QcdHccHggWqq"
-
-python scripts/plot_lejepa_tsne.py \
-  "plots/jetclass/32-QcdHccHggWqq" \
-  --perplexity 100
+    plots/jetclass/32-QcdHccZqqWqq

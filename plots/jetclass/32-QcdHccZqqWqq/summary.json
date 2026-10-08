@@ -57,7 +57,8 @@
   ],
   "signal_labels": [
     "label_Hbb",
-    "label_Tbqq"
+    "label_Tbqq",
+    "label_Hcc"
   ],
   "particle_features": [
     "part_px",

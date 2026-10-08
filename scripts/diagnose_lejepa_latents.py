@@ -1481,8 +1481,6 @@ def main() -> None:
     backend.validate_requested_labels(list(dict.fromkeys(backgrounds + signals)))
     if not backgrounds:
         raise ValueError("At least one background label is required.")
-    if set(backgrounds) & set(signals):
-        raise ValueError("Background and signal labels must be disjoint.")
     signal_was_configured = bool(signals)
     signal_rotation = signals if signal_was_configured else list(backgrounds)
 

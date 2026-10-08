@@ -1,0 +1,86 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 7167781
+##  Job Name : JETANOMALY
+##  Nodelist : gpu3102
+##      CPUs : 1
+##  Mem/Node : 65536 MB
+## Directory : /oscar/home/lwang223/jetAnomalyDetection
+##   Job Started : Thu Oct  8 02:55:38 PM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Thu Oct  8 02:55:38 PM EDT 2026
+Job ID: 7167781
+Node: gpu3102
+==========================================
+
+GPU Information (from host):
+Thu Oct  8 14:55:38 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:A1:00.0 Off |                    0 |
+| N/A   47C    P8             37W /  350W |      76MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          158297      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch version: 2.6.0+cu124
+Dataset backend: jetclass
+Dataset root: /HEP/export/home/lwang223/JetClass/JetClass/Pythia
+Loading /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdHccZqqWqq/best_model.pth on cuda:0
+Sampling 100 x 128 events from each source stream
+Full-jet density latent space: representation
+Training labels: QCD+Hcc+Zqq+Wqq
+Visualization signal labels: Hbb+Tbqq+Hcc
+Dataset label axis: ['label_QCD', 'label_Hbb', 'label_Hcc', 'label_Hgg', 'label_H4q', 'label_Hqql', 'label_Zqq', 'label_Wqq', 'label_Tbqq', 'label_Tbl']
+Particle feature order:
+   0: part_px
+   1: part_py
+   2: part_pz
+   3: part_energy
+   4: part_pt
+   5: log_pt_fraction
+   6: part_deta
+   7: part_dphi
+   8: d0_sig
+   9: dz_sig
+  10: part_charge
+  11: part_isChargedHadron
+  12: part_isNeutralHadron
+  13: part_isPhoton
+  14: part_isElectron
+  15: part_isMuon
+Batch-standardized particle features: ['log_pt_fraction', 'd0_sig', 'dz_sig']
+
+Collecting validation representations once per source...
+Collected validation latents: background=12800, signal=12800
+
+Fitting validation background scores: label_QCD, label_Hcc, label_Zqq, label_Wqq
+signal=Hbb, combined_mahalanobis: AUC=0.468732
+signal=Hbb, knn: AUC=0.489208
+signal=Hbb, gmm: AUC=0.498497
+signal=Hbb, labeled_gmm: AUC=0.413719
+signal=Tbqq, combined_mahalanobis: AUC=0.368030
+signal=Tbqq, knn: AUC=0.494123
+signal=Tbqq, gmm: AUC=0.568067
+signal=Tbqq, labeled_gmm: AUC=0.355899
+
+Fitting validation background scores: label_QCD, label_Zqq, label_Wqq
+signal=Hcc, combined_mahalanobis: AUC=0.722107
+signal=Hcc, knn: AUC=0.689066
+signal=Hcc, gmm: AUC=0.657473
+signal=Hcc, labeled_gmm: AUC=0.737001
+
+Saved diagnostics to /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdHccZqqWqq/latent_diagnostics

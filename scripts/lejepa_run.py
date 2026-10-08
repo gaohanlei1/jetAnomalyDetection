@@ -34,8 +34,6 @@ class LeJEPARun:
             "mps" if torch.backends.mps.is_available() else "cpu"))
         self.backgrounds = list(dict.fromkeys(self.summary["background_labels"]))
         self.signals = list(dict.fromkeys(self.summary.get("signal_labels", [])))
-        if set(self.backgrounds) & set(self.signals):
-            raise ValueError("Background and signal labels must be disjoint.")
         # Older runs did not save this field. Recover the dataset-module convention.
         restored = dict(self.summary)
         if "batch_standardized_particle_features" not in restored:
