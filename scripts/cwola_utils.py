@@ -1,0 +1,144 @@
+"""Shared CWoLa batching and truth-only diagnostic scoring for CMS/JetClass."""
+import math
+import warnings
+from itertools import count
+
+import numpy as np
+import torch
+from sklearn.metrics import roc_auc_score
+from tqdm import tqdm
+
+from scripts.run_train_representation_flow import encode_finite, write_json
+
+
+POOLED_BACKGROUND = "All backgrounds"
+POOLED_SIGNAL = "All signals"
+
+
+def validate_label_sets(summary):
+    backgrounds = list(dict.fromkeys(summary.get("background_labels", [])))
+    signals = list(dict.fromkeys(summary.get("signal_labels", [])))
+    if not backgrounds or not signals:
+        raise ValueError("CWoLa requires nonempty background_labels and signal_labels.")
+    overlap = sorted(set(backgrounds) & set(signals))
+    if overlap:
+        raise ValueError(f"Background and signal label sets must be disjoint; overlap: {overlap}")
+    return backgrounds, signals
+
+
+def batch_sizes(batch_size, signal_fraction, *, for_roc=False):
+    """Equal reference/mixture halves; round signal count to the nearest event."""
+    if batch_size < 2 or batch_size % 2:
+        raise ValueError("batch-size must be an even integer >= 2 (reference + mixture halves).")
+    if not math.isfinite(signal_fraction) or not 0 <= signal_fraction <= 1:
+        raise ValueError("signal-fraction must be finite and in [0, 1].")
+    n_signal = int(math.floor(batch_size / 2 * signal_fraction + 0.5))
+    # A zero-signal training mixture is valid, but a truth ROC needs positives.
+    # This extra signal is diagnostic-only and never enters the training loss.
+    if for_roc:
+        n_signal = max(1, n_signal)
+    return batch_size - n_signal, n_signal
+
+
+def make_loaders(run, split, signal_fraction, *, steps, for_roc=False, training=False):
+    n_background, n_signal = batch_sizes(run.batch_size, signal_fraction, for_roc=for_roc)
+    # Bounded validation repeats deterministically; test always visits events at
+    # most once. steps=0 is full finite test evaluation (including partial tails).
+    infinite = training or (split == "val" and steps > 0)
+    drop_last = training or (split == "val" and steps > 0)
+    if training:
+        bg_limit = sg_limit = run.summary.get("max_train_events")
+    elif split == "val":
+        bg_limit = run.summary.get("max_val_events")
+        sg_limit = run.summary.get("max_test_signal_events")
+    else:
+        bg_limit = run.summary.get("max_test_background_events")
+        sg_limit = run.summary.get("max_test_signal_events")
+    kwargs = dict(infinite=infinite, drop_last=drop_last,
+                  persistent_workers=training, active_shards=int(run.summary.get("shuffle_active_shards", 3)),
+                  prefetch_factor=int(run.summary.get("prefetch_factor", 2)))
+    background = run.loader(split, run.backgrounds, batch_size=n_background,
+                            seed_offset=0 if training else 202, max_events=bg_limit, **kwargs)
+    signal = (run.loader(split, run.signals, batch_size=n_signal,
+                         seed_offset=101 if training else 404, max_events=sg_limit, **kwargs)
+              if n_signal else None)
+    return background, signal
+
+
+def combine_batches(background, signal):
+    """Order: [reference B | mixture B | mixture S]. Never train on jet labels.
+
+    Counts, truth labels and weak labels are derived from the actual rows.
+    Finite diagnostic tails may contain only one population; weak labels on
+    those tails are unused by test evaluation.
+    """
+    batches = [batch for batch in (background, signal) if batch is not None]
+    if not batches:
+        raise ValueError("Empty CWoLa batch.")
+    n_bg = 0 if background is None else len(background["x_particles"])
+    n_sg = 0 if signal is None else len(signal["x_particles"])
+    batch = {key: torch.cat([item[key] for item in batches], dim=0)
+             for key in ("x_particles", "padding_mask")}
+    n = n_bg + n_sg
+    weak = torch.ones(n, dtype=torch.float32)
+    weak[:min(n_bg, n // 2)] = 0
+    truth = torch.cat([torch.zeros(n_bg, dtype=torch.int64), torch.ones(n_sg, dtype=torch.int64)])
+    return batch, weak, truth
+
+
+def paired_batches(loaders, steps, *, require_full_budget=True):
+    """Advance both datasets independently; keep finite test tails from either."""
+    iterators = [iter(loader) if loader is not None else None for loader in loaders]
+    for index in range(steps) if steps else count():
+        parts = []
+        for i, iterator in enumerate(iterators):
+            part = next(iterator, None) if iterator is not None else None
+            if part is None:
+                iterators[i] = None
+                if require_full_budget and loaders[i] is not None:
+                    raise RuntimeError(f"CWoLa {'background' if i == 0 else 'signal'} stream ended at batch {index}; "
+                                       "check event limits, batch sizes and dataset availability.")
+            parts.append(part)
+        if all(part is None for part in parts):
+            break
+        yield parts
+
+
+@torch.no_grad()
+def evaluate(model, run, loaders, steps, *, collect_scores=True, per_signal=False,
+             require_full_budget=True, description="Validation"):
+    model.eval()
+    score_parts, truth_parts, signal_id_parts = [], [], []
+    loss_sum, num_events = 0.0, 0
+    for background, signal in tqdm(paired_batches(loaders, steps, require_full_budget=require_full_budget),
+                                   total=steps or None, desc=description, unit="batch"):
+        batch, weak, truth = combine_batches(background, signal)
+        logits = model.forward_logits(encode_finite(run, batch))
+        if not torch.isfinite(logits).all():
+            raise FloatingPointError("Non-finite CWoLa evaluation logits.")
+        # Test tails can be unbalanced, so only validation uses this weak loss.
+        loss_sum += torch.nn.functional.binary_cross_entropy_with_logits(
+            logits, weak.to(run.device), reduction="sum").item()
+        num_events += len(logits)
+        if collect_scores:
+            score_parts.append(torch.sigmoid(logits).cpu().numpy())
+            truth_parts.append(truth.numpy())
+            if per_signal:
+                n_bg = 0 if background is None else len(background["x_particles"])
+                ids = np.full(len(logits), -1, dtype=np.int64)
+                if signal is not None:
+                    # Physical type is used ONLY to group already-computed test
+                    # scores; it never creates weak labels or enters the model.
+                    ids[n_bg:] = signal["y"].argmax(dim=-1).cpu().numpy()
+                signal_id_parts.append(ids)
+    if not num_events:
+        raise RuntimeError(f"{description}: no events.")
+    result = {"loss": loss_sum / num_events, "num_events": num_events}
+    if collect_scores:
+        scores, truth = np.concatenate(score_parts), np.concatenate(truth_parts)
+        if len(np.unique(truth)) != 2:
+            raise RuntimeError(f"{description}: truth ROC requires both background and signal events.")
+        result.update(scores=scores, truth=truth, auc=float(roc_auc_score(truth, scores)))
+        if per_signal:
+            result["signal_ids"] = np.concatenate(signal_id_parts)
+    return result

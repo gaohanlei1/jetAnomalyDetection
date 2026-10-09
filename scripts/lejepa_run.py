@@ -23,10 +23,12 @@ def add_backbone_arguments(parser):
 
 
 class LeJEPARun:
-    def __init__(self, args):
+    def __init__(self, args, *, summary=None):
         self.run_dir = args.run_dir.expanduser().resolve()
-        with (self.run_dir / "summary.json").open() as handle:
-            self.summary = json.load(handle)
+        if summary is None:
+            with (self.run_dir / "summary.json").open() as handle:
+                summary = json.load(handle)
+        self.summary = dict(summary)
         self.seed = int(self.summary.get("base_seed", self.summary.get("seed", 42)))
         seed_everything(self.seed)
         self.device = torch.device(args.device or (
@@ -70,7 +72,7 @@ class LeJEPARun:
 
     def loader(self, split, labels, *, infinite=False, seed_offset=0, max_events=None,
                drop_last=False, persistent_workers=None, prefetch_factor=None,
-               active_shards=None):
+               active_shards=None, batch_size=None):
         dataset = self.backend.make_dataset(split, labels, self.seed + seed_offset)
         dataset.infinite = infinite
         dataset.max_events = max_events
@@ -90,7 +92,10 @@ class LeJEPARun:
         collate = module.collate_cms_tensors if self.backend.dataset_name == "cms" else module.collate_jetclass_tensors
         if persistent_workers is None:
             persistent_workers = infinite
-        kwargs = dict(batch_size=self.batch_size, num_workers=self.num_workers,
+        loader_batch_size = self.batch_size if batch_size is None else int(batch_size)
+        if loader_batch_size < 1:
+            raise ValueError("Loader batch_size must be positive.")
+        kwargs = dict(batch_size=loader_batch_size, num_workers=self.num_workers,
                       pin_memory=self.device.type == "cuda", collate_fn=collate,
                       drop_last=drop_last,
                       persistent_workers=persistent_workers and self.num_workers > 0)
