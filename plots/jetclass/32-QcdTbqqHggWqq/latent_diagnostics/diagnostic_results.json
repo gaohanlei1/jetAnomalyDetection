@@ -306,6 +306,69 @@
             }
           }
         }
+      },
+      "joint_class_raw_mahalanobis": {
+        "auc_validation_vs_signal": 0.4333835968017578,
+        "validation_background_scores": {
+          "count": 12800,
+          "mean": 0.32869313964843755,
+          "std": 0.25144980970276004,
+          "median": 0.2728125,
+          "q05": 0.020937500000000053,
+          "q95": 0.8196874999999999
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": 0.269985693359375,
+          "std": 0.2248306900343153,
+          "median": 0.21124999999999994,
+          "q05": 0.013749999999999929,
+          "q95": 0.7324999999999999
+        },
+        "fit": {
+          "score_vector_labels": [
+            "label_QCD",
+            "label_Tbqq",
+            "label_Hgg",
+            "label_Wqq"
+          ],
+          "first_layer": "raw squared latent Mahalanobis distances to all active classes",
+          "second_layer": "per-class Mahalanobis of full raw score vectors",
+          "calibration": "own-class background validation second-layer distances",
+          "percentile": "(count_less + 0.5 * count_equal) / class_count",
+          "compatibility": "p_k = 2 * min(q_k, 1 - q_k)",
+          "anomaly_score": "1 - max_k(p_k)",
+          "covariance_by_class": {
+            "label_QCD": {
+              "num_fit_events": 3200,
+              "latent_dim": 4,
+              "cov_eps": 0.0001,
+              "regularized_min_eigenvalue": 64.46297840418144,
+              "regularized_max_eigenvalue": 3233.751894300681
+            },
+            "label_Tbqq": {
+              "num_fit_events": 3200,
+              "latent_dim": 4,
+              "cov_eps": 0.0001,
+              "regularized_min_eigenvalue": 52.60589802576244,
+              "regularized_max_eigenvalue": 839.098571018159
+            },
+            "label_Hgg": {
+              "num_fit_events": 3200,
+              "latent_dim": 4,
+              "cov_eps": 0.0001,
+              "regularized_min_eigenvalue": 59.820258275249984,
+              "regularized_max_eigenvalue": 671.7958299583169
+            },
+            "label_Wqq": {
+              "num_fit_events": 3200,
+              "latent_dim": 4,
+              "cov_eps": 0.0001,
+              "regularized_min_eigenvalue": 59.02656722905835,
+              "regularized_max_eigenvalue": 701.2348657852267
+            }
+          }
+        }
       }
     }
   },
@@ -548,6 +611,138 @@
           "regularized_min_eigenvalue": 0.00010257162828620997,
           "regularized_max_eigenvalue": 2.0155029401918867
         }
+      }
+    }
+  },
+  "pairwise_raw_mahalanobis_by_signal": {
+    "label_Hbb": {
+      "label_QCD": {
+        "auc_validation_vs_signal": 0.684586474609375,
+        "validation_background_scores": {
+          "count": 3200,
+          "mean": 3.9987475829424763,
+          "std": 3.651241481024524,
+          "median": 2.8579729166703585,
+          "q05": 0.9030795079010109,
+          "q95": 10.93530100991906
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": 5.405511223472729,
+          "std": 3.4744050573719196,
+          "median": 4.49419091558642,
+          "q05": 1.9612960614459687,
+          "q95": 11.769035789982231
+        },
+        "covariance": {
+          "num_fit_events": 3200,
+          "latent_dim": 4,
+          "cov_eps": 0.0001,
+          "regularized_min_eigenvalue": 64.46297840418144,
+          "regularized_max_eigenvalue": 3233.751894300681
+        },
+        "score_vector_labels": [
+          "label_QCD",
+          "label_Tbqq",
+          "label_Hgg",
+          "label_Wqq"
+        ]
+      },
+      "label_Tbqq": {
+        "auc_validation_vs_signal": 0.5763672607421875,
+        "validation_background_scores": {
+          "count": 3200,
+          "mean": 3.998746349704019,
+          "std": 4.217721805047354,
+          "median": 3.0722518415719637,
+          "q05": 0.7254111742583911,
+          "q95": 9.687517710929784
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": 5.1908971011590355,
+          "std": 7.963947977083819,
+          "median": 3.6986203793575725,
+          "q05": 0.9344943821907078,
+          "q95": 12.797771794736683
+        },
+        "covariance": {
+          "num_fit_events": 3200,
+          "latent_dim": 4,
+          "cov_eps": 0.0001,
+          "regularized_min_eigenvalue": 52.60589802576244,
+          "regularized_max_eigenvalue": 839.098571018159
+        },
+        "score_vector_labels": [
+          "label_QCD",
+          "label_Tbqq",
+          "label_Hgg",
+          "label_Wqq"
+        ]
+      },
+      "label_Hgg": {
+        "auc_validation_vs_signal": 0.675322509765625,
+        "validation_background_scores": {
+          "count": 3200,
+          "mean": 3.9987469129901627,
+          "std": 4.487247513938248,
+          "median": 2.7004663175733383,
+          "q05": 0.8247892780121017,
+          "q95": 11.112951323623053
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": 6.393915032488805,
+          "std": 6.1300859486024395,
+          "median": 4.4862859401674084,
+          "q05": 1.2625019481874034,
+          "q95": 18.635646178182917
+        },
+        "covariance": {
+          "num_fit_events": 3200,
+          "latent_dim": 4,
+          "cov_eps": 0.0001,
+          "regularized_min_eigenvalue": 59.820258275249984,
+          "regularized_max_eigenvalue": 671.7958299583169
+        },
+        "score_vector_labels": [
+          "label_QCD",
+          "label_Tbqq",
+          "label_Hgg",
+          "label_Wqq"
+        ]
+      },
+      "label_Wqq": {
+        "auc_validation_vs_signal": 0.7579101562499999,
+        "validation_background_scores": {
+          "count": 3200,
+          "mean": 3.9987470929508158,
+          "std": 5.776278220192576,
+          "median": 2.3890517246856557,
+          "q05": 0.7095922771654481,
+          "q95": 12.45477125457414
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": 9.967691457671418,
+          "std": 10.868842231504415,
+          "median": 6.125407789726666,
+          "q05": 1.3594554642670056,
+          "q95": 30.352546454080706
+        },
+        "covariance": {
+          "num_fit_events": 3200,
+          "latent_dim": 4,
+          "cov_eps": 0.0001,
+          "regularized_min_eigenvalue": 59.02656722905835,
+          "regularized_max_eigenvalue": 701.2348657852267
+        },
+        "score_vector_labels": [
+          "label_QCD",
+          "label_Tbqq",
+          "label_Hgg",
+          "label_Wqq"
+        ]
       }
     }
   }
