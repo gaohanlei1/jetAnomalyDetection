@@ -6,7 +6,9 @@
 #SBATCH --cpus-per-task=6       # cpu-cores per task (>1 if multi-threaded tasks)
 #SBATCH -t 48:00:00             # total run time limit (HH:MM:SS)
 #SBATCH --mem=64GB           # CPU RAM
-# SBATCH --constraint=l40s
+#SBATCH --constraint=l40s
+# SBATCH --constraint=geforce3090
+# SBATCH --constraint=a6000
 #SBATCH --job-name='JETANOMALY'
 #SBATCH --output=slurm_logs/R-%x.%j/log.out
 #SBATCH --error=slurm_logs/R-%x.%j/log.err
@@ -109,5 +111,32 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #         --perplexity 100
 # done
 
-python -u scripts/diagnose_lejepa_latents.py \
-    plots/jetclass/32-QcdTbqqHggWqq
+# python -u scripts/diagnose_lejepa_latents.py \
+#     plots/jetclass/32-Qcd
+
+python -u scripts/run_train_cwola.py \
+    plots/jetclass/32-Qcd \
+    --output-dir plots/jetclass/32-Qcd/cwola-0.01 \
+    --batch-size 512 \
+    --signal-fraction 0.01
+
+python -u scripts/evaluate_cwola.py \
+    plots/jetclass/32-Qcd/cwola-0.01
+
+python -u scripts/run_train_cwola.py \
+    plots/jetclass/32-Qcd \
+    --output-dir plots/jetclass/32-Qcd/cwola-0.005 \
+    --batch-size 512 \
+    --signal-fraction 0.005
+
+python -u scripts/evaluate_cwola.py \
+    plots/jetclass/32-Qcd/cwola-0.005
+
+python -u scripts/run_train_cwola.py \
+    plots/jetclass/32-Qcd \
+    --output-dir plots/jetclass/32-Qcd/cwola-0.001 \
+    --batch-size 512 \
+    --signal-fraction 0.001
+
+python -u scripts/evaluate_cwola.py \
+    plots/jetclass/32-Qcd/cwola-0.001
