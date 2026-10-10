@@ -95,7 +95,8 @@ def main():
     model.load_state_dict(read_state_dict(checkpoint, run.device), strict=True)
     loaders = make_loaders(run, "test", summary["signal_fraction"], steps=steps, for_roc=True)
     result = evaluate(model, run, loaders, steps, per_signal=True, require_full_budget=False,
-                      description="Test pooled background and signal")
+                      description="Test pooled background and signal",
+                      supervised=summary.get("supervision", "weak") == "strong")
     background_scores = result["scores"][result["truth"] == 0]
     # Group scores AFTER the same mixed forward pass; reuse the identical pooled
     # background sample for every signal-specific ROC and distribution.

@@ -24,7 +24,7 @@ from scripts.lejepa_run import LeJEPARun, add_backbone_arguments
 from scripts.run_train_lejepa_part import make_warmup_cosine_scheduler
 from scripts.cwola_utils import (
     POOLED_BACKGROUND, POOLED_SIGNAL, resolve_label_sets, parse_label_override,
-    configure_cwola_labels, batch_sizes,
+    configure_cwola_labels, batch_sizes, classification_targets,
     make_loaders, combine_batches, paired_batches, evaluate, encode_finite, write_json,
 )
 from visualize.training_progress import plot_progress
@@ -59,8 +59,12 @@ def resolve_training_config(args, summary):
     return config
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+def main(*, supervised=False):
+    task_name = "Supervised MLP" if supervised else "CWoLa"
+    loss_name = "truth-label loss" if supervised else "weak-label loss"
+    parser = argparse.ArgumentParser(description=(
+        "Train the CWoLa MLP with true background/signal labels on a frozen LeJEPA backbone. "
+        "Signal fraction retains the CWoLa mixture-half convention." if supervised else __doc__))
     add_backbone_arguments(parser)
     parser.add_argument("--output-dir", type=Path, required=True, help="New CWoLa run directory.")
     parser.add_argument("--signal-fraction", type=float, default=0.5,
@@ -104,7 +108,7 @@ def main():
         configure_cwola_labels(run, backgrounds, signals)
     except ValueError as exc:
         parser.error(str(exc))
-    print(f"CWoLa task: backgrounds={run.backgrounds}; signals={run.signals}", flush=True)
+    print(f"{task_name} task: backgrounds={run.backgrounds}; signals={run.signals}", flush=True)
     model_config = dict(input_dim=run.model.config.representation_dim, dropout=args.dropout)
     model = CWoLaMLP(**model_config).to(run.device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=config["learning_rate"],
@@ -118,7 +122,7 @@ def main():
     if n_sg == 0:
         warnings.warn("Training mixture has no signal. ROC uses a separate diagnostic mixture "
                       "with one signal per batch; these signals do not enter training or validation loss.")
-    print(f"CWoLa {model_config['input_dim']} -> 64 -> 32 -> 1; frozen backbone {run.checkpoint}")
+    print(f"{task_name} {model_config['input_dim']} -> 64 -> 32 -> 1; frozen backbone {run.checkpoint}")
     print(f"Batch: {n_bg} background + {n_sg} signal; first {run.batch_size // 2} rows "
           f"reference, last {run.batch_size // 2} rows mixture (effective fraction {effective_fraction:g}).")
     train_loaders = make_loaders(run, "train", args.signal_fraction,
@@ -138,6 +142,11 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     summary = {
         "model": "cwola-mlp", "status": "initialized", **config,
+        "supervision": "strong" if supervised else "weak",
+        "training_label_definition": ("0=all background; 1=signal" if supervised else
+                                      "0=background reference; 1=background+signal mixture"),
+        "validation_label_definition": "truth" if supervised else "weak",
+        "class_weighting": "none",
         "cwola_config": model_config, "signal_fraction": args.signal_fraction,
         "effective_signal_fraction": effective_fraction,
         "background_batch_size": n_bg, "signal_batch_size": n_sg,
@@ -193,10 +202,11 @@ def main():
     for epoch in range(1, config["epochs"] + 1):
         model.train()
         for _ in tqdm(range(config["steps_per_epoch"]), desc=f"Epoch {epoch}/{config['epochs']}"):
-            batch, weak, _ = combine_batches(*next(train_iterator))
+            batch, weak, truth = combine_batches(*next(train_iterator))
+            targets = classification_targets(weak, truth, supervised=supervised)
             optimizer.zero_grad(set_to_none=True)
             logits = model.forward_logits(encode_finite(run, batch))
-            loss = torch.nn.functional.binary_cross_entropy_with_logits(logits, weak.to(run.device))
+            loss = torch.nn.functional.binary_cross_entropy_with_logits(logits, targets.to(run.device))
             if not torch.isfinite(loss):
                 raise FloatingPointError("Non-finite CWoLa training loss.")
             loss.backward()
@@ -208,12 +218,12 @@ def main():
         if shared_validation:
             validation = diagnostic = evaluate(
                 model, run, val_loaders, validation_steps, cache=val_cache,
-                description="Val weak-label loss + truth ROC")
+                description=f"Val {loss_name} + truth ROC", supervised=supervised)
         else:
             validation = evaluate(model, run, val_loaders, config["val_steps"], collect_scores=False,
-                                  description="Val background vs mixture loss", cache=val_cache)
+                                  description=f"Val {loss_name}", cache=val_cache, supervised=supervised)
             diagnostic = evaluate(model, run, roc_loaders, config["eval_steps"],
-                                  description="Val pooled background vs signal ROC", cache=roc_cache)
+                                  description="Val pooled background vs signal ROC", cache=roc_cache, supervised=supervised)
         val_loss = validation["loss"]
         val_history["total_loss"].append(val_loss)
         epoch_end_steps.append(len(train_history["total_loss"]))
@@ -239,7 +249,7 @@ def main():
         write_json(output / "history.json", history)
         write_json(output / "summary.json", summary)
         plot_progress(plot_context, train_history, val_history, epoch_end_steps, best, auc_history,
-                      roc_eval_steps, suptitle="CWoLa: weak-label loss and pooled signal/background ROC")
+                      roc_eval_steps, suptitle=f"{task_name}: {loss_name} and pooled signal/background ROC")
         print(f"Epoch {epoch}: val BCE={val_loss:.6g}; truth ROC AUC={diagnostic['auc']:.6f}", flush=True)
     summary["status"] = "completed"
     write_json(output / "summary.json", summary)

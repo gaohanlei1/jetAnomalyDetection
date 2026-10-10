@@ -12,7 +12,7 @@ import torch
 from models.cwola import CWoLaMLP
 from scripts.cwola_utils import (
     batch_sizes, combine_batches, evaluate, make_loaders, paired_batches, validate_label_sets,
-    parse_label_override, resolve_label_sets, configure_cwola_labels,
+    parse_label_override, resolve_label_sets, configure_cwola_labels, classification_targets,
 )
 from scripts.lejepa_run import LeJEPARun
 from scripts.run_train_cwola import resolve_training_config
@@ -120,6 +120,29 @@ class CWoLaTests(unittest.TestCase):
         self.assertEqual(encode.call_count, 3)
         self.assertEqual(model.forward_logits.call_count, 6)
         np.testing.assert_array_equal(result['scores'], repeat['scores'])
+
+    def test_strong_targets_expose_all_background_rows(self):
+        _, weak, truth = combine_batches(batch([1.] * 192), batch([2.] * 64))
+        targets = classification_targets(weak, truth, supervised=True)
+        self.assertEqual(targets.tolist(), [0.] * 192 + [1.] * 64)
+        self.assertEqual(targets.dtype, torch.float32)
+        self.assertEqual(classification_targets(weak, truth).tolist(), [0.] * 128 + [1.] * 128)
+        _, weak, truth = combine_batches(batch([1.] * 8), None)
+        self.assertEqual(classification_targets(weak, truth, supervised=True).sum().item(), 0.)
+
+    def test_supervised_validation_uses_truth_loss_and_same_scores(self):
+        run = SimpleNamespace(device=torch.device('cpu'), precision='fp32',
+                              encode=lambda b: b['x_particles'])
+        loaders = ([batch([-2.] * 6)], [batch([2.] * 2)])
+        cache = []
+        weak_result = evaluate(IdentityScore(), run, loaders, 1, cache=cache)
+        strong_result = evaluate(IdentityScore(), run, (None, None), 1, cache=cache, supervised=True)
+        expected = torch.nn.functional.binary_cross_entropy_with_logits(
+            torch.tensor([-2.] * 6 + [2.] * 2), torch.tensor([0.] * 6 + [1.] * 2)).item()
+        self.assertAlmostEqual(strong_result['loss'], expected)
+        self.assertLess(strong_result['loss'], weak_result['loss'])
+        np.testing.assert_array_equal(strong_result['scores'], weak_result['scores'])
+        self.assertEqual(strong_result['auc'], weak_result['auc'])
 
     def test_fraction_boundaries(self):
         self.assertEqual(batch_sizes(256, .5), (192, 64))

@@ -125,6 +125,11 @@ def combine_batches(background, signal):
     return batch, weak, truth
 
 
+def classification_targets(weak, truth, *, supervised=False):
+    """Keep identical events/order; expose true binary identity only in strong supervision."""
+    return truth.to(dtype=torch.float32) if supervised else weak
+
+
 def paired_batches(loaders, steps, *, require_full_budget=True):
     """Advance both datasets independently; keep finite test tails from either."""
     iterators = [iter(loader) if loader is not None else None for loader in loaders]
@@ -182,7 +187,7 @@ def representation_batches(run, loaders, steps, *, per_signal, require_full_budg
 
 @torch.no_grad()
 def evaluate(model, run, loaders, steps, *, collect_scores=True, per_signal=False,
-             require_full_budget=True, description="Validation", cache=None):
+             require_full_budget=True, description="Validation", cache=None, supervised=False):
     model.eval()
     started = perf_counter()
     score_parts, truth_parts, signal_id_parts = [], [], []
@@ -195,9 +200,10 @@ def evaluate(model, run, loaders, steps, *, collect_scores=True, per_signal=Fals
         logits = model.forward_logits(representation.to(run.device))
         if not torch.isfinite(logits).all():
             raise FloatingPointError("Non-finite CWoLa evaluation logits.")
-        # Test tails can be unbalanced, so only validation uses this weak loss.
+        targets = classification_targets(weak, truth, supervised=supervised)
+        # Test tails can be unbalanced; test plots use scores rather than this loss.
         loss_sum += torch.nn.functional.binary_cross_entropy_with_logits(
-            logits, weak.to(run.device), reduction="sum").item()
+            logits, targets.to(run.device), reduction="sum").item()
         num_events += len(logits)
         if collect_scores:
             score_parts.append(torch.sigmoid(logits).cpu().numpy())
