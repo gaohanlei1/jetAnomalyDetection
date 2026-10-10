@@ -114,15 +114,22 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 # python -u scripts/diagnose_lejepa_latents.py \
 #     plots/jetclass/32-Qcd
 
-BASE_DIR="plots/jetclass/32-Qcd"
-BASE_DIR="plots/jetclass/32-QcdTbqqHggWqq"
-for fraction in 0.005 0.001 0.0005 0.0001 0.00005; do
+
+# BASE_DIR="plots/jetclass/32-QcdTbqqHggWqq"
+BASE_DIR="plots/jetclass/32-QcdWqq"
+for fraction in 0.005 0.001 0.0005 0.0001; do
     python -u scripts/run_train_cwola.py \
         "$BASE_DIR" \
-        --output-dir "$BASE_DIR"/cwola-"$fraction" \
-        --batch-size 512 \
+        --output-dir "$BASE_DIR"/wqq-vs-hbb-cwola-"$fraction" \
+        --background-labels "label_Wqq" \
+        --signal-labels "label_Hbb" \
+        --learning-rate 3e-3 \
+        --warmup-steps 10 \
+        --epochs 3 \
+        --batch-size 10240 \
+        --val-steps 5 \
         --signal-fraction "$fraction"
 
     python -u scripts/evaluate_cwola.py \
-        "$BASE_DIR"/cwola-"$fraction"
+        "$BASE_DIR"/wqq-vs-hbb-cwola-"$fraction"
 done
