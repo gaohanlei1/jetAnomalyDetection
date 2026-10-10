@@ -12,6 +12,7 @@ import torch
 from models.cwola import CWoLaMLP
 from scripts.cwola_utils import (
     batch_sizes, combine_batches, evaluate, make_loaders, paired_batches, validate_label_sets,
+    parse_label_override, resolve_label_sets, configure_cwola_labels,
 )
 from scripts.lejepa_run import LeJEPARun
 from scripts.run_train_cwola import resolve_training_config
@@ -41,6 +42,84 @@ class CWoLaTests(unittest.TestCase):
         _, weak, truth = combine_batches(batch([1.] * 6), batch([2.] * 2))
         self.assertEqual(weak.tolist(), [0.] * 4 + [1.] * 4)
         self.assertEqual(truth.tolist(), [0] * 6 + [1] * 2)
+
+    def test_validation_cache_skips_io_and_backbone_but_updates_scores(self):
+        encode = Mock(side_effect=lambda b: b['x_particles'])
+        run = SimpleNamespace(device=torch.device('cpu'), precision='fp32', encode=encode)
+        loaders = ([batch([-2.] * 6)], [batch([2.] * 2, [1, 2])])
+        cache = []
+        model = IdentityScore()
+        first = evaluate(model, run, loaders, 1, cache=cache, per_signal=True)
+        self.assertEqual(encode.call_count, 1)
+        self.assertEqual(len(cache), 1)
+        self.assertEqual(cache[0][0].device.type, 'cpu')
+        encode.side_effect = AssertionError('Backbone must not run again')
+        class BrokenLoader:
+            def __iter__(self):
+                raise AssertionError('Validation must not restart workers/read ROOT')
+        model.forward_logits = lambda x: -x.reshape(-1)
+        second = evaluate(model, run, (BrokenLoader(), BrokenLoader()), 1,
+                          cache=cache, per_signal=True)
+        self.assertEqual(first['auc'], 1.)
+        self.assertEqual(second['auc'], 0.)
+        np.testing.assert_array_equal(first['signal_ids'], second['signal_ids'])
+        self.assertEqual(encode.call_count, 1)
+
+    def test_validation_preloads_one_shard_per_type(self):
+        run = SimpleNamespace(batch_size=256, summary={'shuffle_active_shards': 9, 'prefetch_factor': 4},
+                              backgrounds=['QCD', 'Wqq'], signals=['Hbb'], loader=Mock())
+        make_loaders(run, 'val', .5, steps=100, num_workers=1)
+        bg, sg = run.loader.call_args_list
+        self.assertEqual(bg.kwargs['active_shards'], 2)
+        self.assertEqual(sg.kwargs['active_shards'], 1)
+        self.assertEqual(bg.kwargs['num_workers'], 1)
+        self.assertEqual(bg.kwargs['prefetch_factor'], 1)
+
+    def test_label_overrides_preserve_backbone_metadata(self):
+        summary = dict(background_labels=['label_QCD', 'label_Wqq'], signal_labels=['label_Hbb'])
+        backgrounds, signals = resolve_label_sets(summary, ['label_QCD'], ['label_Tbqq', 'label_Hbb'])
+        backend = SimpleNamespace(dataset_name='jetclass', validate_requested_labels=Mock())
+        run = SimpleNamespace(summary=summary, backend=backend)
+        configure_cwola_labels(run, backgrounds, signals)
+        self.assertEqual(run.backgrounds, ['label_QCD'])
+        self.assertEqual(run.signals, ['label_Tbqq', 'label_Hbb'])
+        self.assertEqual(summary['background_labels'], ['label_QCD', 'label_Wqq'])
+        self.assertEqual(summary['signal_labels'], ['label_Hbb'])
+        self.assertEqual(resolve_label_sets(summary), (summary['background_labels'], summary['signal_labels']))
+        self.assertEqual(resolve_label_sets(summary, signals=['label_Tbqq'])[0], summary['background_labels'])
+        with self.assertRaisesRegex(ValueError, 'disjoint'):
+            resolve_label_sets(summary, signals=['label_Wqq'])
+        # An override may repair an overlapping historical configuration.
+        overlapping = dict(background_labels=['label_QCD'], signal_labels=['label_QCD'])
+        self.assertEqual(resolve_label_sets(overlapping, signals=['label_Hbb'])[1], ['label_Hbb'])
+
+    def test_label_override_parser(self):
+        self.assertEqual(parse_label_override('label_QCD, label_Wqq,label_QCD'), ['label_QCD', 'label_Wqq'])
+        for value in ['', 'label_QCD,', ',label_QCD']:
+            with self.assertRaises(ValueError):
+                parse_label_override(value)
+
+    def test_shared_validation_forward(self):
+        encode = Mock(side_effect=lambda b: b['x_particles'])
+        run = SimpleNamespace(device=torch.device('cpu'), precision='fp32', encode=encode)
+        model = IdentityScore()
+        model.forward_logits = Mock(wraps=model.forward_logits)
+        loaders = ([batch([-2.] * 6) for _ in range(3)], [batch([2.] * 2) for _ in range(3)])
+        cache = []
+        result = evaluate(model, run, loaders, 3, cache=cache)
+        self.assertEqual(encode.call_count, 3)
+        self.assertEqual(model.forward_logits.call_count, 3)
+        self.assertEqual(result['num_events'], len(result['scores']))
+        self.assertEqual(len(result['scores']), 24)
+        self.assertEqual(result['auc'], 1.)
+        _, weak, _ = combine_batches(loaders[0][0], loaders[1][0])
+        expected = torch.nn.functional.binary_cross_entropy_with_logits(
+            torch.tensor([-2.] * 6 + [2.] * 2), weak).item()
+        self.assertAlmostEqual(result['loss'], expected)
+        repeat = evaluate(model, run, (None, None), 3, cache=cache)
+        self.assertEqual(encode.call_count, 3)
+        self.assertEqual(model.forward_logits.call_count, 6)
+        np.testing.assert_array_equal(result['scores'], repeat['scores'])
 
     def test_fraction_boundaries(self):
         self.assertEqual(batch_sizes(256, .5), (192, 64))
@@ -103,11 +182,13 @@ class CWoLaTests(unittest.TestCase):
         defaults = dict(epochs=None, steps_per_epoch=None, val_steps=None, eval_steps=None,
                         learning_rate=None, weight_decay=None, final_lr_ratio=None, batch_size=None,
                         warmup_steps=None)
-        summary = dict(epochs=40, steps_per_epoch=2000, val_steps=100, eval_steps=100,
+        summary = dict(epochs=40, steps_per_epoch=2000, val_steps=100, eval_steps=999,
                        batch_size=128, global_batch_size=256, learning_rate=.001,
                        weight_decay=.05, warmup_steps=20000, final_lr_ratio=.001)
         resolved = resolve_training_config(SimpleNamespace(**defaults), summary)
         self.assertEqual(resolved['batch_size'], 256)
+        self.assertEqual(resolved['eval_steps'], resolved['val_steps'])
+        self.assertEqual(resolved['eval_steps'], 100)
         for key in ['epochs', 'learning_rate', 'weight_decay', 'steps_per_epoch', 'warmup_steps']:
             self.assertEqual(resolved[key], summary[key])
         defaults.update(epochs=2, warmup_steps=2, learning_rate=.02)

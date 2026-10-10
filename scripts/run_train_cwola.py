@@ -31,10 +31,12 @@ from visualize.training_progress import plot_progress
 
 
 def resolve_training_config(args, summary):
-    defaults = dict(epochs=20, steps_per_epoch=1000, val_steps=100, eval_steps=100,
+    defaults = dict(epochs=20, steps_per_epoch=1000, val_steps=100,
                     learning_rate=1e-3, weight_decay=0.05, final_lr_ratio=1e-3)
     config = {key: getattr(args, key) if getattr(args, key) is not None else summary.get(key, value)
               for key, value in defaults.items()}
+    # Retain the saved key for older evaluation tools; there is one val budget.
+    config["eval_steps"] = config["val_steps"]
     config["batch_size"] = args.batch_size if args.batch_size is not None else int(
         summary.get("global_batch_size", summary.get("batch_size", 128)))
     total = config["epochs"] * config["steps_per_epoch"]
@@ -72,8 +74,10 @@ def main():
                         help="Workers per validation loader; default: min(training workers, 1).")
     parser.add_argument("--no-cache-validation", action="store_true",
                         help="Reload validation ROOT data each epoch instead of caching frozen CPU representations.")
-    for name in ("epochs", "steps-per-epoch", "val-steps", "eval-steps", "warmup-steps"):
+    for name in ("epochs", "steps-per-epoch", "warmup-steps"):
         parser.add_argument(f"--{name}", type=int, default=None, help="Default: backbone summary.json.")
+    parser.add_argument("--val-steps", "--eval-steps", dest="val_steps", type=int, default=None,
+                        help="Shared validation batches for loss and ROC. Default: backbone val_steps; --eval-steps is an alias.")
     for name in ("learning-rate", "weight-decay", "final-lr-ratio"):
         parser.add_argument(f"--{name}", type=float, default=None, help="Default: backbone summary.json.")
     args = parser.parse_args()
@@ -120,13 +124,17 @@ def main():
     train_loaders = make_loaders(run, "train", args.signal_fraction,
                                  steps=config["steps_per_epoch"], training=True)
     eval_workers = min(run.num_workers, 1) if args.eval_num_workers is None else args.eval_num_workers
-    val_loaders = make_loaders(run, "val", args.signal_fraction, steps=config["val_steps"],
+    shared_validation = n_sg > 0
+    validation_steps = config["val_steps"]
+    val_loaders = make_loaders(run, "val", args.signal_fraction, steps=validation_steps,
                                num_workers=eval_workers)
-    # Dedicated validation datasets for truth ROC, both with all configured types pooled.
-    roc_loaders = make_loaders(run, "val", args.signal_fraction, steps=config["eval_steps"], for_roc=True,
-                               num_workers=eval_workers)
+    # The same logits serve weak-label BCE and truth-label ROC. Only a zero-
+    # signal mixture needs a separate positive-containing diagnostic stream.
+    roc_loaders = (None if shared_validation else
+                   make_loaders(run, "val", args.signal_fraction, steps=config["eval_steps"],
+                                for_roc=True, num_workers=eval_workers))
     val_cache = None if args.no_cache_validation else []
-    roc_cache = None if args.no_cache_validation else []
+    roc_cache = None if shared_validation or args.no_cache_validation else []
     output.mkdir(parents=True, exist_ok=True)
     summary = {
         "model": "cwola-mlp", "status": "initialized", **config,
@@ -162,6 +170,7 @@ def main():
         "validation_num_workers": eval_workers, "validation_prefetch_factor": 1,
         "validation_active_shards_per_label_per_worker": 1,
         "validation_representation_cache": not args.no_cache_validation,
+        "shared_validation_forward": shared_validation,
         "validation_split": "val", "test_split": "test", "roc_truth": "background_vs_signal",
         "precision": "fp32", "device": str(run.device), "distributed": False, "world_size": 1,
         "global_batch_size": run.batch_size, "num_trainable_parameters": sum(p.numel() for p in model.parameters()),
@@ -196,10 +205,15 @@ def main():
             optimizer.step()
             scheduler.step()
             train_history["total_loss"].append(loss.item())
-        validation = evaluate(model, run, val_loaders, config["val_steps"], collect_scores=False,
-                              description="Val background vs mixture loss", cache=val_cache)
-        diagnostic = evaluate(model, run, roc_loaders, config["eval_steps"],
-                              description="Val pooled background vs signal ROC", cache=roc_cache)
+        if shared_validation:
+            validation = diagnostic = evaluate(
+                model, run, val_loaders, validation_steps, cache=val_cache,
+                description="Val weak-label loss + truth ROC")
+        else:
+            validation = evaluate(model, run, val_loaders, config["val_steps"], collect_scores=False,
+                                  description="Val background vs mixture loss", cache=val_cache)
+            diagnostic = evaluate(model, run, roc_loaders, config["eval_steps"],
+                                  description="Val pooled background vs signal ROC", cache=roc_cache)
         val_loss = validation["loss"]
         val_history["total_loss"].append(val_loss)
         epoch_end_steps.append(len(train_history["total_loss"]))
