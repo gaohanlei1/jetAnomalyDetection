@@ -1,6 +1,6 @@
 """Shared CWoLa batching and truth-only diagnostic scoring for CMS/JetClass."""
 import math
-import warnings
+from time import perf_counter
 from itertools import count
 
 import numpy as np
@@ -40,7 +40,7 @@ def batch_sizes(batch_size, signal_fraction, *, for_roc=False):
     return batch_size - n_signal, n_signal
 
 
-def make_loaders(run, split, signal_fraction, *, steps, for_roc=False, training=False):
+def make_loaders(run, split, signal_fraction, *, steps, for_roc=False, training=False, num_workers=None):
     n_background, n_signal = batch_sizes(run.batch_size, signal_fraction, for_roc=for_roc)
     # Bounded validation repeats deterministically; test always visits events at
     # most once. steps=0 is full finite test evaluation (including partial tails).
@@ -55,12 +55,18 @@ def make_loaders(run, split, signal_fraction, *, steps, for_roc=False, training=
         bg_limit = run.summary.get("max_test_background_events")
         sg_limit = run.summary.get("max_test_signal_events")
     kwargs = dict(infinite=infinite, drop_last=drop_last,
-                  persistent_workers=training, active_shards=int(run.summary.get("shuffle_active_shards", 3)),
-                  prefetch_factor=int(run.summary.get("prefetch_factor", 2)))
+                  persistent_workers=training,
+                  prefetch_factor=int(run.summary.get("prefetch_factor", 2)) if training else 1)
+    if num_workers is not None:
+        kwargs["num_workers"] = num_workers
     background = run.loader(split, run.backgrounds, batch_size=n_background,
-                            seed_offset=0 if training else 202, max_events=bg_limit, **kwargs)
+                            seed_offset=0 if training else 202, max_events=bg_limit,
+                            active_shards=int(run.summary.get("shuffle_active_shards", 3)) if training else len(run.backgrounds),
+                            **kwargs)
     signal = (run.loader(split, run.signals, batch_size=n_signal,
-                         seed_offset=101 if training else 404, max_events=sg_limit, **kwargs)
+                         seed_offset=101 if training else 404, max_events=sg_limit,
+                         active_shards=int(run.summary.get("shuffle_active_shards", 3)) if training else len(run.signals),
+                         **kwargs)
               if n_signal else None)
     return background, signal
 
@@ -104,16 +110,56 @@ def paired_batches(loaders, steps, *, require_full_budget=True):
         yield parts
 
 
+def representation_batches(run, loaders, steps, *, per_signal, require_full_budget,
+                           cache, description):
+    """Cache only fixed CPU representations/labels, never scores or raw jets.
+
+    Each cache belongs to one loader pair and budget for one frozen backbone.
+    Commit only a complete pass, so a failed pass cannot leave a partial cache.
+    """
+    if cache:
+        print(f"{description}: using {len(cache)} cached representation batches.", flush=True)
+        yield from cache
+        return
+    pending = []
+    started = perf_counter()
+    print(f"{description}: starting loaders; waiting for initial ROOT shards...", flush=True)
+    for index, (background, signal) in enumerate(
+            paired_batches(loaders, steps, require_full_budget=require_full_budget)):
+        if index == 0:
+            print(f"{description}: first input batch ready after {perf_counter() - started:.1f}s.", flush=True)
+        batch, weak, truth = combine_batches(background, signal)
+        representation = encode_finite(run, batch)
+        ids = None
+        if per_signal:
+            n_bg = 0 if background is None else len(background["x_particles"])
+            ids = np.full(len(truth), -1, dtype=np.int64)
+            if signal is not None:
+                ids[n_bg:] = signal["y"].argmax(dim=-1).cpu().numpy()
+        item = (representation.detach().cpu() if cache is not None else representation, weak, truth, ids)
+        if cache is not None:
+            pending.append(item)
+        yield item
+    if cache is not None:
+        cache.extend(pending)
+        size = sum(t.numel() * t.element_size() for item in cache for t in item[:3])
+        print(f"{description}: cached {len(cache)} batches ({size / 2**20:.1f} MiB CPU tensors); "
+              "later epochs skip ROOT loading and backbone inference.", flush=True)
+
+
 @torch.no_grad()
 def evaluate(model, run, loaders, steps, *, collect_scores=True, per_signal=False,
-             require_full_budget=True, description="Validation"):
+             require_full_budget=True, description="Validation", cache=None):
     model.eval()
+    started = perf_counter()
     score_parts, truth_parts, signal_id_parts = [], [], []
     loss_sum, num_events = 0.0, 0
-    for background, signal in tqdm(paired_batches(loaders, steps, require_full_budget=require_full_budget),
-                                   total=steps or None, desc=description, unit="batch"):
-        batch, weak, truth = combine_batches(background, signal)
-        logits = model.forward_logits(encode_finite(run, batch))
+    batches = representation_batches(run, loaders, steps, per_signal=per_signal,
+                                     require_full_budget=require_full_budget,
+                                     cache=cache, description=description)
+    for representation, weak, truth, ids in tqdm(batches, total=steps or None,
+                                                 desc=description, unit="batch"):
+        logits = model.forward_logits(representation.to(run.device))
         if not torch.isfinite(logits).all():
             raise FloatingPointError("Non-finite CWoLa evaluation logits.")
         # Test tails can be unbalanced, so only validation uses this weak loss.
@@ -124,12 +170,6 @@ def evaluate(model, run, loaders, steps, *, collect_scores=True, per_signal=Fals
             score_parts.append(torch.sigmoid(logits).cpu().numpy())
             truth_parts.append(truth.numpy())
             if per_signal:
-                n_bg = 0 if background is None else len(background["x_particles"])
-                ids = np.full(len(logits), -1, dtype=np.int64)
-                if signal is not None:
-                    # Physical type is used ONLY to group already-computed test
-                    # scores; it never creates weak labels or enters the model.
-                    ids[n_bg:] = signal["y"].argmax(dim=-1).cpu().numpy()
                 signal_id_parts.append(ids)
     if not num_events:
         raise RuntimeError(f"{description}: no events.")
@@ -141,4 +181,5 @@ def evaluate(model, run, loaders, steps, *, collect_scores=True, per_signal=Fals
         result.update(scores=scores, truth=truth, auc=float(roc_auc_score(truth, scores)))
         if per_signal:
             result["signal_ids"] = np.concatenate(signal_id_parts)
+    print(f"{description}: {num_events:,} events in {perf_counter() - started:.1f}s.", flush=True)
     return result

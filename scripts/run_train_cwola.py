@@ -63,6 +63,10 @@ def main():
     parser.add_argument("--signal-fraction", type=float, default=0.5,
                         help="Signal fraction WITHIN the mixture half, in [0, 1]. Default: 0.5.")
     parser.add_argument("--dropout", type=float, default=0.1)
+    parser.add_argument("--eval-num-workers", type=int, default=None,
+                        help="Workers per validation loader; default: min(training workers, 1).")
+    parser.add_argument("--no-cache-validation", action="store_true",
+                        help="Reload validation ROOT data each epoch instead of caching frozen CPU representations.")
     for name in ("epochs", "steps-per-epoch", "val-steps", "eval-steps", "warmup-steps"):
         parser.add_argument(f"--{name}", type=int, default=None, help="Default: backbone summary.json.")
     for name in ("learning-rate", "weight-decay", "final-lr-ratio"):
@@ -75,6 +79,8 @@ def main():
     try:
         validate_label_sets(source_summary)  # Fail before loading any data/checkpoint.
         config = resolve_training_config(args, source_summary)
+        if args.eval_num_workers is not None and args.eval_num_workers < 0:
+            raise ValueError("eval-num-workers must be nonnegative.")
         n_bg, n_sg = batch_sizes(config["batch_size"], args.signal_fraction)
         if not 0 <= args.dropout < 1:
             raise ValueError("dropout must be in [0, 1).")
@@ -103,9 +109,14 @@ def main():
           f"reference, last {run.batch_size // 2} rows mixture (effective fraction {effective_fraction:g}).")
     train_loaders = make_loaders(run, "train", args.signal_fraction,
                                  steps=config["steps_per_epoch"], training=True)
-    val_loaders = make_loaders(run, "val", args.signal_fraction, steps=config["val_steps"])
+    eval_workers = min(run.num_workers, 1) if args.eval_num_workers is None else args.eval_num_workers
+    val_loaders = make_loaders(run, "val", args.signal_fraction, steps=config["val_steps"],
+                               num_workers=eval_workers)
     # Dedicated validation datasets for truth ROC, both with all configured types pooled.
-    roc_loaders = make_loaders(run, "val", args.signal_fraction, steps=config["eval_steps"], for_roc=True)
+    roc_loaders = make_loaders(run, "val", args.signal_fraction, steps=config["eval_steps"], for_roc=True,
+                               num_workers=eval_workers)
+    val_cache = None if args.no_cache_validation else []
+    roc_cache = None if args.no_cache_validation else []
     output.mkdir(parents=True, exist_ok=True)
     summary = {
         "model": "cwola-mlp", "status": "initialized", **config,
@@ -136,6 +147,9 @@ def main():
         "prefetch_factor": run.summary.get("prefetch_factor", 2),
         "shuffle_active_shards": run.summary.get("shuffle_active_shards", 3),
         "cms_split_manifest_sha256": run.backend.cms_manifest_sha256,
+        "validation_num_workers": eval_workers, "validation_prefetch_factor": 1,
+        "validation_active_shards_per_label_per_worker": 1,
+        "validation_representation_cache": not args.no_cache_validation,
         "validation_split": "val", "test_split": "test", "roc_truth": "background_vs_signal",
         "precision": "fp32", "device": str(run.device), "distributed": False, "world_size": 1,
         "global_batch_size": run.batch_size, "num_trainable_parameters": sum(p.numel() for p in model.parameters()),
@@ -171,9 +185,9 @@ def main():
             scheduler.step()
             train_history["total_loss"].append(loss.item())
         validation = evaluate(model, run, val_loaders, config["val_steps"], collect_scores=False,
-                              description="Val background vs mixture loss")
+                              description="Val background vs mixture loss", cache=val_cache)
         diagnostic = evaluate(model, run, roc_loaders, config["eval_steps"],
-                              description="Val pooled background vs signal ROC")
+                              description="Val pooled background vs signal ROC", cache=roc_cache)
         val_loss = validation["loss"]
         val_history["total_loss"].append(val_loss)
         epoch_end_steps.append(len(train_history["total_loss"]))

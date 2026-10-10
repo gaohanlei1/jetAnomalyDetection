@@ -72,7 +72,7 @@ class LeJEPARun:
 
     def loader(self, split, labels, *, infinite=False, seed_offset=0, max_events=None,
                drop_last=False, persistent_workers=None, prefetch_factor=None,
-               active_shards=None, batch_size=None):
+               active_shards=None, batch_size=None, num_workers=None):
         dataset = self.backend.make_dataset(split, labels, self.seed + seed_offset)
         dataset.infinite = infinite
         dataset.max_events = max_events
@@ -95,11 +95,14 @@ class LeJEPARun:
         loader_batch_size = self.batch_size if batch_size is None else int(batch_size)
         if loader_batch_size < 1:
             raise ValueError("Loader batch_size must be positive.")
-        kwargs = dict(batch_size=loader_batch_size, num_workers=self.num_workers,
+        loader_workers = self.num_workers if num_workers is None else int(num_workers)
+        if loader_workers < 0:
+            raise ValueError("Loader num_workers must be nonnegative.")
+        kwargs = dict(batch_size=loader_batch_size, num_workers=loader_workers,
                       pin_memory=self.device.type == "cuda", collate_fn=collate,
                       drop_last=drop_last,
-                      persistent_workers=persistent_workers and self.num_workers > 0)
-        if self.num_workers:
+                      persistent_workers=persistent_workers and loader_workers > 0)
+        if loader_workers:
             kwargs["prefetch_factor"] = (
                 prefetch_factor if prefetch_factor is not None else
                 (int(self.summary.get("prefetch_factor", 2)) if infinite else 1)
