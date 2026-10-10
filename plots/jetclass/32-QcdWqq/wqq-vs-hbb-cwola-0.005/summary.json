@@ -1,16 +1,16 @@
 {
   "model": "cwola-mlp",
-  "status": "training",
-  "epochs": 3,
-  "steps_per_epoch": 2000,
-  "val_steps": 5,
-  "eval_steps": 100,
-  "learning_rate": 0.003,
+  "status": "completed",
+  "epochs": 10,
+  "steps_per_epoch": 400,
+  "val_steps": 400,
+  "learning_rate": 0.001,
   "weight_decay": 0.05,
   "final_lr_ratio": 0.001,
+  "eval_steps": 400,
   "batch_size": 10240,
   "warmup_steps": 10,
-  "total_training_steps": 6000,
+  "total_training_steps": 4000,
   "cwola_config": {
     "input_dim": 32,
     "dropout": 0.1
@@ -281,6 +281,7 @@
   "validation_prefetch_factor": 1,
   "validation_active_shards_per_label_per_worker": 1,
   "validation_representation_cache": true,
+  "shared_validation_forward": true,
   "validation_split": "val",
   "test_split": "test",
   "roc_truth": "background_vs_signal",
@@ -294,20 +295,20 @@
   "last_model_path": "/oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdWqq/wqq-vs-hbb-cwola-0.005/last_model.pth",
   "best_checkpoint_path": "/oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdWqq/wqq-vs-hbb-cwola-0.005/best_checkpoint.pt",
   "last_checkpoint_path": "/oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdWqq/wqq-vs-hbb-cwola-0.005/last_checkpoint.pt",
-  "completed_epochs": 1,
-  "best_val_loss": 0.6931216144561767,
-  "current_epoch": 1,
-  "global_step": 2000,
-  "final_val_loss": 0.6931216144561767,
-  "current_learning_rate": 0.0022552829372696173,
+  "completed_epochs": 10,
+  "best_val_loss": 0.6930757817029953,
+  "current_epoch": 10,
+  "global_step": 4000,
+  "final_val_loss": 0.6930762912034989,
+  "current_learning_rate": 1e-06,
   "latest_train_losses": {
-    "total_loss": 0.6931061232089997
+    "total_loss": 0.6930907675623894
   },
   "latest_val_losses": {
-    "total_loss": 0.6931216144561767
+    "total_loss": 0.6930762912034989
   },
-  "latest_val_auc": 0.8542037563449865,
-  "validation_loss_events": 51200,
-  "validation_roc_background_events": 1021400,
-  "validation_roc_signal_events": 2600
+  "latest_val_auc": 0.894414143730419,
+  "validation_loss_events": 4096000,
+  "validation_roc_background_events": 4085600,
+  "validation_roc_signal_events": 10400
 }
