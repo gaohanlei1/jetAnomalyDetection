@@ -114,29 +114,15 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 # python -u scripts/diagnose_lejepa_latents.py \
 #     plots/jetclass/32-Qcd
 
-python -u scripts/run_train_cwola.py \
-    plots/jetclass/32-Qcd \
-    --output-dir plots/jetclass/32-Qcd/cwola-0.01 \
-    --batch-size 512 \
-    --signal-fraction 0.01
+BASE_DIR="plots/jetclass/32-Qcd"
+BASE_DIR="plots/jetclass/32-QcdTbqqHggWqq"
+for fraction in 0.005 0.001 0.0005 0.0001 0.00005; do
+    python -u scripts/run_train_cwola.py \
+        "$BASE_DIR" \
+        --output-dir "$BASE_DIR"/cwola-"$fraction" \
+        --batch-size 512 \
+        --signal-fraction "$fraction"
 
-python -u scripts/evaluate_cwola.py \
-    plots/jetclass/32-Qcd/cwola-0.01
-
-python -u scripts/run_train_cwola.py \
-    plots/jetclass/32-Qcd \
-    --output-dir plots/jetclass/32-Qcd/cwola-0.005 \
-    --batch-size 512 \
-    --signal-fraction 0.005
-
-python -u scripts/evaluate_cwola.py \
-    plots/jetclass/32-Qcd/cwola-0.005
-
-python -u scripts/run_train_cwola.py \
-    plots/jetclass/32-Qcd \
-    --output-dir plots/jetclass/32-Qcd/cwola-0.001 \
-    --batch-size 512 \
-    --signal-fraction 0.001
-
-python -u scripts/evaluate_cwola.py \
-    plots/jetclass/32-Qcd/cwola-0.001
+    python -u scripts/evaluate_cwola.py \
+        "$BASE_DIR"/cwola-"$fraction"
+done
