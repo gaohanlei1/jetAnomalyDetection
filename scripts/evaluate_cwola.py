@@ -21,7 +21,7 @@ from sklearn.metrics import roc_auc_score, roc_curve
 from models.cwola import CWoLaMLP
 from scripts.lejepa_run import LeJEPARun
 from scripts.diagnose_lejepa_latents import read_state_dict
-from scripts.cwola_utils import validate_label_sets, batch_sizes, make_loaders, evaluate, write_json
+from scripts.cwola_utils import validate_label_sets, configure_cwola_labels, batch_sizes, make_loaders, evaluate, write_json
 
 
 def plot_pair(output, name, signal_name, background_scores, signal_scores):
@@ -84,8 +84,7 @@ def main():
         dataset_root=args.dataset_root or Path(summary["dataset_root"]), batch_size=bs,
         num_workers=args.num_workers if args.num_workers is not None else int(summary["num_workers"]),
         device=args.device), summary=summary["backbone_summary"])
-    if run.backgrounds != backgrounds or run.signals != signals:
-        raise ValueError("Backbone label configuration has changed since CWoLa training.")
+    configure_cwola_labels(run, backgrounds, signals)
     if run.model.config.representation_dim != summary["cwola_config"]["input_dim"]:
         raise ValueError("Backbone representation dimension differs from the trained CWoLa input.")
     # Saved training settings, including event limits and precision, govern eval.

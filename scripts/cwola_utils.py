@@ -26,6 +26,39 @@ def validate_label_sets(summary):
     return backgrounds, signals
 
 
+def parse_label_override(value):
+    """CLI comma-separated physical labels, preserving order and removing duplicates."""
+    labels = [label.strip() for label in value.split(",")]
+    if not labels or any(not label for label in labels):
+        raise ValueError("Expected a nonempty comma-separated list of labels, e.g. label_QCD,label_Wqq.")
+    return list(dict.fromkeys(labels))
+
+
+def resolve_label_sets(summary, backgrounds=None, signals=None):
+    effective = dict(summary)
+    if backgrounds is not None:
+        effective["background_labels"] = backgrounds
+    if signals is not None:
+        effective["signal_labels"] = signals
+    # Check the effective downstream task, not the backbone's historical task.
+    return validate_label_sets(effective)
+
+
+def configure_cwola_labels(run, backgrounds, signals):
+    """Change downstream data selection only, never checkpoint/model metadata."""
+    backgrounds, signals = validate_label_sets(dict(background_labels=backgrounds, signal_labels=signals))
+    run.backend.validate_requested_labels(backgrounds + signals)
+    if run.backend.dataset_name == "cms":
+        # Preserve the saved CMS split; never silently invent a new split for
+        # categories not covered by the backbone's manifest.
+        for split in ("train", "val", "test"):
+            missing = sorted(set(backgrounds + signals) - set(run.backend.cms_splits[split]))
+            if missing:
+                raise ValueError(f"CMS {split} manifest has no split for {missing}; "
+                                 "choose labels covered by the saved CMS split manifest.")
+    run.backgrounds, run.signals = backgrounds, signals
+
+
 def batch_sizes(batch_size, signal_fraction, *, for_roc=False):
     """Equal reference/mixture halves; round signal count to the nearest event."""
     if batch_size < 2 or batch_size % 2:

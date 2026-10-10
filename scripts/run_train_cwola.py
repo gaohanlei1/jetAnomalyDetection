@@ -23,7 +23,8 @@ from models.cwola import CWoLaMLP
 from scripts.lejepa_run import LeJEPARun, add_backbone_arguments
 from scripts.run_train_lejepa_part import make_warmup_cosine_scheduler
 from scripts.cwola_utils import (
-    POOLED_BACKGROUND, POOLED_SIGNAL, validate_label_sets, batch_sizes,
+    POOLED_BACKGROUND, POOLED_SIGNAL, resolve_label_sets, parse_label_override,
+    configure_cwola_labels, batch_sizes,
     make_loaders, combine_batches, paired_batches, evaluate, encode_finite, write_json,
 )
 from visualize.training_progress import plot_progress
@@ -62,6 +63,10 @@ def main():
     parser.add_argument("--output-dir", type=Path, required=True, help="New CWoLa run directory.")
     parser.add_argument("--signal-fraction", type=float, default=0.5,
                         help="Signal fraction WITHIN the mixture half, in [0, 1]. Default: 0.5.")
+    parser.add_argument("--background-labels", type=parse_label_override, default=None,
+                        help="Comma-separated CWoLa background labels; default: backbone summary.")
+    parser.add_argument("--signal-labels", type=parse_label_override, default=None,
+                        help="Comma-separated CWoLa signal labels; default: backbone summary.")
     parser.add_argument("--dropout", type=float, default=0.1)
     parser.add_argument("--eval-num-workers", type=int, default=None,
                         help="Workers per validation loader; default: min(training workers, 1).")
@@ -77,7 +82,7 @@ def main():
     with (args.run_dir.expanduser() / "summary.json").open() as handle:
         source_summary = json.load(handle)
     try:
-        validate_label_sets(source_summary)  # Fail before loading any data/checkpoint.
+        backgrounds, signals = resolve_label_sets(source_summary, args.background_labels, args.signal_labels)
         config = resolve_training_config(args, source_summary)
         if args.eval_num_workers is not None and args.eval_num_workers < 0:
             raise ValueError("eval-num-workers must be nonnegative.")
@@ -91,6 +96,11 @@ def main():
         parser.error("--output-dir must be new or empty and differ from the backbone run.")
     args.batch_size = config["batch_size"]
     run = LeJEPARun(args)
+    try:
+        configure_cwola_labels(run, backgrounds, signals)
+    except ValueError as exc:
+        parser.error(str(exc))
+    print(f"CWoLa task: backgrounds={run.backgrounds}; signals={run.signals}", flush=True)
     model_config = dict(input_dim=run.model.config.representation_dim, dropout=args.dropout)
     model = CWoLaMLP(**model_config).to(run.device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=config["learning_rate"],
@@ -136,6 +146,8 @@ def main():
         "dataset": run.backend.dataset_name, "dataset_root": str(run.backend.dataset_root),
         "dataset_label_axis": run.backend.label_axis,
         "background_labels": run.backgrounds, "signal_labels": run.signals,
+        "background_labels_overridden": args.background_labels is not None,
+        "signal_labels_overridden": args.signal_labels is not None,
         "particle_features": run.backend.feature_names,
         "batch_standardized_particle_features": run.backend.batch_standardized_feature_names,
         "max_num_particles": run.backend.max_num_particles,
