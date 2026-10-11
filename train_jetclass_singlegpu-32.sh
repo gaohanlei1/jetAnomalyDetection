@@ -49,48 +49,48 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 # --cms-val-fraction 0.05 \
 #     --cms-test-fraction 0.45 \
 
-python -u scripts/run_train_lejepa_part.py \
-    --dataset jetclass \
-    --dataset-root "/HEP/export/home/lwang223/JetClass/JetClass/Pythia" \
-    --model semi-sup-triplet \
-    --background-labels "label_Wqq" \
-    --signal-labels "label_Hbb" \
-    --embed-dim 32 \
-    --representation-dim 32 \
-    --dropout 0.01 \
-    --num-layers 4 \
-    --num-heads 8 \
-    --batch-size 128 \
-    --steps-per-epoch 2000 \
-    --val-steps 100 \
-    --eval-steps 100 \
-    --epochs 40 \
-    --learning-rate 1e-3 \
-    --weight-decay 5e-2 \
-    --precision bf16 \
-    --num-global-views 2 \
-    --num-local-views 4 \
-    --num-negative-views 4 \
-    --batch-mix-prob 0.4 \
-    --pt-resample-prob 0.25 \
-    --node-deta-dphi-rotation-prob 0.1 \
-    --deta-dphi-shuffle-prob 0.1 \
-    --identity-shuffle-prob 0.15 \
-    --global-drop-pt-frac-min 0.0 \
-    --global-drop-pt-frac-max 0.3 \
-    --local-drop-pt-frac-min 0.3 \
-    --local-drop-pt-frac-max 0.75 \
-    --batch-mix-anchor-frac-min 0.4 \
-    --batch-mix-anchor-frac-max 0.6 \
-    --anomaly-score mahalanobis \
-    --pairwise-hidden-dim 32 \
-    --triplet-weight 0.1 \
-    --triplet-margin 0.2 \
-    --classification-weight 0.0 \
-    --num-workers 4 \
-    --prefetch-factor 2 \
-    --shuffle-active-shards 3 \
-    --output-dir "plots/jetclass/32-Wqq"
+# python -u scripts/run_train_lejepa_part.py \
+#     --dataset jetclass \
+#     --dataset-root "/HEP/export/home/lwang223/JetClass/JetClass/Pythia" \
+#     --model semi-sup-triplet \
+#     --background-labels "label_Wqq" \
+#     --signal-labels "label_Hbb" \
+#     --embed-dim 32 \
+#     --representation-dim 32 \
+#     --dropout 0.01 \
+#     --num-layers 4 \
+#     --num-heads 8 \
+#     --batch-size 128 \
+#     --steps-per-epoch 2000 \
+#     --val-steps 100 \
+#     --eval-steps 100 \
+#     --epochs 40 \
+#     --learning-rate 1e-3 \
+#     --weight-decay 5e-2 \
+#     --precision bf16 \
+#     --num-global-views 2 \
+#     --num-local-views 4 \
+#     --num-negative-views 4 \
+#     --batch-mix-prob 0.4 \
+#     --pt-resample-prob 0.25 \
+#     --node-deta-dphi-rotation-prob 0.1 \
+#     --deta-dphi-shuffle-prob 0.1 \
+#     --identity-shuffle-prob 0.15 \
+#     --global-drop-pt-frac-min 0.0 \
+#     --global-drop-pt-frac-max 0.3 \
+#     --local-drop-pt-frac-min 0.3 \
+#     --local-drop-pt-frac-max 0.75 \
+#     --batch-mix-anchor-frac-min 0.4 \
+#     --batch-mix-anchor-frac-max 0.6 \
+#     --anomaly-score mahalanobis \
+#     --pairwise-hidden-dim 32 \
+#     --triplet-weight 0.1 \
+#     --triplet-margin 0.2 \
+#     --classification-weight 0.0 \
+#     --num-workers 4 \
+#     --prefetch-factor 2 \
+#     --shuffle-active-shards 3 \
+#     --output-dir "plots/jetclass/32-Wqq"
 
 # # eval
 # for run_dir in \
@@ -115,22 +115,93 @@ python -u scripts/run_train_lejepa_part.py \
 #     plots/jetclass/32-Qcd
 
 
-# # BASE_DIR="plots/jetclass/32-QcdTbqqHggWqq"
-# BASE_DIR="plots/jetclass/32-QcdWqq"
-# for fraction in 0.005 0.001 0.0005 0.0001; do
-#     python -u scripts/run_train_cwola.py \
-#         "$BASE_DIR" \
-#         --output-dir "$BASE_DIR"/wqq-vs-hbb-cwola-"$fraction" \
-#         --background-labels "label_Wqq" \
-#         --signal-labels "label_Hbb" \
-#         --learning-rate 1e-3 \
-#         --warmup-steps 10 \
-#         --steps-per-epoch 400 \
-#         --epochs 10 \
-#         --batch-size 10240 \
-#         --val-steps 400 \
-#         --signal-fraction "$fraction"
+# "plots/jetclass/32-QcdWqq" \
+# "plots/jetclass/32-QcdTbqqHggWqq"
+# for BASE_DIR in \
+#     "plots/jetclass/32-Wqq"
+# do
+#     for fraction in 0.0005 0.0001; do
+#         python -u scripts/run_train_supervised_mlp.py \
+#             "$BASE_DIR" \
+#             --output-dir "$BASE_DIR"/wqq-vs-hbb-scwola-"$fraction" \
+#             --background-labels "label_Wqq" \
+#             --signal-labels "label_Hbb" \
+#             --learning-rate 1e-3 \
+#             --warmup-steps 10 \
+#             --steps-per-epoch 400 \
+#             --epochs 10 \
+#             --batch-size 10240 \
+#             --val-steps 400 \
+#             --signal-fraction "$fraction"
 
-#     python -u scripts/evaluate_cwola.py \
-#         "$BASE_DIR"/wqq-vs-hbb-cwola-"$fraction"
+#         python -u scripts/evaluate_cwola.py \
+#             "$BASE_DIR"/wqq-vs-hbb-scwola-"$fraction"
+        
+#         python -u scripts/run_train_cwola.py \
+#             "$BASE_DIR" \
+#             --output-dir "$BASE_DIR"/wqq-vs-hbb-cwola-"$fraction" \
+#             --background-labels "label_Wqq" \
+#             --signal-labels "label_Hbb" \
+#             --learning-rate 1e-3 \
+#             --warmup-steps 10 \
+#             --steps-per-epoch 400 \
+#             --epochs 10 \
+#             --batch-size 10240 \
+#             --val-steps 400 \
+#             --signal-fraction "$fraction"
+
+#         python -u scripts/evaluate_cwola.py \
+#             "$BASE_DIR"/wqq-vs-hbb-cwola-"$fraction"
+#     done
 # done
+
+python -u scripts/evaluate_cwola.py \
+    "plots/jetclass/32-Wqq/wqq-vs-hbb-scwola-0.0005"
+
+python -u scripts/run_train_cwola.py \
+    "plots/jetclass/32-Wqq" \
+    --output-dir "plots/jetclass/32-Wqq/wqq-vs-hbb-cwola-0.0005" \
+    --background-labels "label_Wqq" \
+    --signal-labels "label_Hbb" \
+    --learning-rate 1e-3 \
+    --warmup-steps 10 \
+    --steps-per-epoch 400 \
+    --epochs 10 \
+    --batch-size 10240 \
+    --val-steps 400 \
+    --signal-fraction 0.0005
+
+python -u scripts/evaluate_cwola.py \
+    "plots/jetclass/32-Wqq/wqq-vs-hbb-cwola-0.0005"
+
+python -u scripts/run_train_supervised_mlp.py \
+    "plots/jetclass/32-Wqq" \
+    --output-dir "plots/jetclass/32-Wqq/wqq-vs-hbb-scwola-0.0001" \
+    --background-labels "label_Wqq" \
+    --signal-labels "label_Hbb" \
+    --learning-rate 1e-3 \
+    --warmup-steps 10 \
+    --steps-per-epoch 400 \
+    --epochs 10 \
+    --batch-size 10240 \
+    --val-steps 400 \
+    --signal-fraction 0.0001
+
+python -u scripts/evaluate_cwola.py \
+    "plots/jetclass/32-Wqq/wqq-vs-hbb-scwola-0.0001"
+
+python -u scripts/run_train_cwola.py \
+    "plots/jetclass/32-Wqq" \
+    --output-dir "plots/jetclass/32-Wqq/wqq-vs-hbb-cwola-0.0001" \
+    --background-labels "label_Wqq" \
+    --signal-labels "label_Hbb" \
+    --learning-rate 1e-3 \
+    --warmup-steps 10 \
+    --steps-per-epoch 400 \
+    --epochs 10 \
+    --batch-size 10240 \
+    --val-steps 400 \
+    --signal-fraction 0.0001
+
+python -u scripts/evaluate_cwola.py \
+    "plots/jetclass/32-Wqq/wqq-vs-hbb-cwola-0.0001"

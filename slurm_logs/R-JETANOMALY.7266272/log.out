@@ -1,0 +1,320 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 7266272
+##  Job Name : JETANOMALY
+##  Nodelist : gpu3001
+##      CPUs : 1
+##  Mem/Node : 65536 MB
+## Directory : /oscar/home/lwang223/jetAnomalyDetection
+##   Job Started : Sat Oct 10 11:19:06 AM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Sat Oct 10 11:19:06 AM EDT 2026
+Job ID: 7266272
+Node: gpu3001
+==========================================
+
+GPU Information (from host):
+Sat Oct 10 11:19:06 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:61:00.0 Off |                    0 |
+| N/A   26C    P8             31W /  350W |       4MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+
+PyTorch version: 2.6.0+cu124
+Dataset: jetclass
+Dataset root: /HEP/export/home/lwang223/JetClass/JetClass/Pythia
+Background labels: ['label_Wqq']
+Signal labels: ['label_Hbb']
+Particle features: ['part_px', 'part_py', 'part_pz', 'part_energy', 'part_pt', 'log_pt_fraction', 'part_deta', 'part_dphi', 'd0_sig', 'dz_sig', 'part_charge', 'part_isChargedHadron', 'part_isNeutralHadron', 'part_isPhoton', 'part_isElectron', 'part_isMuon']
+Batch-normalized particle features: ['log_pt_fraction', 'd0_sig', 'dz_sig']
+Lazy jetclass datasets ready; no full split has been loaded into RAM.
+Background train ROOT shards: 100
+Background val ROOT shards: 5
+Background test ROOT shards: 20
+Signal test ROOT shards: 20
+Per-event particle shape: (128, 16)
+Selected SSL model: semi-sup-triplet
+Number of trainable parameters: 106,861
+
+Epoch [1/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 1 train losses: {'total_loss': 6.345309048175812, 'invariant_loss': 0.4739273154186085, 'sigreg_loss': 117.219375, 'triplet_loss': 0.1049110599476844, 'triplet_pos_distance': 0.11046565480524441, 'triplet_neg_distance': 0.38918455636245197, 'classification_loss': 0.0}
+Epoch 1 val losses: {'total_loss': 2.5482831501960757, 'invariant_loss': 0.631891056895256, 'sigreg_loss': 38.2375, 'triplet_loss': 0.04517081256955862, 'triplet_pos_distance': 0.14120002560317516, 'triplet_neg_distance': 0.6629830998182297, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [2/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 2 train losses: {'total_loss': 1.976891465842724, 'invariant_loss': 0.5177347007989883, 'sigreg_loss': 29.11125, 'triplet_loss': 0.036079252473078666, 'triplet_pos_distance': 0.10490118155255913, 'triplet_neg_distance': 0.7225495727062226, 'classification_loss': 0.0}
+Epoch 2 val losses: {'total_loss': 1.575206390619278, 'invariant_loss': 0.4053631258010864, 'sigreg_loss': 23.3275, 'triplet_loss': 0.03280740473419428, 'triplet_pos_distance': 0.07556647211313247, 'triplet_neg_distance': 0.8660965925455093, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [3/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 3 train losses: {'total_loss': 1.373657597899437, 'invariant_loss': 0.3638323352187872, 'sigreg_loss': 20.13059375, 'triplet_loss': 0.03336966292466968, 'triplet_pos_distance': 0.06742298265732825, 'triplet_neg_distance': 0.9115842528641224, 'classification_loss': 0.0}
+Epoch 3 val losses: {'total_loss': 1.1374115020036697, 'invariant_loss': 0.33142594128847125, 'sigreg_loss': 16.050625, 'triplet_loss': 0.03368365047499537, 'triplet_pos_distance': 0.05557621281594038, 'triplet_neg_distance': 1.0482393276691437, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [4/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 4 train losses: {'total_loss': 1.0282706825137138, 'invariant_loss': 0.31663713832199575, 'sigreg_loss': 14.17225, 'triplet_loss': 0.03018304121121764, 'triplet_pos_distance': 0.05848665909841657, 'triplet_neg_distance': 1.0538749215900898, 'classification_loss': 0.0}
+Epoch 4 val losses: {'total_loss': 0.9205859303474426, 'invariant_loss': 0.27019615173339845, 'sigreg_loss': 12.94875, 'triplet_loss': 0.030460206717252733, 'triplet_pos_distance': 0.045688779074698684, 'triplet_neg_distance': 1.0452564352750777, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [5/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 5 train losses: {'total_loss': 0.8575938599109649, 'invariant_loss': 0.30113654901832343, 'sigreg_loss': 11.075, 'triplet_loss': 0.027024235255084933, 'triplet_pos_distance': 0.05652872310578823, 'triplet_neg_distance': 1.1413717648386956, 'classification_loss': 0.0}
+Epoch 5 val losses: {'total_loss': 0.8227466881275177, 'invariant_loss': 0.2602494513988495, 'sigreg_loss': 11.19125, 'triplet_loss': 0.029464518949389458, 'triplet_pos_distance': 0.04187508028000593, 'triplet_neg_distance': 1.1480070126056672, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [6/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 6 train losses: {'total_loss': 0.7855341407060623, 'invariant_loss': 0.28610608080774547, 'sigreg_loss': 9.93840625, 'triplet_loss': 0.025159468239173293, 'triplet_pos_distance': 0.05426028823666275, 'triplet_neg_distance': 1.1863365637660026, 'classification_loss': 0.0}
+Epoch 6 val losses: {'total_loss': 0.7712663358449936, 'invariant_loss': 0.25724269792437554, 'sigreg_loss': 10.229375, 'triplet_loss': 0.026173829473555087, 'triplet_pos_distance': 0.043482848536223175, 'triplet_neg_distance': 1.1940600430965425, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [7/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 7 train losses: {'total_loss': 0.7424939792752266, 'invariant_loss': 0.28228088641911747, 'sigreg_loss': 9.154546875, 'triplet_loss': 0.024777370979543776, 'triplet_pos_distance': 0.05343776165600866, 'triplet_neg_distance': 1.1999047178030013, 'classification_loss': 0.0}
+Epoch 7 val losses: {'total_loss': 0.7529369139671326, 'invariant_loss': 0.25929451242089274, 'sigreg_loss': 9.82125, 'triplet_loss': 0.02548642734065652, 'triplet_pos_distance': 0.042517208866775034, 'triplet_neg_distance': 1.1722082316875457, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [8/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 8 train losses: {'total_loss': 0.7082115409076214, 'invariant_loss': 0.2741850261092186, 'sigreg_loss': 8.632875, 'triplet_loss': 0.023956515005324037, 'triplet_pos_distance': 0.051814752164296804, 'triplet_neg_distance': 1.2181600427627564, 'classification_loss': 0.0}
+Epoch 8 val losses: {'total_loss': 0.6809514325857162, 'invariant_loss': 0.2515998224914074, 'sigreg_loss': 8.5328125, 'triplet_loss': 0.027109841220080852, 'triplet_pos_distance': 0.04214038964360953, 'triplet_neg_distance': 1.2069246256351471, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [9/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 9 train losses: {'total_loss': 0.6858501902222633, 'invariant_loss': 0.2712976763620973, 'sigreg_loss': 8.23965625, 'triplet_loss': 0.025759459210094066, 'triplet_pos_distance': 0.05154428875725716, 'triplet_neg_distance': 1.2277134488224983, 'classification_loss': 0.0}
+Epoch 9 val losses: {'total_loss': 0.661712075471878, 'invariant_loss': 0.24561187013983726, 'sigreg_loss': 8.2790625, 'triplet_loss': 0.02154886046424508, 'triplet_pos_distance': 0.04135987421497703, 'triplet_neg_distance': 1.2405048847198485, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [10/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 10 train losses: {'total_loss': 0.6721845878958702, 'invariant_loss': 0.26872140111774206, 'sigreg_loss': 8.02965625, 'triplet_loss': 0.019973626239690928, 'triplet_pos_distance': 0.050915636071003974, 'triplet_neg_distance': 1.2589834638833999, 'classification_loss': 0.0}
+Epoch 10 val losses: {'total_loss': 0.6416861563920975, 'invariant_loss': 0.2416641391813755, 'sigreg_loss': 7.9590625, 'triplet_loss': 0.020532592749223113, 'triplet_pos_distance': 0.039614486768841745, 'triplet_neg_distance': 1.2311545014381409, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [11/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 11 train losses: {'total_loss': 0.6514597692787647, 'invariant_loss': 0.26450592508912085, 'sigreg_loss': 7.700265625, 'triplet_loss': 0.019489563358947633, 'triplet_pos_distance': 0.05035502591449768, 'triplet_neg_distance': 1.2689982853531838, 'classification_loss': 0.0}
+Epoch 11 val losses: {'total_loss': 0.6296715754270553, 'invariant_loss': 0.24068572089076043, 'sigreg_loss': 7.7334375, 'triplet_loss': 0.02325688592158258, 'triplet_pos_distance': 0.039952658116817474, 'triplet_neg_distance': 1.2472643887996673, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [12/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 12 train losses: {'total_loss': 0.6371916554570198, 'invariant_loss': 0.25658515219390393, 'sigreg_loss': 7.57434375, 'triplet_loss': 0.01891653737844899, 'triplet_pos_distance': 0.048523253183811905, 'triplet_neg_distance': 1.2701365792751311, 'classification_loss': 0.0}
+Epoch 12 val losses: {'total_loss': 0.6248923194408417, 'invariant_loss': 0.22578154996037483, 'sigreg_loss': 7.9434375, 'triplet_loss': 0.019037308543920516, 'triplet_pos_distance': 0.037039970215409994, 'triplet_neg_distance': 1.2436742973327637, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [13/40]
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 13 train losses: {'total_loss': 0.6189791820347309, 'invariant_loss': 0.25180915103852747, 'sigreg_loss': 7.308015625, 'triplet_loss': 0.01778423877991736, 'triplet_pos_distance': 0.04781107350811362, 'triplet_neg_distance': 1.2827236129045487, 'classification_loss': 0.0}
+Epoch 13 val losses: {'total_loss': 0.630524645447731, 'invariant_loss': 0.2274298883974552, 'sigreg_loss': 8.0275, 'triplet_loss': 0.016884985733777284, 'triplet_pos_distance': 0.03786431519314647, 'triplet_neg_distance': 1.2966921532154083, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [14/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 14 train losses: {'total_loss': 0.6063634779453277, 'invariant_loss': 0.24704341706633567, 'sigreg_loss': 7.149921875, 'triplet_loss': 0.018068702364806087, 'triplet_pos_distance': 0.0470477449586615, 'triplet_neg_distance': 1.2774578911066055, 'classification_loss': 0.0}
+Epoch 14 val losses: {'total_loss': 0.5756075429916382, 'invariant_loss': 0.228086659014225, 'sigreg_loss': 6.9175, 'triplet_loss': 0.01720093344338238, 'triplet_pos_distance': 0.036901912000030276, 'triplet_neg_distance': 1.2622850275039672, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [15/40]
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 15 train losses: {'total_loss': 0.5980150113701821, 'invariant_loss': 0.24172987093031406, 'sigreg_loss': 7.0925625, 'triplet_loss': 0.016742930435808375, 'triplet_pos_distance': 0.04565793662425131, 'triplet_neg_distance': 1.283252816736698, 'classification_loss': 0.0}
+Epoch 15 val losses: {'total_loss': 0.5898542916774749, 'invariant_loss': 0.20988822504878044, 'sigreg_loss': 7.5675, 'triplet_loss': 0.016066832896322013, 'triplet_pos_distance': 0.03486803418025374, 'triplet_neg_distance': 1.2416014683246612, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [16/40]
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 16 train losses: {'total_loss': 0.5927388121634721, 'invariant_loss': 0.23786127668619156, 'sigreg_loss': 7.069234375, 'triplet_loss': 0.014156134661985561, 'triplet_pos_distance': 0.04491100737918168, 'triplet_neg_distance': 1.301311676979065, 'classification_loss': 0.0}
+Epoch 16 val losses: {'total_loss': 0.5864835739135742, 'invariant_loss': 0.2111925944685936, 'sigreg_loss': 7.4740625, 'triplet_loss': 0.015800308044999836, 'triplet_pos_distance': 0.03509607445448637, 'triplet_neg_distance': 1.246334331035614, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [17/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 17 train losses: {'total_loss': 0.5849815811812877, 'invariant_loss': 0.2358093479052186, 'sigreg_loss': 6.95021875, 'triplet_loss': 0.01659041646355763, 'triplet_pos_distance': 0.04475339136924595, 'triplet_neg_distance': 1.2826765336990356, 'classification_loss': 0.0}
+Epoch 17 val losses: {'total_loss': 0.5735058706998825, 'invariant_loss': 0.21146526008844377, 'sigreg_loss': 7.2015625, 'triplet_loss': 0.020210709227249025, 'triplet_pos_distance': 0.033742905631661414, 'triplet_neg_distance': 1.2669447731971741, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [18/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 18 train losses: {'total_loss': 0.5801350295394659, 'invariant_loss': 0.2344373117312789, 'sigreg_loss': 6.877125, 'triplet_loss': 0.018446813402231782, 'triplet_pos_distance': 0.04424783169105649, 'triplet_neg_distance': 1.267296756386757, 'classification_loss': 0.0}
+Epoch 18 val losses: {'total_loss': 0.5713463506102562, 'invariant_loss': 0.2168983592092991, 'sigreg_loss': 7.0496875, 'triplet_loss': 0.02045637907460332, 'triplet_pos_distance': 0.03558901220560074, 'triplet_neg_distance': 1.2579613399505616, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [19/40]
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 19 train losses: {'total_loss': 0.5788974385410547, 'invariant_loss': 0.229926130220294, 'sigreg_loss': 6.940828125, 'triplet_loss': 0.019029403957538306, 'triplet_pos_distance': 0.043727313886396585, 'triplet_neg_distance': 1.2685470850467682, 'classification_loss': 0.0}
+Epoch 19 val losses: {'total_loss': 0.5788245993852615, 'invariant_loss': 0.21177469730377196, 'sigreg_loss': 7.294375, 'triplet_loss': 0.023037988487631084, 'triplet_pos_distance': 0.03485504982993007, 'triplet_neg_distance': 1.2250092840194702, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [20/40]
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 20 train losses: {'total_loss': 0.5727725270092487, 'invariant_loss': 0.23046445497125387, 'sigreg_loss': 6.805703125, 'triplet_loss': 0.020463449055794627, 'triplet_pos_distance': 0.043745246687904, 'triplet_neg_distance': 1.2615483892560004, 'classification_loss': 0.0}
+Epoch 20 val losses: {'total_loss': 0.5824879512190819, 'invariant_loss': 0.2110837395489216, 'sigreg_loss': 7.3903125, 'triplet_loss': 0.01960843740962446, 'triplet_pos_distance': 0.035246993433684114, 'triplet_neg_distance': 1.2443651282787322, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [21/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 21 train losses: {'total_loss': 0.5718935985714197, 'invariant_loss': 0.23119298351556064, 'sigreg_loss': 6.780171875, 'triplet_loss': 0.01698165714368224, 'triplet_pos_distance': 0.04366632691770792, 'triplet_neg_distance': 1.276932807803154, 'classification_loss': 0.0}
+Epoch 21 val losses: {'total_loss': 0.5515546044707298, 'invariant_loss': 0.2228522753715515, 'sigreg_loss': 6.544375, 'triplet_loss': 0.014757573269307614, 'triplet_pos_distance': 0.03721231210976839, 'triplet_neg_distance': 1.3037279701232911, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [22/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 22 train losses: {'total_loss': 0.5667250457406044, 'invariant_loss': 0.23222805777937175, 'sigreg_loss': 6.657375, 'triplet_loss': 0.016341865105787293, 'triplet_pos_distance': 0.044084629479795696, 'triplet_neg_distance': 1.2689297438859939, 'classification_loss': 0.0}
+Epoch 22 val losses: {'total_loss': 0.5466342079639435, 'invariant_loss': 0.2160118632018566, 'sigreg_loss': 6.5803125, 'triplet_loss': 0.01628197289071977, 'triplet_pos_distance': 0.03582460131496191, 'triplet_neg_distance': 1.2926284885406494, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [23/40]
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 23 train losses: {'total_loss': 0.5636820976436138, 'invariant_loss': 0.22876398427039385, 'sigreg_loss': 6.667609375, 'triplet_loss': 0.015323624657001347, 'triplet_pos_distance': 0.04341914931777865, 'triplet_neg_distance': 1.2781686636805534, 'classification_loss': 0.0}
+Epoch 23 val losses: {'total_loss': 0.5640240275859832, 'invariant_loss': 0.20681108847260476, 'sigreg_loss': 7.1059375, 'triplet_loss': 0.0190043146815151, 'triplet_pos_distance': 0.033626816906034945, 'triplet_neg_distance': 1.2452480137348174, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [24/40]
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 24 train losses: {'total_loss': 0.5609821670055389, 'invariant_loss': 0.23048846507072449, 'sigreg_loss': 6.577796875, 'triplet_loss': 0.015762124022934587, 'triplet_pos_distance': 0.04385053831432015, 'triplet_neg_distance': 1.2770845710635186, 'classification_loss': 0.0}
+Epoch 24 val losses: {'total_loss': 0.5509533855319023, 'invariant_loss': 0.20901660352945328, 'sigreg_loss': 6.8040625, 'triplet_loss': 0.01800055183470249, 'triplet_pos_distance': 0.035158198326826096, 'triplet_neg_distance': 1.2489512765407562, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [25/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 25 train losses: {'total_loss': 0.5571171697080135, 'invariant_loss': 0.22852770460397004, 'sigreg_loss': 6.539, 'triplet_loss': 0.01641702030505985, 'triplet_pos_distance': 0.04318206348735839, 'triplet_neg_distance': 1.2710408529639243, 'classification_loss': 0.0}
+Epoch 25 val losses: {'total_loss': 0.5446303790807724, 'invariant_loss': 0.20477272897958756, 'sigreg_loss': 6.7621875, 'triplet_loss': 0.0173264027480036, 'triplet_pos_distance': 0.03439059900119901, 'triplet_neg_distance': 1.2710563158988952, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [26/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 26 train losses: {'total_loss': 0.5531702854037285, 'invariant_loss': 0.2289254444912076, 'sigreg_loss': 6.452609375, 'triplet_loss': 0.016139720603358002, 'triplet_pos_distance': 0.04330857318080962, 'triplet_neg_distance': 1.2706685773134232, 'classification_loss': 0.0}
+Epoch 26 val losses: {'total_loss': 0.5444922715425491, 'invariant_loss': 0.20843035787343978, 'sigreg_loss': 6.6865625, 'triplet_loss': 0.017454957002773882, 'triplet_pos_distance': 0.034912843443453315, 'triplet_neg_distance': 1.271876974105835, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [27/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 27 train losses: {'total_loss': 0.5518544322252273, 'invariant_loss': 0.2282520266622305, 'sigreg_loss': 6.4392109375, 'triplet_loss': 0.01656596547039226, 'triplet_pos_distance': 0.0433468870902434, 'triplet_neg_distance': 1.269427870810032, 'classification_loss': 0.0}
+Epoch 27 val losses: {'total_loss': 0.5402042102813721, 'invariant_loss': 0.21594806283712387, 'sigreg_loss': 6.4546875, 'triplet_loss': 0.015022319545969366, 'triplet_pos_distance': 0.03603641228750348, 'triplet_neg_distance': 1.2560794484615325, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [28/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 28 train losses: {'total_loss': 0.5474038193076849, 'invariant_loss': 0.23076720209419727, 'sigreg_loss': 6.305578125, 'triplet_loss': 0.013514529728097842, 'triplet_pos_distance': 0.04352367585338652, 'triplet_neg_distance': 1.2769924799203873, 'classification_loss': 0.0}
+Epoch 28 val losses: {'total_loss': 0.5379592397809029, 'invariant_loss': 0.20267958268523217, 'sigreg_loss': 6.6796875, 'triplet_loss': 0.012952720699831843, 'triplet_pos_distance': 0.033427033424377445, 'triplet_neg_distance': 1.3076009821891785, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [29/40]
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 29 train losses: {'total_loss': 0.5453921046406031, 'invariant_loss': 0.23022691788524388, 'sigreg_loss': 6.275671875, 'triplet_loss': 0.013790449721505865, 'triplet_pos_distance': 0.043402462547644974, 'triplet_neg_distance': 1.2784304006695748, 'classification_loss': 0.0}
+Epoch 29 val losses: {'total_loss': 0.5393034952878952, 'invariant_loss': 0.20983073279261588, 'sigreg_loss': 6.556875, 'triplet_loss': 0.014551799492910505, 'triplet_pos_distance': 0.03537546483799815, 'triplet_neg_distance': 1.2753034448623657, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [30/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 30 train losses: {'total_loss': 0.5421120200008154, 'invariant_loss': 0.22895208539813758, 'sigreg_loss': 6.232890625, 'triplet_loss': 0.015007469414267689, 'triplet_pos_distance': 0.04323166686948389, 'triplet_neg_distance': 1.2702810963988305, 'classification_loss': 0.0}
+Epoch 30 val losses: {'total_loss': 0.5337679380178452, 'invariant_loss': 0.20971762984991074, 'sigreg_loss': 6.4484375, 'triplet_loss': 0.015210050893947481, 'triplet_pos_distance': 0.034793349895626303, 'triplet_neg_distance': 1.2679150354862214, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [31/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 31 train losses: {'total_loss': 0.538137421309948, 'invariant_loss': 0.23028588109463452, 'sigreg_loss': 6.129828125, 'triplet_loss': 0.013803405677434056, 'triplet_pos_distance': 0.04346404723078012, 'triplet_neg_distance': 1.2717965044975281, 'classification_loss': 0.0}
+Epoch 31 val losses: {'total_loss': 0.5335403215885163, 'invariant_loss': 0.21201311230659484, 'sigreg_loss': 6.403125, 'triplet_loss': 0.013416538489982486, 'triplet_pos_distance': 0.03508124962449074, 'triplet_neg_distance': 1.2396670877933502, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [32/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 32 train losses: {'total_loss': 0.5341773464679718, 'invariant_loss': 0.23143099129199982, 'sigreg_loss': 6.0264375, 'triplet_loss': 0.014143158964812755, 'triplet_pos_distance': 0.043366029785014686, 'triplet_neg_distance': 1.2683132622241975, 'classification_loss': 0.0}
+Epoch 32 val losses: {'total_loss': 0.532155881524086, 'invariant_loss': 0.2124516037106514, 'sigreg_loss': 6.36375, 'triplet_loss': 0.014425479480996728, 'triplet_pos_distance': 0.03455434894189238, 'triplet_neg_distance': 1.272765921354294, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [33/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 33 train losses: {'total_loss': 0.5325016356855631, 'invariant_loss': 0.23210655830800533, 'sigreg_loss': 5.979578125, 'triplet_loss': 0.014209491120651365, 'triplet_pos_distance': 0.04366072986554354, 'triplet_neg_distance': 1.2648104820847512, 'classification_loss': 0.0}
+Epoch 33 val losses: {'total_loss': 0.518065413236618, 'invariant_loss': 0.2096870622038841, 'sigreg_loss': 6.1396875, 'triplet_loss': 0.013959234682843089, 'triplet_pos_distance': 0.03402009295299649, 'triplet_neg_distance': 1.2705470097064973, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [34/40]
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 34 train losses: {'total_loss': 0.5296127484142781, 'invariant_loss': 0.23116643548756838, 'sigreg_loss': 5.9434296875, 'triplet_loss': 0.012744297483470291, 'triplet_pos_distance': 0.04330490977689624, 'triplet_neg_distance': 1.2732987607717514, 'classification_loss': 0.0}
+Epoch 34 val losses: {'total_loss': 0.5292137694358826, 'invariant_loss': 0.21157175838947295, 'sigreg_loss': 6.3259375, 'triplet_loss': 0.01343176337890327, 'triplet_pos_distance': 0.03477618666365743, 'triplet_neg_distance': 1.2443473148345947, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [35/40]
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 35 train losses: {'total_loss': 0.5270231274366379, 'invariant_loss': 0.23322689458727835, 'sigreg_loss': 5.85171875, 'triplet_loss': 0.012347019944572822, 'triplet_pos_distance': 0.043621357034891846, 'triplet_neg_distance': 1.271186477124691, 'classification_loss': 0.0}
+Epoch 35 val losses: {'total_loss': 0.5200636518001557, 'invariant_loss': 0.21138027280569077, 'sigreg_loss': 6.1484375, 'triplet_loss': 0.013103236202150583, 'triplet_pos_distance': 0.03439011329784989, 'triplet_neg_distance': 1.2561700654029846, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [36/40]
+Saved new best model state_dict/full checkpoint to plots/jetclass/32-Wqq/best_model.pth and plots/jetclass/32-Wqq/best_checkpoint.pt
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 36 train losses: {'total_loss': 0.5258232674598694, 'invariant_loss': 0.2333455408886075, 'sigreg_loss': 5.8237578125, 'triplet_loss': 0.012877783878007905, 'triplet_pos_distance': 0.043666455324739215, 'triplet_neg_distance': 1.2662054938673972, 'classification_loss': 0.0}
+Epoch 36 val losses: {'total_loss': 0.5144655540585518, 'invariant_loss': 0.21146729052066804, 'sigreg_loss': 6.03375, 'triplet_loss': 0.013283307077363133, 'triplet_pos_distance': 0.034504169020801785, 'triplet_neg_distance': 1.2467560517787932, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [37/40]
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 37 train losses: {'total_loss': 0.5229752646237612, 'invariant_loss': 0.23353158938884735, 'sigreg_loss': 5.762984375, 'triplet_loss': 0.012903467650758102, 'triplet_pos_distance': 0.043876652447506784, 'triplet_neg_distance': 1.264250367462635, 'classification_loss': 0.0}
+Epoch 37 val losses: {'total_loss': 0.5150824263691902, 'invariant_loss': 0.20926086410880088, 'sigreg_loss': 6.0884375, 'triplet_loss': 0.013781934697180986, 'triplet_pos_distance': 0.03409828269854188, 'triplet_neg_distance': 1.2413746988773346, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [38/40]
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 38 train losses: {'total_loss': 0.5234661003500223, 'invariant_loss': 0.23366072005033492, 'sigreg_loss': 5.7701953125, 'triplet_loss': 0.01294142431160435, 'triplet_pos_distance': 0.043950507973320785, 'triplet_neg_distance': 1.2645472449660302, 'classification_loss': 0.0}
+Epoch 38 val losses: {'total_loss': 0.5187312716245651, 'invariant_loss': 0.21197619184851646, 'sigreg_loss': 6.1053125, 'triplet_loss': 0.014328090958297252, 'triplet_pos_distance': 0.03508743904531002, 'triplet_neg_distance': 1.2411954987049103, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [39/40]
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 39 train losses: {'total_loss': 0.5241059460490942, 'invariant_loss': 0.2341591511145234, 'sigreg_loss': 5.7729375, 'triplet_loss': 0.012915138843934982, 'triplet_pos_distance': 0.04389306220971048, 'triplet_neg_distance': 1.262547216117382, 'classification_loss': 0.0}
+Epoch 39 val losses: {'total_loss': 0.5155719351768494, 'invariant_loss': 0.2139919799566269, 'sigreg_loss': 6.0053125, 'triplet_loss': 0.013358070906251669, 'triplet_pos_distance': 0.03397002959623933, 'triplet_neg_distance': 1.251339579820633, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+
+Epoch [40/40]
+Saved last model state_dict/full checkpoint to plots/jetclass/32-Wqq/last_model.pth and plots/jetclass/32-Wqq/last_checkpoint.pt
+Epoch 40 train losses: {'total_loss': 0.5216144932061434, 'invariant_loss': 0.23372888418287038, 'sigreg_loss': 5.7317265625, 'triplet_loss': 0.012923396333120764, 'triplet_pos_distance': 0.0437088611125946, 'triplet_neg_distance': 1.2639205901622772, 'classification_loss': 0.0}
+Epoch 40 val losses: {'total_loss': 0.5165671327710152, 'invariant_loss': 0.2114730606973171, 'sigreg_loss': 6.07375, 'triplet_loss': 0.013928909562528133, 'triplet_pos_distance': 0.03464610336348414, 'triplet_neg_distance': 1.2461264431476593, 'classification_loss': 0.0}
+Updated run summary at plots/jetclass/32-Wqq/summary.json
+Saved run summary to plots/jetclass/32-Wqq/summary.json

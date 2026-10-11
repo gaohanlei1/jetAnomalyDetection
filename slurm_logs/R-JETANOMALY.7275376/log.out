@@ -1,0 +1,74 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 7275376
+##  Job Name : JETANOMALY
+##  Nodelist : gpu3003
+##      CPUs : 1
+##  Mem/Node : 65536 MB
+## Directory : /oscar/home/lwang223/jetAnomalyDetection
+##   Job Started : Sat Oct 10 06:42:48 PM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Sat Oct 10 06:42:48 PM EDT 2026
+Job ID: 7275376
+Node: gpu3003
+==========================================
+
+GPU Information (from host):
+Sat Oct 10 18:42:48 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:81:00.0 Off |                    0 |
+| N/A   32C    P8             34W /  350W |      77MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          179375      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch version: 2.6.0+cu124
+Supervised MLP task: backgrounds=['label_Wqq']; signals=['label_Hbb']
+Supervised MLP 32 -> 64 -> 32 -> 1; frozen backbone /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-Wqq/best_model.pth
+Batch: 10237 background + 3 signal; first 5120 rows reference, last 5120 rows mixture (effective fraction 0.000585937).
+Val truth-label loss + truth ROC: starting loaders; waiting for initial ROOT shards...
+Val truth-label loss + truth ROC: first input batch ready after 338.2s.
+Val truth-label loss + truth ROC: cached 400 batches (546.9 MiB CPU tensors); later epochs skip ROOT loading and backbone inference.
+Val truth-label loss + truth ROC: 4,096,000 events in 4084.3s.
+Epoch 1: val BCE=0.00246582; truth ROC AUC=0.869828
+Val truth-label loss + truth ROC: using 400 cached representation batches.
+Val truth-label loss + truth ROC: 4,096,000 events in 10.3s.
+Epoch 2: val BCE=0.00218631; truth ROC AUC=0.913115
+Val truth-label loss + truth ROC: using 400 cached representation batches.
+Val truth-label loss + truth ROC: 4,096,000 events in 10.9s.
+Epoch 3: val BCE=0.00213415; truth ROC AUC=0.920355
+Val truth-label loss + truth ROC: using 400 cached representation batches.
+Val truth-label loss + truth ROC: 4,096,000 events in 9.7s.
+Epoch 4: val BCE=0.00211633; truth ROC AUC=0.923054
+Val truth-label loss + truth ROC: using 400 cached representation batches.
+Val truth-label loss + truth ROC: 4,096,000 events in 10.1s.
+Epoch 5: val BCE=0.00210487; truth ROC AUC=0.925103
+Val truth-label loss + truth ROC: using 400 cached representation batches.
+Val truth-label loss + truth ROC: 4,096,000 events in 10.2s.
+Epoch 6: val BCE=0.00209965; truth ROC AUC=0.926363
+Val truth-label loss + truth ROC: using 400 cached representation batches.
+Val truth-label loss + truth ROC: 4,096,000 events in 9.9s.
+Epoch 7: val BCE=0.00209544; truth ROC AUC=0.927224
+Val truth-label loss + truth ROC: using 400 cached representation batches.
+Val truth-label loss + truth ROC: 4,096,000 events in 7.6s.
+Epoch 8: val BCE=0.00209209; truth ROC AUC=0.927705
+Val truth-label loss + truth ROC: using 400 cached representation batches.
+Val truth-label loss + truth ROC: 4,096,000 events in 7.5s.
+Epoch 9: val BCE=0.0020912; truth ROC AUC=0.927867
+Val truth-label loss + truth ROC: using 400 cached representation batches.
+Val truth-label loss + truth ROC: 4,096,000 events in 7.7s.
+Epoch 10: val BCE=0.00209133; truth ROC AUC=0.927883
