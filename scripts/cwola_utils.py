@@ -1,5 +1,6 @@
 """Shared CWoLa batching and truth-only diagnostic scoring for CMS/JetClass."""
 import math
+import warnings
 from time import perf_counter
 from itertools import count
 
@@ -8,11 +9,72 @@ import torch
 from sklearn.metrics import roc_auc_score
 from tqdm import tqdm
 
+from models.latent_whitening import BackgroundWhitening
+
 from scripts.run_train_representation_flow import encode_finite, write_json
 
 
 POOLED_BACKGROUND = "All backgrounds"
 POOLED_SIGNAL = "All signals"
+
+
+@torch.no_grad()
+def encode_cwola(run, batch):
+    """One shared path for train, cached validation, and test inference."""
+    representation = encode_finite(run, batch)
+    transform = getattr(run, "latent_whitening", None)
+    return representation if transform is None else transform(representation)
+
+
+@torch.no_grad()
+def fit_background_whitening(run, *, num_events, batch_size, eps):
+    if num_events < 2 or batch_size < 1:
+        raise ValueError("Whitening needs >=2 events and a positive batch size.")
+    limit = run.summary.get("max_train_events")
+    budget = min(num_events, int(limit)) if limit is not None else num_events
+    loader = run.loader("train", run.backgrounds, infinite=False, seed_offset=606,
+                        max_events=budget, drop_last=False, persistent_workers=False,
+                        active_shards=len(run.backgrounds), prefetch_factor=1,
+                        batch_size=batch_size, num_workers=min(run.num_workers, 1))
+
+    def representations():
+        seen = 0
+        iterator = iter(loader)
+        with tqdm(total=budget, desc="Fit background whitening", unit="event") as progress:
+            while seen < budget:
+                batch = next(iterator, None)
+                if batch is None:
+                    break
+                n = min(len(batch["x_particles"]), budget - seen)
+                batch = {key: value[:n] for key, value in batch.items()}
+                # Always fit RAW latents, never feed an existing transform back in.
+                yield encode_finite(run, batch)
+                seen += n
+                progress.update(n)
+
+    # DataLoader construction of iterators draws a seed from the CPU torch RNG.
+    # Preserve the downstream training RNG when enabling this preprocessing step.
+    with torch.random.fork_rng(devices=[]):
+        transform, metadata = BackgroundWhitening.fit(representations(), eps=eps)
+    if metadata["num_events"] < num_events:
+        warnings.warn(f"Whitening fitted {metadata['num_events']} events (requested {num_events}); "
+                      "limited by the finite training split or max_train_events.")
+    metadata.update(split="train", background_labels=list(run.backgrounds),
+                    requested_events=num_events, batch_size=batch_size, seed=run.seed + 606,
+                    backbone_checkpoint=str(run.checkpoint))
+    return transform.to(run.device), metadata
+
+
+def restore_whitening(run, summary, run_dir):
+    config = summary.get("latent_whitening", {})
+    if not config.get("enabled", False):
+        return
+    # Resolve within the current run directory, allowing the whole run to move.
+    path = run_dir / config["file"]
+    if not path.is_file():
+        raise FileNotFoundError(f"This run requires its fitted whitening artifact: {path}")
+    run.latent_whitening = BackgroundWhitening.load(
+        path, input_dim=run.model.config.representation_dim, device=run.device)
 
 
 def validate_label_sets(summary):
@@ -167,7 +229,7 @@ def representation_batches(run, loaders, steps, *, per_signal, require_full_budg
         if index == 0:
             print(f"{description}: first input batch ready after {perf_counter() - started:.1f}s.", flush=True)
         batch, weak, truth = combine_batches(background, signal)
-        representation = encode_finite(run, batch)
+        representation = encode_cwola(run, batch)
         ids = None
         if per_signal:
             n_bg = 0 if background is None else len(background["x_particles"])

@@ -21,7 +21,7 @@ from sklearn.metrics import roc_auc_score, roc_curve
 from models.cwola import CWoLaMLP
 from scripts.lejepa_run import LeJEPARun
 from scripts.diagnose_lejepa_latents import read_state_dict
-from scripts.cwola_utils import validate_label_sets, configure_cwola_labels, batch_sizes, make_loaders, evaluate, write_json
+from scripts.cwola_utils import restore_whitening, validate_label_sets, configure_cwola_labels, batch_sizes, make_loaders, evaluate, write_json
 
 
 def plot_pair(output, name, signal_name, background_scores, signal_scores):
@@ -90,6 +90,7 @@ def main():
     # Saved training settings, including event limits and precision, govern eval.
     run.summary = dict(summary["backbone_summary"])
     run.precision = summary["backbone_precision"]
+    restore_whitening(run, summary, output_run)
     model = CWoLaMLP(**summary["cwola_config"]).to(run.device)
     checkpoint = (args.checkpoint or output_run / "best_model.pth").expanduser().resolve()
     model.load_state_dict(read_state_dict(checkpoint, run.device), strict=True)
@@ -120,6 +121,7 @@ def main():
         "signal_fraction": summary["signal_fraction"],
         "background_batch_size": n_bg, "signal_batch_size": n_sg,
         "roc_signal_fraction": n_sg / (bs // 2),
+        "latent_whitening": summary.get("latent_whitening", {"enabled": False}),
         "anomaly_score": "sigmoid", "roc_truth": "background_vs_signal", "metrics": metrics,
     })
     print(f"Pooled truth ROC AUC={result['auc']:.6f}; plots written to {output}")

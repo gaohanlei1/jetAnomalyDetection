@@ -25,7 +25,7 @@ from scripts.run_train_lejepa_part import make_warmup_cosine_scheduler
 from scripts.cwola_utils import (
     POOLED_BACKGROUND, POOLED_SIGNAL, resolve_label_sets, parse_label_override,
     configure_cwola_labels, batch_sizes, classification_targets,
-    make_loaders, combine_batches, paired_batches, evaluate, encode_finite, write_json,
+    make_loaders, combine_batches, paired_batches, evaluate, encode_cwola, fit_background_whitening, write_json,
 )
 from visualize.training_progress import plot_progress
 
@@ -73,6 +73,14 @@ def main(*, supervised=False):
                         help="Comma-separated CWoLa background labels; default: backbone summary.")
     parser.add_argument("--signal-labels", type=parse_label_override, default=None,
                         help="Comma-separated CWoLa signal labels; default: backbone summary.")
+    parser.add_argument("--whiten-background-latents", action="store_true",
+                        help="Fit frozen ZCA whitening on train backgrounds and apply it to all latents.")
+    parser.add_argument("--whitening-events", type=int, default=100000,
+                        help="Maximum training background events for whitening (default: 100000).")
+    parser.add_argument("--whitening-batch-size", type=int, default=1024,
+                        help="Backbone batch size during whitening fit (default: 1024).")
+    parser.add_argument("--whitening-eps", type=float, default=1e-5,
+                        help="Eigenvalue floor = eps * max(largest eigenvalue, 1).")
     parser.add_argument("--dropout", type=float, default=0.1)
     parser.add_argument("--eval-num-workers", type=int, default=None,
                         help="Workers per validation loader; default: min(training workers, 1).")
@@ -95,6 +103,10 @@ def main(*, supervised=False):
         if args.eval_num_workers is not None and args.eval_num_workers < 0:
             raise ValueError("eval-num-workers must be nonnegative.")
         n_bg, n_sg = batch_sizes(config["batch_size"], args.signal_fraction)
+        if args.whitening_events < 2 or args.whitening_batch_size < 1:
+            raise ValueError("whitening-events must be >=2; whitening-batch-size must be positive.")
+        if not math.isfinite(args.whitening_eps) or args.whitening_eps <= 0:
+            raise ValueError("whitening-eps must be finite and positive.")
         if not 0 <= args.dropout < 1:
             raise ValueError("dropout must be in [0, 1).")
     except ValueError as exc:
@@ -143,6 +155,7 @@ def main(*, supervised=False):
     summary = {
         "model": "cwola-mlp", "status": "initialized", **config,
         "supervision": "strong" if supervised else "weak",
+        "latent_whitening": {"enabled": args.whiten_background_latents, "file": "latent_whitening.pt"},
         "training_label_definition": ("0=all background; 1=signal" if supervised else
                                       "0=background reference; 1=background+signal mixture"),
         "validation_label_definition": "truth" if supervised else "weak",
@@ -192,6 +205,14 @@ def main(*, supervised=False):
         from datasets.cms_streaming import cms_split_manifest
         write_json(output / "cms_split_manifest.json", cms_split_manifest(run.backend.cms_splits))
     write_json(output / "summary.json", summary)
+    if args.whiten_background_latents:
+        print(f"Fitting whitening on train backgrounds only: {run.backgrounds}", flush=True)
+        run.latent_whitening, whitening_metadata = fit_background_whitening(
+            run, num_events=args.whitening_events, batch_size=args.whitening_batch_size,
+            eps=args.whitening_eps)
+        run.latent_whitening.save(output / "latent_whitening.pt", whitening_metadata)
+        summary["latent_whitening"].update(whitening_metadata)
+        write_json(output / "summary.json", summary)
     train_history, val_history = {"total_loss": []}, {"total_loss": []}
     auc_history = {POOLED_SIGNAL: {POOLED_BACKGROUND: {"val": []}}}
     epoch_end_steps, roc_eval_steps = [], []
@@ -205,7 +226,7 @@ def main(*, supervised=False):
             batch, weak, truth = combine_batches(*next(train_iterator))
             targets = classification_targets(weak, truth, supervised=supervised)
             optimizer.zero_grad(set_to_none=True)
-            logits = model.forward_logits(encode_finite(run, batch))
+            logits = model.forward_logits(encode_cwola(run, batch))
             loss = torch.nn.functional.binary_cross_entropy_with_logits(logits, targets.to(run.device))
             if not torch.isfinite(loss):
                 raise FloatingPointError("Non-finite CWoLa training loss.")
