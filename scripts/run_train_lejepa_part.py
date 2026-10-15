@@ -141,6 +141,8 @@ from models.part_jetclass import (
     MultiViewAugmentationConfig,
     TripletLossConfig,
     LeJEPASemiSupervisedTripletParticleTransformerRepresentation,
+    JetCLRParticleTransformerRepresentation,
+    JetCLRAugmentationConfig,
 )
 
 if torch.cuda.is_available():
@@ -319,9 +321,9 @@ class TrainLeJEPAParticleTransformer:
         self.per_rank_batch_size = self.args.batch_size // self.world_size
 
         self.model_name = self.args.model
-        if self.model_name != ONLY_MODEL_NAME:
+        if self.model_name not in (ONLY_MODEL_NAME, "jetclr"):
             raise ValueError(
-                f"Only --model {ONLY_MODEL_NAME!r} is supported, got "
+                f"Supported models: {ONLY_MODEL_NAME!r}, jetclr; got "
                 f"{self.model_name!r}."
             )
         self.ssl_metric_keys = [
@@ -353,6 +355,8 @@ class TrainLeJEPAParticleTransformer:
         # single logit, cross-entropy is identically zero. Require an explicit
         # opt-out so a real-data fine-tuning command cannot silently inherit the
         # multi-class default classification weight.
+        if self.model_name == "jetclr":
+            self.args.classification_weight = 0.0
         if self.args.classification_weight is None:
             if len(self.background_labels) == 1:
                 raise ValueError(
@@ -963,10 +967,10 @@ class TrainLeJEPAParticleTransformer:
             "batch_standardized_particle_features"
         )
 
-        if source_model is not None and str(source_model) != ONLY_MODEL_NAME:
+        if source_model is not None and str(source_model) != self.model_name:
             raise ValueError(
                 f"Checkpoint model variant {source_model!r} is not the supported "
-                f"model {ONLY_MODEL_NAME!r}."
+                f"model {self.model_name!r}."
             )
 
         if source_features is not None:
@@ -998,18 +1002,20 @@ class TrainLeJEPAParticleTransformer:
             and list(source_backgrounds) != self.background_labels
         )
         reset_classification_head = (
-            dataset_changed
-            or class_order_changed
-            or self.args.reset_classification_head
+            (dataset_changed
+             or class_order_changed
+             or self.args.reset_classification_head)
+            and self.model_name != "jetclr"
         )
         reset_node_embedding = (
-            feature_schema_changed or normalization_schema_changed
+            (feature_schema_changed or normalization_schema_changed)
+            and self.model_name != "jetclr"
         )
 
         classification_keys = self._classification_state_keys(core_model)
         node_embedding_keys = self._node_embedding_state_keys(core_model)
         feature_norm_keys = self._feature_normalization_state_keys(core_model)
-        if not classification_keys:
+        if not classification_keys and self.model_name != "jetclr":
             raise RuntimeError(
                 "Could not identify classification_head parameters in the model."
             )
@@ -1108,7 +1114,7 @@ class TrainLeJEPAParticleTransformer:
         return {
             "dataset": self.dataset_name,
             "dataset_root": self.dataset_root,
-            "model": ONLY_MODEL_NAME,
+            "model": self.model_name,
             "background_labels": list(self.background_labels),
             "signal_labels": list(self.signal_labels),
             "dataset_label_axis": list(self.dataset_label_axis),
@@ -1214,7 +1220,20 @@ class TrainLeJEPAParticleTransformer:
             num_classes=len(self.background_labels),
         )
 
-        core_model = LeJEPASemiSupervisedTripletParticleTransformerRepresentation(
+        model_class = (JetCLRParticleTransformerRepresentation
+                       if self.model_name == "jetclr"
+                       else LeJEPASemiSupervisedTripletParticleTransformerRepresentation)
+        extra_config = {}
+        if self.model_name == "jetclr":
+            extra_config = {
+                "jetclr_augmentation_config": JetCLRAugmentationConfig(**{
+                    name: getattr(self.args, "jetclr_" + name)
+                    for name in JetCLRAugmentationConfig.__dataclass_fields__
+                }),
+                "temperature": self.args.jetclr_temperature,
+            }
+        core_model = model_class(
+            **extra_config,
             model_config=model_config,
             augmentation_config=augmentation_config,
             negative_augmentation_config=negative_augmentation_config,
@@ -1231,7 +1250,7 @@ class TrainLeJEPAParticleTransformer:
             if parameter.requires_grad
         )
         if self.is_main_process:
-            print(f"Selected SSL model: {ONLY_MODEL_NAME}")
+            print(f"Selected SSL model: {self.model_name}")
             print(f"Number of trainable parameters: {self.num_params:,}")
 
         self.model_core = core_model
@@ -1962,7 +1981,7 @@ class TrainLeJEPAParticleTransformer:
 
         # Write a first summary of the run
         summary = {
-            "model": ONLY_MODEL_NAME,
+            "model": self.model_name,
             "dataset": self.dataset_name,
             "dataset_label_axis": self.dataset_label_axis,
             "feature_schema_version": FEATURE_SCHEMA_VERSION,
@@ -2146,6 +2165,20 @@ class TrainLeJEPAParticleTransformer:
         )
             
         
+
+        if self.model_name == "jetclr":
+            summary.update(
+                jetclr_augmentation={name: getattr(self.args, "jetclr_" + name)
+                                     for name in JetCLRAugmentationConfig.__dataclass_fields__},
+                jetclr_temperature=self.args.jetclr_temperature,
+                jetclr_rotation=False,
+                jetclr_input_features=["absolute_eta", "absolute_phi", "absolute_pt_GeV"],
+                jetclr_input_normalization="none",
+                jetclr_loss="negative_only_denominator_mean_over_ordered_view_pairs",
+                effective_num_negative_views=0,
+                disabled_loss_metrics=["invariant_loss", "sigreg_loss", "triplet_loss",
+                                       "triplet_pos_distance", "triplet_neg_distance", "classification_loss"],
+            )
 
         def update_summary(**updates) -> None:
             if not self.is_main_process:
@@ -2598,13 +2631,17 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         type=str,
-        choices=[ONLY_MODEL_NAME],
+        choices=[ONLY_MODEL_NAME, "jetclr"],
         default=ONLY_MODEL_NAME,
         help=(
-            "Only semi-sup-triplet"
-            "is supported."
+            "Select the existing semi-supervised model or momentum-only JetCLR."
         ),
     )
+    # Numerical defaults for the adapted JetCLR augmentation, not paper constants.
+    parser.add_argument("--jetclr-temperature", type=float, default=0.1)
+    for name, field in JetCLRAugmentationConfig.__dataclass_fields__.items():
+        parser.add_argument("--jetclr-" + name.replace("_", "-"),
+                            type=type(field.default), default=field.default)
     # Anomaly score function.
     parser.add_argument(
         "--anomaly-score",

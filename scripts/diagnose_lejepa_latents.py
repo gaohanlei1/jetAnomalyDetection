@@ -53,6 +53,8 @@ from models.part_jetclass import (
     CorruptedNegativeAugmentationConfig,
     LeJEPALossConfig,
     LeJEPASemiSupervisedTripletParticleTransformerRepresentation,
+    JetCLRParticleTransformerRepresentation,
+    JetCLRAugmentationConfig,
     MultiViewAugmentationConfig,
     ParticleTransformerConfig,
     SemiSupervisedLossConfig,
@@ -600,10 +602,9 @@ def build_model(
     precision = str(summary.get("precision", "fp32"))
 
     model_name = str(summary.get("model", "semi-sup-triplet"))
-    if model_name != "semi-sup-triplet":
+    if model_name not in ("semi-sup-triplet", "jetclr"):
         raise ValueError(
-            "The revised training script supports only "
-            "LeJEPASemiSupervisedTripletParticleTransformerRepresentation; "
+            "Supported models are semi-sup-triplet and jetclr; "
             f"summary.json records model={model_name!r}."
         )
 
@@ -628,6 +629,17 @@ def build_model(
         eps=float(summary.get("eps", 1e-8)),
         feature_norm_momentum=float(summary.get("feature_norm_momentum", 0.9)),
     )
+
+    if model_name == "jetclr":
+        return JetCLRParticleTransformerRepresentation(
+            model_config,
+            augmentation_config=MultiViewAugmentationConfig(
+                num_global_views=int(summary.get("num_global_views", 2)),
+                num_local_views=int(summary.get("num_local_views", 6))),
+            jetclr_augmentation_config=JetCLRAugmentationConfig(
+                **summary.get("jetclr_augmentation", {})),
+            temperature=float(summary.get("jetclr_temperature", 0.1)),
+        ).to(device)
 
     global_range = summary.get("global_drop_pt_frac_range", [0.0, 0.5])
     local_range = summary.get("local_drop_pt_frac_range", [0.5, 0.95])

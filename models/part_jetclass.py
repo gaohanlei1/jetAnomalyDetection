@@ -1,7 +1,6 @@
 import math
 from dataclasses import dataclass, field
 from typing import Optional, List, Tuple, Dict
-import lejepa
 
 import torch
 import torch.nn as nn
@@ -2358,6 +2357,8 @@ class LeJEPASIGRegLoss(nn.Module):
         super().__init__()
         self.config = config
 
+        import lejepa  # Optional dependency of the LeJEPA objective only.
+
         univariate_test = lejepa.univariate.EppsPulley(
             n_points=config.epps_pulley_num_points
         )
@@ -3241,3 +3242,242 @@ class LeJEPASemiSupervisedTripletParticleTransformerRepresentation(
 
         return output
 
+
+# ------------------------------------------------------------
+# JetCLR: momentum-only, multi-view contrastive representation
+# ------------------------------------------------------------
+
+@dataclass
+class JetCLRAugmentationConfig:
+    """Implementation defaults, not numerical settings claimed by the paper.
+
+    Coordinates are (absolute eta, wrapped absolute phi, absolute pt in GeV).
+    Rotation is disabled. All global/local views use the same augmentations.
+    Splits append slots instead of discarding constituents at the input cap.
+    """
+
+    distortion_scale: float = 0.1  # GeV; sigma = scale / max(pt, pt_floor)
+    pt_floor: float = 0.1  # GeV, only for the distortion width
+    split_probability: float = 0.1
+    max_splits: int = 4
+    split_min_fraction: float = 0.1
+    eta_shift_max: float = 0.5
+    phi_shift_max: float = math.pi
+
+    def __post_init__(self):
+        values = (self.distortion_scale, self.pt_floor, self.split_probability,
+                  self.split_min_fraction, self.eta_shift_max, self.phi_shift_max)
+        if not all(math.isfinite(v) for v in values):
+            raise ValueError("JetCLR augmentation parameters must be finite.")
+        if self.distortion_scale < 0 or self.pt_floor <= 0:
+            raise ValueError("Require distortion_scale >= 0 and pt_floor > 0.")
+        if not 0 <= self.split_probability <= 1 or self.max_splits < 0:
+            raise ValueError("Invalid split probability or maximum split count.")
+        if not 0 < self.split_min_fraction < 0.5:
+            raise ValueError("split_min_fraction must be in (0, 0.5).")
+        if self.eta_shift_max < 0 or not 0 <= self.phi_shift_max <= math.pi:
+            raise ValueError("Invalid shift range.")
+
+
+class JetCLRAugmentation(nn.Module):
+    def __init__(self, config: JetCLRAugmentationConfig):
+        super().__init__()
+        self.config = config
+
+    @torch.no_grad()
+    def forward(self, kinematics, padding_mask):
+        """Distort, split, then apply per-sample common eta/phi translations."""
+        cfg = self.config
+        valid = ~padding_mask
+        batch, nodes, _ = kinematics.shape
+        k = kinematics.float().clone().masked_fill(padding_mask[..., None], 0)
+        sigma = cfg.distortion_scale / k[..., 2].clamp_min(cfg.pt_floor)
+        k[..., :2] += torch.randn_like(k[..., :2]) * sigma[..., None] * valid[..., None]
+
+        count = min(cfg.max_splits, nodes)
+        if count:
+            # Uniformly choose eligible mothers without replacement. Daughters
+            # are never split again during this augmentation call.
+            eligible = valid & (torch.rand_like(k[..., 2]) < cfg.split_probability)
+            scores = torch.rand_like(k[..., 2]).masked_fill(~eligible, 2.0)
+            indices = scores.topk(count, dim=1, largest=False).indices
+            active = eligible.gather(1, indices)
+            mothers = k.gather(1, indices[..., None].expand(-1, -1, 3)).clone()
+            fraction = torch.empty_like(mothers[..., 2]).uniform_(
+                cfg.split_min_fraction, 1 - cfg.split_min_fraction)
+            daughters = mothers.clone()
+            daughters[..., 2] *= 1 - fraction
+            daughters.masked_fill_(~active[..., None], 0)
+            mothers[..., 2] *= torch.where(active, fraction, torch.ones_like(fraction))
+            k.scatter_(1, indices[..., None].expand(-1, -1, 3), mothers)
+            k = torch.cat((k, daughters), dim=1)
+            padding_mask = torch.cat((padding_mask, ~active), dim=1)
+
+        shift = k.new_empty((batch, 1, 2))
+        shift[..., 0].uniform_(-cfg.eta_shift_max, cfg.eta_shift_max)
+        shift[..., 1].uniform_(-cfg.phi_shift_max, cfg.phi_shift_max)
+        k[..., :2] += shift
+        k[..., 1] = (k[..., 1] + math.pi) % (2 * math.pi) - math.pi
+        return k.masked_fill(padding_mask[..., None], 0), padding_mask
+
+
+class JetCLRContrastiveLoss(nn.Module):
+    """Eq. (1): negatives-only denominator, averaged over ordered view pairs.
+
+    With V>2, every other view of the same sample is positive; all views of
+    other samples are negatives. The denominator excludes ALL same-sample
+    views. This is an explicit multi-view extension of the paper's equation.
+    """
+
+    def __init__(self, temperature=0.1):
+        super().__init__()
+        if not math.isfinite(temperature) or temperature <= 0:
+            raise ValueError("temperature must be finite and positive.")
+        self.temperature = temperature
+
+    def forward(self, z_views):
+        views, batch, dim = z_views.shape
+        if views < 2 or batch < 1:
+            raise ValueError("JetCLR requires at least two views and a nonempty batch.")
+        # Disable surrounding AMP for stable cosine/logsumexp computation.
+        with torch.autocast(device_type=z_views.device.type, enabled=False):
+            z = F.normalize(z_views.float(), dim=-1).transpose(0, 1).contiguous()
+            rank = 0
+            global_z = z
+            if torch.distributed.is_available() and torch.distributed.is_initialized():
+                from torch.distributed.nn.functional import all_gather
+                rank = torch.distributed.get_rank()
+                sizes = [torch.zeros((), device=z.device, dtype=torch.long)
+                         for _ in range(torch.distributed.get_world_size())]
+                torch.distributed.all_gather(sizes, torch.tensor(batch, device=z.device))
+                if any(int(n) != batch for n in sizes):
+                    raise ValueError("JetCLR DDP requires equal per-rank batch sizes.")
+                global_z = torch.cat(all_gather(z), dim=0)
+            total_batch = global_z.shape[0]
+            if total_batch < 2:
+                raise ValueError("JetCLR needs at least two samples globally for negatives.")
+            anchors = z.reshape(-1, dim)
+            candidates = global_z.reshape(-1, dim)
+            logits = anchors @ candidates.T / self.temperature
+            anchor_ids = torch.arange(batch, device=z.device).repeat_interleave(views) + rank * batch
+            candidate_ids = torch.arange(total_batch, device=z.device).repeat_interleave(views)
+            same_sample = anchor_ids[:, None] == candidate_ids[None, :]
+            self_indices = rank * batch * views + torch.arange(batch * views, device=z.device)
+            positive = same_sample.clone()
+            positive[torch.arange(batch * views, device=z.device), self_indices] = False
+            positive_logits = logits.masked_fill(~positive, 0).sum(1) / (views - 1)
+            log_negative_sum = logits.masked_fill(same_sample, -torch.inf).logsumexp(1)
+            return (log_negative_sum - positive_logits).mean()
+
+
+class JetCLRParticleTransformerRepresentation(MinimalParticleTransformer):
+    """Accept the existing dataset tensor, but consume ONLY its raw px/py/pz.
+
+    Input energy and all derived/PID/track features are ignored. Node embedding
+    receives (absolute eta, absolute phi, absolute pt), without dataset z-score
+    normalization. Pairwise bias, when enabled, uses massless four-vectors
+    rebuilt from the SAME augmented coordinates. No augmentation during inference.
+
+    Existing loop contract: forward -> CLS; representation_head -> FCN1;
+    forward_pretrain -> total_loss plus legacy metric placeholders. FCN2 is
+    used only for contrastive training. No labels or corrupted views are used.
+    """
+
+    def __init__(self, model_config, augmentation_config=None,
+                 negative_augmentation_config=None, loss_config=None,
+                 triplet_loss_config=None, semi_supervised_config=None,
+                 jetclr_augmentation_config=None, temperature=0.1):
+        from dataclasses import replace
+        source_names = tuple(model_config.input_feature_names)
+        self.source_input_dim = model_config.input_dim
+        self.source_indices = tuple(source_names.index(name)
+                                    for name in ("part_px", "part_py", "part_pz"))
+        internal_names = ("part_px", "part_py", "part_pz", "part_energy",
+                          "part_pt", "log_pt_fraction", "part_eta", "part_phi")
+        internal_config = replace(model_config, input_dim=8,
+                                  input_feature_names=internal_names,
+                                  standardized_feature_names=())
+        super().__init__(internal_config)
+        self.node_embedding = NodeEmbedding(3, model_config.embed_dim, model_config.dropout)
+        view_config = augmentation_config or MultiViewAugmentationConfig()
+        self.num_global_views = view_config.num_global_views
+        self.num_local_views = view_config.num_local_views
+        if min(self.num_global_views, self.num_local_views) < 0 or self.num_views < 2:
+            raise ValueError("JetCLR requires num_global_views + num_local_views >= 2.")
+        self.augmentation = JetCLRAugmentation(
+            jetclr_augmentation_config or JetCLRAugmentationConfig())
+        self.loss = JetCLRContrastiveLoss(temperature)
+        self.representation_head = nn.Sequential(
+            nn.Linear(model_config.embed_dim, model_config.representation_dim), nn.SiLU())
+        self.contrastive_head = nn.Linear(model_config.representation_dim,
+                                         model_config.representation_dim)
+
+    @property
+    def num_views(self):
+        return self.num_global_views + self.num_local_views
+
+    def _extract_kinematics(self, x, padding_mask):
+        if x.ndim != 3 or x.shape[-1] != self.source_input_dim:
+            raise ValueError(f"Expected (B, N, {self.source_input_dim}) input.")
+        p = x[..., list(self.source_indices)].float()
+        if padding_mask is None:
+            padding_mask = p.eq(0).all(-1)
+        if padding_mask.shape != x.shape[:2]:
+            raise ValueError("padding_mask must have shape (B, N).")
+        padding_mask = padding_mask.bool()
+        p = p.masked_fill(padding_mask[..., None], 0)
+        pt = torch.linalg.vector_norm(p[..., :2], dim=-1)
+        if ((~padding_mask) & ((pt <= 0) | ~torch.isfinite(p).all(-1))).any():
+            raise ValueError("Valid JetCLR particles require finite momenta and positive pt.")
+        if padding_mask.all(1).any():
+            raise ValueError("JetCLR does not accept empty jets.")
+        eta = torch.asinh(p[..., 2] / pt.clamp_min(self.config.eps))
+        phi = torch.atan2(p[..., 1], p[..., 0])
+        k = torch.stack((eta, phi, pt), dim=-1)
+        return k.masked_fill(padding_mask[..., None], 0), padding_mask
+
+    def _prepare_node_features(self, x, padding_mask):
+        node_x = x[..., [6, 7, 4]]  # eta, phi, absolute pt, no redundant inputs
+        return node_x.masked_fill(padding_mask[..., None], 0)
+
+    def _encode_kinematics(self, k, padding_mask):
+        eta, phi, pt = k.unbind(-1)
+        x = torch.stack((pt * phi.cos(), pt * phi.sin(), pt * eta.sinh(),
+                         pt * eta.cosh(), pt, torch.zeros_like(pt), eta, phi), -1)
+        x = x.masked_fill(padding_mask[..., None], 0)
+        return super().forward(x, padding_mask)
+
+    def forward(self, x, padding_mask=None):
+        k, mask = self._extract_kinematics(x, padding_mask)
+        return self._encode_kinematics(k, mask)
+
+    def forward_representation(self, x, padding_mask=None):
+        return self.representation_head(self.forward(x, padding_mask))
+
+    def forward_pretrain(self, x, y=None, padding_mask=None, return_views=False):
+        k, mask = self._extract_kinematics(x, padding_mask)
+        # View zero is the original sample; only the remaining V-1 views
+        # are augmented. Pad the original to the appended daughter capacity.
+        augmented = [self.augmentation(k, mask) for _ in range(self.num_views - 1)]
+        extra_nodes = augmented[0][0].shape[1] - k.shape[1]
+        original = F.pad(k, (0, 0, 0, extra_nodes), value=0)
+        original_mask = F.pad(mask, (0, extra_nodes), value=True)
+        views, masks = zip((original, original_mask), *augmented)
+        cls = self._encode_kinematics(torch.cat(views), torch.cat(masks))
+        representations = self.representation_head(cls)
+        z = self.contrastive_head(representations).reshape(self.num_views, x.shape[0], -1)
+        loss = self.loss(z)
+        output = {"total_loss": loss, "contrastive_loss": loss,
+                  "z_views": representations.reshape(self.num_views, x.shape[0], -1),
+                  "projection_views": z,
+                  "z_negatives": z.new_empty((0, x.shape[0], z.shape[-1]))}
+        # Existing loop expects these fields. They are disabled objectives,
+        # NOT aliases for contrastive alignment/uniformity terms.
+        for name in ("invariant_loss", "sigreg_loss", "triplet_loss",
+                     "triplet_pos_distance", "triplet_neg_distance", "classification_loss"):
+            output[name] = loss.detach().new_zeros(())
+        if return_views:
+            output.update(views=list(views), view_padding_masks=list(masks),
+                          view_types=["global"] * self.num_global_views + ["local"] * self.num_local_views,
+                          negative_views=[], negative_padding_masks=[], negative_types=[])
+        return output
