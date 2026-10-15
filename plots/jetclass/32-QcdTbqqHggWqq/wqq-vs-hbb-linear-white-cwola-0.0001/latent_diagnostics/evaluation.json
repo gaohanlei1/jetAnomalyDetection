@@ -1,0 +1,59 @@
+{
+  "checkpoint": "/oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/wqq-vs-hbb-linear-white-cwola-0.0001/best_model.pth",
+  "backbone_checkpoint": "/oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/best_model.pth",
+  "split": "test",
+  "dataset_root": "/HEP/export/home/lwang223/JetClass/JetClass/Pythia",
+  "background_labels": [
+    "label_Wqq"
+  ],
+  "signal_labels": [
+    "label_Hbb"
+  ],
+  "requested_eval_steps": 400,
+  "batch_size": 10240,
+  "signal_fraction": 0.0001,
+  "background_batch_size": 10239,
+  "signal_batch_size": 1,
+  "roc_signal_fraction": 0.0001953125,
+  "latent_whitening": {
+    "enabled": true,
+    "file": "latent_whitening.pt",
+    "method": "zca",
+    "num_events": 100000,
+    "input_dim": 32,
+    "eps": 1e-05,
+    "eigenvalue_floor": 1.963047985197051e-05,
+    "min_eigenvalue": 2.561730503522694e-06,
+    "max_eigenvalue": 1.9630479851970508,
+    "clipped_eigenvalues": 1,
+    "covariance_normalization": "N-1",
+    "statistics_dtype": "float64",
+    "transform_dtype": "float32",
+    "split": "train",
+    "background_labels": [
+      "label_Wqq"
+    ],
+    "requested_events": 100000,
+    "batch_size": 1024,
+    "seed": 648,
+    "backbone_checkpoint": "/oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/best_model.pth"
+  },
+  "anomaly_score": "sigmoid",
+  "roc_truth": "background_vs_signal",
+  "metrics": {
+    "pooled": {
+      "auc": 0.549221636875,
+      "background_events": 2000000,
+      "signal_events": 400,
+      "roc_plot": "/oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/wqq-vs-hbb-linear-white-cwola-0.0001/latent_diagnostics/roc_pooled.png",
+      "score_distribution_plot": "/oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/wqq-vs-hbb-linear-white-cwola-0.0001/latent_diagnostics/score_distribution_pooled.png"
+    },
+    "label_Hbb": {
+      "auc": 0.549221636875,
+      "background_events": 2000000,
+      "signal_events": 400,
+      "roc_plot": "/oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/wqq-vs-hbb-linear-white-cwola-0.0001/latent_diagnostics/roc_label_Hbb.png",
+      "score_distribution_plot": "/oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/wqq-vs-hbb-linear-white-cwola-0.0001/latent_diagnostics/score_distribution_label_Hbb.png"
+    }
+  }
+}

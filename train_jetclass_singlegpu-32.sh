@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --nodes=1               # node count
-# SBATCH --nodelist=gpu2708,gpu2709,gpu3002,gpu3003,gpu3004,gpu3006,gpu3101,gpu3102,gpu3105,gpu3106
+#SBATCH --nodelist=gpu2709,gpu3002,gpu3003,gpu3004,gpu3006,gpu3101,gpu3102,gpu3105,gpu3106
 #SBATCH -p gpu --gres=gpu:1     # number of gpus per node
 #SBATCH --ntasks-per-node=1     # total number of tasks across all nodes
 #SBATCH --cpus-per-task=6       # cpu-cores per task (>1 if multi-threaded tasks)
@@ -155,53 +155,48 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #     done
 # done
 
-python -u scripts/evaluate_cwola.py \
-    "plots/jetclass/32-Wqq/wqq-vs-hbb-scwola-0.0005"
 
-python -u scripts/run_train_cwola.py \
-    "plots/jetclass/32-Wqq" \
-    --output-dir "plots/jetclass/32-Wqq/wqq-vs-hbb-cwola-0.0005" \
-    --background-labels "label_Wqq" \
-    --signal-labels "label_Hbb" \
-    --learning-rate 1e-3 \
-    --warmup-steps 10 \
-    --steps-per-epoch 400 \
-    --epochs 10 \
-    --batch-size 10240 \
-    --val-steps 400 \
-    --signal-fraction 0.0005
+for BASE_DIR in \
+    "plots/jetclass/32-QcdTbqqHggWqq" \
+    "plots/jetclass/32-Wqq"
+do
+    python -u scripts/run_train_cwola.py \
+        "$BASE_DIR" \
+        --output-dir "$BASE_DIR"/wqq-vs-hbb-hcc-zqq-linear-white-cwola-0.0005 \
+        --background-labels "label_Wqq" \
+        --signal-labels "label_Hbb,label_Hcc,label_Zqq" \
+        --learning-rate 1e-3 \
+        --warmup-steps 10 \
+        --steps-per-epoch 400 \
+        --epochs 10 \
+        --batch-size 10240 \
+        --val-steps 400 \
+        --signal-fraction 0.0005 \
+        --whiten-background-latents \
+        --whitening-events 100000 \
+        --whitening-batch-size 1024 \
+        --whitening-eps 1e-5
 
-python -u scripts/evaluate_cwola.py \
-    "plots/jetclass/32-Wqq/wqq-vs-hbb-cwola-0.0005"
+    python -u scripts/evaluate_cwola.py \
+        "$BASE_DIR"/wqq-vs-hbb-hcc-zqq-linear-white-cwola-0.0005
 
-python -u scripts/run_train_supervised_mlp.py \
-    "plots/jetclass/32-Wqq" \
-    --output-dir "plots/jetclass/32-Wqq/wqq-vs-hbb-scwola-0.0001" \
-    --background-labels "label_Wqq" \
-    --signal-labels "label_Hbb" \
-    --learning-rate 1e-3 \
-    --warmup-steps 10 \
-    --steps-per-epoch 400 \
-    --epochs 10 \
-    --batch-size 10240 \
-    --val-steps 400 \
-    --signal-fraction 0.0001
+    python -u scripts/run_train_cwola.py \
+        "$BASE_DIR" \
+        --output-dir "$BASE_DIR"/wqq-vs-hbb-hcc-zqq-linear-white-cwola-0.0001 \
+        --background-labels "label_Wqq" \
+        --signal-labels "label_Hbb,label_Hcc,label_Zqq" \
+        --learning-rate 1e-3 \
+        --warmup-steps 10 \
+        --steps-per-epoch 400 \
+        --epochs 10 \
+        --batch-size 10240 \
+        --val-steps 400 \
+        --signal-fraction 0.0001 \
+        --whiten-background-latents \
+        --whitening-events 100000 \
+        --whitening-batch-size 1024 \
+        --whitening-eps 1e-5
 
-python -u scripts/evaluate_cwola.py \
-    "plots/jetclass/32-Wqq/wqq-vs-hbb-scwola-0.0001"
-
-python -u scripts/run_train_cwola.py \
-    "plots/jetclass/32-Wqq" \
-    --output-dir "plots/jetclass/32-Wqq/wqq-vs-hbb-cwola-0.0001" \
-    --background-labels "label_Wqq" \
-    --signal-labels "label_Hbb" \
-    --learning-rate 1e-3 \
-    --warmup-steps 10 \
-    --steps-per-epoch 400 \
-    --epochs 10 \
-    --batch-size 10240 \
-    --val-steps 400 \
-    --signal-fraction 0.0001
-
-python -u scripts/evaluate_cwola.py \
-    "plots/jetclass/32-Wqq/wqq-vs-hbb-cwola-0.0001"
+    python -u scripts/evaluate_cwola.py \
+        "$BASE_DIR"/wqq-vs-hbb-hcc-zqq-linear-white-cwola-0.0001
+done

@@ -1,0 +1,84 @@
+Traceback (most recent call last):
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_train_cwola.py", line 280, in <module>
+    main()
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_train_cwola.py", line 118, in main
+    run = LeJEPARun(args)
+          ^^^^^^^^^^^^^^^
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/lejepa_run.py", line 54, in __init__
+    self.model = build_model(restored, self.backend, self.device)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/diagnose_lejepa_latents.py", line 717, in build_model
+    return model.to(device)
+           ^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1343, in to
+    return self._apply(convert)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 903, in _apply
+    module._apply(fn)
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 903, in _apply
+    module._apply(fn)
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 903, in _apply
+    module._apply(fn)
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 930, in _apply
+    param_applied = fn(param)
+                    ^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1329, in convert
+    return t.to(
+           ^^^^^
+RuntimeError: CUDA error: uncorrectable ECC error encountered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+Traceback (most recent call last):
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/evaluate_cwola.py", line 131, in <module>
+    main()
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/evaluate_cwola.py", line 69, in main
+    with (output_run / "summary.json").open() as handle:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/pathlib.py", line 1044, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/wqq-vs-hbb-linear-white-cwola-0.0005/summary.json'
+Traceback (most recent call last):
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_train_cwola.py", line 280, in <module>
+    main()
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/run_train_cwola.py", line 118, in main
+    run = LeJEPARun(args)
+          ^^^^^^^^^^^^^^^
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/lejepa_run.py", line 54, in __init__
+    self.model = build_model(restored, self.backend, self.device)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/diagnose_lejepa_latents.py", line 717, in build_model
+    return model.to(device)
+           ^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1343, in to
+    return self._apply(convert)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 903, in _apply
+    module._apply(fn)
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 903, in _apply
+    module._apply(fn)
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 903, in _apply
+    module._apply(fn)
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 930, in _apply
+    param_applied = fn(param)
+                    ^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1329, in convert
+    return t.to(
+           ^^^^^
+RuntimeError: CUDA error: uncorrectable ECC error encountered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+Traceback (most recent call last):
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/evaluate_cwola.py", line 131, in <module>
+    main()
+  File "/oscar/home/lwang223/jetAnomalyDetection/scripts/evaluate_cwola.py", line 69, in main
+    with (output_run / "summary.json").open() as handle:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/users/lwang223/.conda/envs/jet/lib/python3.11/pathlib.py", line 1044, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/wqq-vs-hbb-linear-white-cwola-0.0001/summary.json'

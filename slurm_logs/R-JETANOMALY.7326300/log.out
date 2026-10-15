@@ -1,0 +1,119 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 7326300
+##  Job Name : JETANOMALY
+##  Nodelist : gpu3006
+##      CPUs : 1
+##  Mem/Node : 65536 MB
+## Directory : /oscar/home/lwang223/jetAnomalyDetection
+##   Job Started : Mon Oct 12 12:26:09 PM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Mon Oct 12 12:26:09 PM EDT 2026
+Job ID: 7326300
+Node: gpu3006
+==========================================
+
+GPU Information (from host):
+Mon Oct 12 12:26:09 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA L40S                    On  |   00000000:61:00.0 Off |                    0 |
+| N/A   51C    P8             41W /  350W |      75MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          183076      G   /usr/libexec/Xorg                        64MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch version: 2.6.0+cu124
+CWoLa task: backgrounds=['label_Wqq']; signals=['label_Hbb']
+CWoLa 32 -> 64 -> 32 -> 1; frozen backbone /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-Wqq/best_model.pth
+Batch: 10237 background + 3 signal; first 5120 rows reference, last 5120 rows mixture (effective fraction 0.000585937).
+Fitting whitening on train backgrounds only: ['label_Wqq']
+Val weak-label loss + truth ROC: starting loaders; waiting for initial ROOT shards...
+Val weak-label loss + truth ROC: first input batch ready after 9.8s.
+Val weak-label loss + truth ROC: cached 400 batches (546.9 MiB CPU tensors); later epochs skip ROOT loading and backbone inference.
+Val weak-label loss + truth ROC: 4,096,000 events in 416.1s.
+Epoch 1: val BCE=0.693168; truth ROC AUC=0.635798
+Val weak-label loss + truth ROC: using 400 cached representation batches.
+Val weak-label loss + truth ROC: 4,096,000 events in 7.0s.
+Epoch 2: val BCE=0.69317; truth ROC AUC=0.592056
+Val weak-label loss + truth ROC: using 400 cached representation batches.
+Val weak-label loss + truth ROC: 4,096,000 events in 6.2s.
+Epoch 3: val BCE=0.693164; truth ROC AUC=0.573079
+Val weak-label loss + truth ROC: using 400 cached representation batches.
+Val weak-label loss + truth ROC: 4,096,000 events in 7.0s.
+Epoch 4: val BCE=0.693156; truth ROC AUC=0.460361
+Val weak-label loss + truth ROC: using 400 cached representation batches.
+Val weak-label loss + truth ROC: 4,096,000 events in 7.1s.
+Epoch 5: val BCE=0.69317; truth ROC AUC=0.700652
+Val weak-label loss + truth ROC: using 400 cached representation batches.
+Val weak-label loss + truth ROC: 4,096,000 events in 6.2s.
+Epoch 6: val BCE=0.69316; truth ROC AUC=0.481851
+Val weak-label loss + truth ROC: using 400 cached representation batches.
+Val weak-label loss + truth ROC: 4,096,000 events in 7.1s.
+Epoch 7: val BCE=0.69315; truth ROC AUC=0.608675
+Val weak-label loss + truth ROC: using 400 cached representation batches.
+Val weak-label loss + truth ROC: 4,096,000 events in 7.1s.
+Epoch 8: val BCE=0.693153; truth ROC AUC=0.481796
+Val weak-label loss + truth ROC: using 400 cached representation batches.
+Val weak-label loss + truth ROC: 4,096,000 events in 7.1s.
+Epoch 9: val BCE=0.693148; truth ROC AUC=0.760937
+Val weak-label loss + truth ROC: using 400 cached representation batches.
+Val weak-label loss + truth ROC: 4,096,000 events in 7.1s.
+Epoch 10: val BCE=0.693148; truth ROC AUC=0.717906
+Test pooled background and signal: starting loaders; waiting for initial ROOT shards...
+Test pooled background and signal: first input batch ready after 14.8s.
+Test pooled background and signal: 2,001,200 events in 146.2s.
+Pooled truth ROC AUC=0.711155; plots written to /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-Wqq/wqq-vs-hbb-linear-white-cwola-0.0005/latent_diagnostics
+CWoLa task: backgrounds=['label_Wqq']; signals=['label_Hbb']
+CWoLa 32 -> 64 -> 32 -> 1; frozen backbone /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-Wqq/best_model.pth
+Batch: 10239 background + 1 signal; first 5120 rows reference, last 5120 rows mixture (effective fraction 0.000195313).
+Fitting whitening on train backgrounds only: ['label_Wqq']
+Val weak-label loss + truth ROC: starting loaders; waiting for initial ROOT shards...
+Val weak-label loss + truth ROC: first input batch ready after 9.7s.
+Val weak-label loss + truth ROC: cached 400 batches (546.9 MiB CPU tensors); later epochs skip ROOT loading and backbone inference.
+Val weak-label loss + truth ROC: 4,096,000 events in 413.3s.
+Epoch 1: val BCE=0.693164; truth ROC AUC=0.565013
+Val weak-label loss + truth ROC: using 400 cached representation batches.
+Val weak-label loss + truth ROC: 4,096,000 events in 7.0s.
+Epoch 2: val BCE=0.693174; truth ROC AUC=0.525550
+Val weak-label loss + truth ROC: using 400 cached representation batches.
+Val weak-label loss + truth ROC: 4,096,000 events in 6.2s.
+Epoch 3: val BCE=0.69317; truth ROC AUC=0.478086
+Val weak-label loss + truth ROC: using 400 cached representation batches.
+Val weak-label loss + truth ROC: 4,096,000 events in 7.1s.
+Epoch 4: val BCE=0.693158; truth ROC AUC=0.202036
+Val weak-label loss + truth ROC: using 400 cached representation batches.
+Val weak-label loss + truth ROC: 4,096,000 events in 7.0s.
+Epoch 5: val BCE=0.693168; truth ROC AUC=0.605021
+Val weak-label loss + truth ROC: using 400 cached representation batches.
+Val weak-label loss + truth ROC: 4,096,000 events in 6.2s.
+Epoch 6: val BCE=0.693162; truth ROC AUC=0.469923
+Val weak-label loss + truth ROC: using 400 cached representation batches.
+Val weak-label loss + truth ROC: 4,096,000 events in 7.1s.
+Epoch 7: val BCE=0.693155; truth ROC AUC=0.577315
+Val weak-label loss + truth ROC: using 400 cached representation batches.
+Val weak-label loss + truth ROC: 4,096,000 events in 7.0s.
+Epoch 8: val BCE=0.693151; truth ROC AUC=0.581751
+Val weak-label loss + truth ROC: using 400 cached representation batches.
+Val weak-label loss + truth ROC: 4,096,000 events in 7.1s.
+Epoch 9: val BCE=0.69315; truth ROC AUC=0.643788
+Val weak-label loss + truth ROC: using 400 cached representation batches.
+Val weak-label loss + truth ROC: 4,096,000 events in 7.0s.
+Epoch 10: val BCE=0.693149; truth ROC AUC=0.705263
+Test pooled background and signal: starting loaders; waiting for initial ROOT shards...
+Test pooled background and signal: first input batch ready after 14.7s.
+Test pooled background and signal: 2,000,400 events in 145.3s.
+Pooled truth ROC AUC=0.691724; plots written to /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-Wqq/wqq-vs-hbb-linear-white-cwola-0.0001/latent_diagnostics
