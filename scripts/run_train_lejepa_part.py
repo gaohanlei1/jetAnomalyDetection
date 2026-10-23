@@ -73,8 +73,8 @@ python -u scripts/run_train_lejepa_part.py \
     --dataset cms \
     --dataset-root /path/to/shuffled/dataset-root \
     --background-labels label_Real \
-    --cms-val-fraction 0.05 \
-    --cms-test-fraction 0.45 \
+    --cms-real-val-fraction 0.05 \
+    --cms-real-test-fraction 0.45 \
     --classification-weight 0 \
     --checkpoint /path/to/cms-mc-run/best_model.pth \
     --checkpoint-summary /path/to/cms-mc-run/summary.json \
@@ -124,7 +124,7 @@ from datasets.cms_streaming import (
     cms_split_manifest,
     collate_cms_tensors,
     discover_cms_files,
-    split_cms_files,
+    prepare_cms_splits,
     validate_cms_labels,
 )
 from datasets.jetclass_streaming import (
@@ -444,12 +444,17 @@ class TrainLeJEPAParticleTransformer:
                 self.dataset_root,
                 all_requested_labels,
             )
-            self.cms_splits = split_cms_files(
-                discovered,
+            self.cms_splits, self.cms_mc_manifest, self.cms_real_manifest, self.cms_split_info = prepare_cms_splits(
+                discovered, dataset_root=self.dataset_root,
                 val_fraction=self.args.cms_val_fraction,
                 test_fraction=self.args.cms_test_fraction,
-                seed=self.args.cms_split_seed,
+                real_val_fraction=self.args.cms_real_val_fraction,
+                real_test_fraction=self.args.cms_real_test_fraction,
+                seed=self.args.cms_split_seed, checkpoint=self.args.checkpoint,
+                checkpoint_summary=self.args.checkpoint_summary,
             )
+            if self.is_main_process:
+                print(f"CMS split policy: {self.cms_split_info}")
             self.cms_manifest = cms_split_manifest(self.cms_splits)
         else:
             raise ValueError(f"Unsupported dataset {self.dataset_name!r}.")
@@ -473,10 +478,12 @@ class TrainLeJEPAParticleTransformer:
         os.makedirs(self.augmentation_plot_dir, exist_ok=True)
 
         if self.is_main_process and self.cms_manifest is not None:
-            # This manifest is always built from the current dataset root,
-            # requested labels, split fractions, and split seed. Checkpoint
-            # metadata and any manifest beside the checkpoint are intentionally
-            # ignored for a new fine-tuning run.
+            for name, manifest in (("cms_mc_split_manifest.json", self.cms_mc_manifest),
+                                   ("cms_real_split_manifest.json", self.cms_real_manifest)):
+                path = Path(self.output_dir) / name
+                temporary = path.with_suffix(".json.tmp")
+                temporary.write_text(json.dumps(manifest, indent=2))
+                os.replace(temporary, path)
             manifest_path = os.path.join(self.output_dir, "cms_split_manifest.json")
             with open(manifest_path + ".tmp", "w") as handle:
                 json.dump(self.cms_manifest, handle, indent=2)
@@ -2106,9 +2113,11 @@ class TrainLeJEPAParticleTransformer:
                     "cms_test_fraction": self.args.cms_test_fraction,
                     "cms_split_seed": self.args.cms_split_seed,
                     "cms_split_manifest_sha256": self.cms_manifest["sha256"],
-                    "cms_split_manifest_policy": (
-                        "fresh-current-run-manifest; checkpoint manifest ignored"
-                    ),
+                    "cms_split_manifest_policy": self.cms_split_info,
+                    "cms_real_val_fraction": self.args.cms_real_val_fraction,
+                    "cms_real_test_fraction": self.args.cms_real_test_fraction,
+                    "cms_mc_split_manifest_sha256": self.cms_mc_manifest["sha256"],
+                    "cms_real_split_manifest_sha256": self.cms_real_manifest["sha256"],
                     "cms_split_root_shard_counts": {
                         split_name: {
                             label: len(paths)
@@ -2786,14 +2795,18 @@ if __name__ == "__main__":
         "--cms-val-fraction",
         type=float,
         default=0.1,
-        help="CMS ROOT-shard validation fraction within every jet type.",
+        help="CMS ROOT-shard validation fraction within each MC jet type.",
     )
     parser.add_argument(
         "--cms-test-fraction",
         type=float,
         default=0.1,
-        help="CMS ROOT-shard test fraction within every jet type.",
+        help="CMS ROOT-shard test fraction within each MC jet type.",
     )
+    parser.add_argument("--cms-real-val-fraction", type=float, default=0.05,
+                        help="Validation shard fraction for label_Real only.")
+    parser.add_argument("--cms-real-test-fraction", type=float, default=0.45,
+                        help="Test shard fraction for label_Real only.")
     parser.add_argument(
         "--cms-split-seed",
         type=int,

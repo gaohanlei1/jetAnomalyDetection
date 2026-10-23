@@ -790,6 +790,8 @@ def split_cms_files(
     val_fraction: float = 0.1,
     test_fraction: float = 0.1,
     seed: int = 42,
+    real_val_fraction: Optional[float] = None,
+    real_test_fraction: Optional[float] = None,
 ) -> SplitFilesByLabel:
     """Randomly split each already-shuffled jet type into train/val/test shards."""
     if val_fraction < 0 or test_fraction < 0 or val_fraction + test_fraction >= 1:
@@ -798,13 +800,19 @@ def split_cms_files(
             "val_fraction + test_fraction < 1."
         )
 
+    import math
+    real_val = val_fraction if real_val_fraction is None else real_val_fraction
+    real_test = test_fraction if real_test_fraction is None else real_test_fraction
+    for v, t in ((val_fraction, test_fraction), (real_val, real_test)):
+        if not (math.isfinite(v) and math.isfinite(t)) or min(v, t) < 0 or v + t >= 1:
+            raise ValueError("Split fractions must be finite, nonnegative and sum to less than 1.")
     splits: SplitFilesByLabel = {"train": {}, "val": {}, "test": {}}
     for label, files in files_by_label.items():
         rng = random.Random(_stable_label_seed(seed, label))
         train, val, test = _split_label_files(
             files,
-            val_fraction=val_fraction,
-            test_fraction=test_fraction,
+            val_fraction=real_val if label == "label_Real" else val_fraction,
+            test_fraction=real_test if label == "label_Real" else test_fraction,
             rng=rng,
         )
         splits["train"][label] = train
@@ -835,6 +843,70 @@ def cms_split_manifest(
         "sha256": hashlib.sha256(
             "\n".join(sorted(flattened_for_hash)).encode("utf-8")
         ).hexdigest(),
+    }
+
+
+def prepare_cms_splits(files_by_label, *, dataset_root, val_fraction, test_fraction,
+                       real_val_fraction=0.05, real_test_fraction=0.45, seed=42,
+                       checkpoint=None, checkpoint_summary=None):
+    """Inherit compatible MC file assignments; split real data independently."""
+    import json
+    import math
+    source = None
+    reason = "no checkpoint"
+    mc_labels = [label for label in files_by_label if label != "label_Real"]
+    if checkpoint:
+        summary_path = (Path(checkpoint_summary).expanduser().resolve() if checkpoint_summary
+                        else Path(checkpoint).expanduser().resolve().parent / "summary.json")
+        if summary_path.is_file():
+            old = json.loads(summary_path.read_text())
+            matches = (
+                old.get("dataset") == "cms"
+                and Path(str(old.get("dataset_root", ""))).expanduser().resolve()
+                    == Path(dataset_root).expanduser().resolve()
+                and old.get("cms_val_fraction") is not None
+                and old.get("cms_test_fraction") is not None
+                and math.isclose(float(old["cms_val_fraction"]), val_fraction, rel_tol=0, abs_tol=1e-12)
+                and math.isclose(float(old["cms_test_fraction"]), test_fraction, rel_tol=0, abs_tol=1e-12)
+            )
+            reason = "checkpoint dataset/root/MC fractions do not match"
+            if matches and mc_labels:
+                source = summary_path.parent / "cms_split_manifest.json"
+        else:
+            reason = "checkpoint summary.json missing"
+    fresh_files = ({label: paths for label, paths in files_by_label.items() if label == "label_Real"}
+                   if source else files_by_label)
+    splits = split_cms_files(fresh_files, val_fraction=val_fraction,
+                            test_fraction=test_fraction, real_val_fraction=real_val_fraction,
+                            real_test_fraction=real_test_fraction, seed=seed)
+    if source:
+        manifest = json.loads(source.read_text())
+        if manifest.get("version") != 2:
+            raise ValueError(f"Unsupported inherited manifest: {source}")
+        inherited = manifest["splits"]
+        if manifest.get("sha256") != cms_split_manifest(inherited)["sha256"]:
+            raise ValueError(f"Inherited manifest hash mismatch: {source}")
+        if old.get("cms_split_manifest_sha256") not in (None, manifest["sha256"]):
+            raise ValueError("Checkpoint summary and inherited manifest hashes disagree.")
+        for label in mc_labels:
+            seen = set()
+            for split in ("train", "val", "test"):
+                if label not in inherited[split]:
+                    raise ValueError(f"Inherited manifest lacks {split}/{label}: {source}")
+                paths = [str(Path(p).expanduser().resolve()) for p in inherited[split][label]]
+                if len(paths) != len(set(paths)) or seen.intersection(paths):
+                    raise ValueError(f"Duplicate or overlapping inherited files for {label}")
+                if any(not Path(p).is_file() for p in paths):
+                    raise FileNotFoundError(f"Inherited files missing for {label}")
+                seen.update(paths)
+                splits[split][label] = paths
+        reason = "inherited MC assignments; real split generated independently"
+    mc = {split: {label: paths for label, paths in labels.items() if label != "label_Real"}
+          for split, labels in splits.items()}
+    real = {split: {label: paths for label, paths in labels.items() if label == "label_Real"}
+            for split, labels in splits.items()}
+    return splits, cms_split_manifest(mc), cms_split_manifest(real), {
+        "policy": reason, "source": str(source) if source else None,
     }
 
 
@@ -908,6 +980,7 @@ class CMSIterableDataset(IterableDataset):
         seed: int = 42,
         rank: int = 0,
         world_size: int = 1,
+        stop_on_first_exhaustion: bool = False,
     ):
         super().__init__()
         validate_cms_labels(labels_to_load)
@@ -958,6 +1031,7 @@ class CMSIterableDataset(IterableDataset):
             len(self.labels_to_load), int(shuffle_active_shards)
         )
         self.effective_active_shards = self.shuffle_active_shards
+        self.stop_on_first_exhaustion = bool(stop_on_first_exhaustion)
         self.infinite = bool(infinite)
         self.seed = int(seed)
         self.rank = int(rank)
@@ -966,10 +1040,43 @@ class CMSIterableDataset(IterableDataset):
             path for paths in self.files_by_label.values() for path in paths
         )
 
+    def _iter_balanced_finite(self):
+        # Each child exhausts every unique slice once. Buffer a complete label
+        # cycle before yielding so the final incomplete cycle is discarded.
+        streams = []
+        for label in self.labels_to_load:
+            child = CMSIterableDataset(
+                self.files_by_label, [label], self.label_axis, self.particle_features,
+                self.max_num_particles, min_nodes=self.min_nodes,
+                lowerpt=self.lowerpt, upperpt=self.upperpt, shuffle_files=True,
+                shuffle_active_shards=1, infinite=False, seed=self.seed,
+            )
+            streams.append(iter(child))
+        quota = None if self.max_events is None else self.max_events // len(streams)
+        cycles = 0
+        try:
+            while quota is None or cycles < quota:
+                cycle = []
+                for stream in streams:
+                    try:
+                        cycle.append(next(stream))
+                    except StopIteration:
+                        return
+                yield from cycle
+                cycles += 1
+        finally:
+            for stream in streams:
+                stream.close()
+
     def __iter__(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
         worker_info = get_worker_info()
         local_worker_id = 0 if worker_info is None else worker_info.id
         local_num_workers = 1 if worker_info is None else worker_info.num_workers
+        if self.stop_on_first_exhaustion:
+            if self.world_size != 1 or self.rank != 0 or local_num_workers != 1:
+                raise ValueError("Balanced finite CMS pool requires one rank and at most one worker.")
+            yield from self._iter_balanced_finite()
+            return
         global_worker_id = self.rank * local_num_workers + local_worker_id
         global_num_workers = self.world_size * local_num_workers
 
@@ -1143,7 +1250,7 @@ class CMSIterableDataset(IterableDataset):
                         if len(x_particles) == 0:
                             empty_slice_streak[label] += 1
                             if (
-                                empty_slice_streak[label]
+                                self.infinite and empty_slice_streak[label]
                                 >= total_local_slices_by_label[label]
                             ):
                                 raise RuntimeError(
@@ -1271,5 +1378,6 @@ __all__ = [
     "load_and_preprocess_cms_file",
     "read_file",
     "split_cms_files",
+    "prepare_cms_splits",
     "validate_cms_labels",
 ]

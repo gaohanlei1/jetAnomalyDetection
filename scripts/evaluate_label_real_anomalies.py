@@ -1,42 +1,11 @@
 #!/usr/bin/env python3
-"""Evaluate a real-CMS fine-tuned LeJEPA model on the held-out label_Real test split.
+"""Score held-out real jets against a balanced, non-repeating train kNN pool.
 
-The script reads only ``label_Real`` from the CMS test split recorded in the
-fine-tuning run's ``cms_split_manifest.json``. It never reads train or val.
-Evaluation is finite: every selected test shard is traversed once, without the
-infinite refill used during training.
-
-Evaluation workflow:
-    1. Count the finite held-out test events (or an optional debug batch cap).
-    2. Select an exact random ``fit_fraction`` of those events and fit one global
-       Gaussian in representation space.
-    3. Score the complete held-out test sample with global squared Mahalanobis
-       distance.
-    4. Save the highest-scoring ``top_fraction`` events, their scores, the full
-       score array, the Gaussian parameters, a score distribution, and a random
-       visualization of selected anomalous jets.
-
-A plot-only mode can load a saved ``(events, particles, features)`` NumPy array
-and its separately saved feature-name JSON without loading a model.
-
-Examples
---------
-Full real-data evaluation (defaults to best_model.pth):
-    python -u scripts/evaluate_label_real_anomalies.py \
-        plots/real-data-finetune-run
-
-Use last_model.pth and draw 16 selected jets:
-    python -u scripts/evaluate_label_real_anomalies.py \
-        plots/real-data-finetune-run \
-        --checkpoint plots/real-data-finetune-run/last_model.pth \
-        --num-visualize 16
-
-Plot-only mode:
-    python -u scripts/evaluate_label_real_anomalies.py \
-        --plot-events-npy real_test_top_5pct_events.npy \
-        --feature-list real_test_top_5pct_events_features.json \
-        --event-scores real_test_top_5pct_event_scores.npy \
-        --num-visualize 12
+The run manifest supplies training files for the saved background labels and
+label_Real test files. Each reference class contributes the same number of
+jets, stopping when the requested quota or the smallest class is exhausted.
+The model is frozen. Exact Euclidean kNN scores select the top-fraction events.
+Plot-only mode retains the saved event-array interface.
 """
 
 from __future__ import annotations
@@ -46,6 +15,7 @@ import heapq
 import inspect
 import json
 import math
+import os
 import random
 import sys
 import warnings
@@ -122,8 +92,8 @@ def _strip_common_prefix(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Fit a global Gaussian on half of held-out label_Real test events, "
-            "score the entire held-out test split, and save the top anomalies."
+            "Build a balanced train kNN pool, score held-out real test jets, "
+            "and save the top anomalies."
         )
     )
     parser.add_argument(
@@ -160,12 +130,15 @@ def parse_args() -> argparse.Namespace:
         "--num-workers",
         type=int,
         default=None,
-        help="Defaults to summary.json num_workers and is capped by test shards.",
+        help="Requested workers (defaults to training setting); evaluation overrides this to 1.",
     )
     parser.add_argument("--device", type=str, default="auto")
-    parser.add_argument("--fit-fraction", type=float, default=0.5)
+    parser.add_argument("--reference-steps", type=int, default=100,
+                        help="Requested pool size = steps * batch-size, rounded down to full class cycles.")
+    parser.add_argument("--knn-k", type=int, default=10)
+    parser.add_argument("--knn-reduction", choices=("mean", "kth"), default="mean")
+    parser.add_argument("--knn-reference-batch-size", type=int, default=8192)
     parser.add_argument("--top-fraction", type=float, default=0.05)
-    parser.add_argument("--mahalanobis-cov-eps", type=float, default=None)
     parser.add_argument("--max-num-particles", type=int, default=None)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--num-visualize", type=int, default=12)
@@ -271,11 +244,9 @@ class RealTestBackend:
 
         backgrounds = [str(x) for x in summary.get("background_labels", [])]
         signals = [str(x) for x in summary.get("signal_labels", [])]
-        if backgrounds != [REAL_LABEL]:
-            raise ValueError(
-                "The fine-tuning run must have background_labels=['label_Real']; "
-                f"found {backgrounds}."
-            )
+        if not backgrounds or REAL_LABEL not in backgrounds:
+            raise ValueError("The fine-tuning background labels must include label_Real.")
+        self.reference_labels = list(dict.fromkeys(backgrounds))
         if signals:
             warnings.warn(
                 f"Ignoring configured signal labels {signals}; this evaluator reads only label_Real/test."
@@ -355,14 +326,37 @@ class RealTestBackend:
 
         self.splits = self._resolve_manifest_paths(manifest["splits"])
         test_labels = self.splits.get("test", {})
-        if set(test_labels) != {REAL_LABEL}:
+        if REAL_LABEL not in test_labels:
             raise ValueError(
-                "The test split must contain only label_Real for this evaluator; "
+                "The test split must contain label_Real for this evaluator; "
                 f"found {sorted(test_labels)}."
             )
         self.test_files = list(test_labels[REAL_LABEL])
         if not self.test_files:
             raise ValueError("The label_Real test split contains no ROOT shards.")
+
+    def make_reference_loader(self, *, seed, batch_size, max_events, pin_memory):
+        train = self.splits["train"]
+        for label in self.reference_labels:
+            if not train.get(label):
+                raise ValueError(f"Missing train files for reference class {label}")
+        reference_paths = [p for label in self.reference_labels for p in train[label]]
+        if len(reference_paths) != len(set(reference_paths)):
+            raise ValueError("Repeated file in reference pool manifest.")
+        if set(reference_paths).intersection(self.test_files):
+            raise ValueError("Reference train files overlap real test files.")
+        dataset = cms_streaming.CMSIterableDataset(
+            files_by_label=train, labels_to_load=self.reference_labels,
+            label_axis=self.label_axis, particle_features=self.feature_names,
+            max_num_particles=self.max_num_particles, min_nodes=self.min_nodes,
+            lowerpt=self.pt_min, upperpt=self.pt_max, max_events=max_events,
+            shuffle_files=True, infinite=False, seed=seed,
+            stop_on_first_exhaustion=True,
+        )
+        return DataLoader(dataset, batch_size=batch_size, num_workers=1,
+                          collate_fn=cms_streaming.collate_cms_tensors,
+                          drop_last=False, pin_memory=pin_memory,
+                          multiprocessing_context="spawn", prefetch_factor=1)
 
     def _resolve_manifest_paths(
         self, splits: Mapping[str, Mapping[str, Sequence[str]]]
@@ -432,7 +426,7 @@ class RealTestBackend:
             lowerpt=self.pt_min,
             upperpt=self.pt_max,
             max_events=None,
-            shuffle_files=False,
+            shuffle_files=True,
             shuffle_active_shards=self.shuffle_active_shards,
             infinite=False,
             seed=seed,
@@ -454,7 +448,8 @@ class RealTestBackend:
             "drop_last": False,
         }
         if num_workers > 0:
-            kwargs["prefetch_factor"] = int(self.summary.get("prefetch_factor", 2))
+            kwargs["prefetch_factor"] = 1
+            kwargs["multiprocessing_context"] = "spawn"
         return DataLoader(**kwargs)
 
 
@@ -692,107 +687,59 @@ def count_test_events(
     return total
 
 
-def fit_global_gaussian(
-    *,
-    model: torch.nn.Module,
-    loader: DataLoader,
-    total_events: int,
-    fit_fraction: float,
-    seed: int,
-    device: torch.device,
-    precision: str,
-    cov_eps: float,
-    max_steps: Optional[int],
-    representation_dim: int,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Dict[str, object]]:
-    if not 0.0 < fit_fraction < 1.0:
-        raise ValueError("--fit-fraction must lie strictly between 0 and 1.")
-    fit_count = int(round(total_events * fit_fraction))
-    fit_count = min(max(fit_count, 2), total_events - 1)
-    rng = np.random.default_rng(seed)
-
-    remaining_total = total_events
-    remaining_fit = fit_count
-    sum_z = np.zeros(representation_dim, dtype=np.float64)
-    sum_zz = np.zeros((representation_dim, representation_dim), dtype=np.float64)
-    selected = 0
-
-    for batch in iter_limited(loader, max_steps=max_steps, description="Fit global Gaussian"):
-        batch_size = int(batch["x_particles"].shape[0])
-        if batch_size > remaining_total:
-            raise RuntimeError("Fit pass produced more events than the count pass.")
-        choose_count = int(
-            rng.hypergeometric(
-                ngood=remaining_fit,
-                nbad=remaining_total - remaining_fit,
-                nsample=batch_size,
-            )
-        )
-        remaining_total -= batch_size
-        remaining_fit -= choose_count
-        if choose_count == 0:
-            continue
-
-        local_indices = np.sort(
-            rng.choice(batch_size, size=choose_count, replace=False)
-        )
-        index_tensor = torch.as_tensor(local_indices, dtype=torch.long)
-        x = batch["x_particles"].index_select(0, index_tensor).to(
-            device, non_blocking=True
-        )
-        mask = batch["padding_mask"].index_select(0, index_tensor).to(
-            device, non_blocking=True
-        )
+@torch.no_grad()
+def collect_reference_pool(model, loader, *, device, precision, label_axis,
+                           labels, requested_per_class):
+    chunks = []
+    counts = {label: 0 for label in labels}
+    for batch in tqdm(loader, desc="Encode balanced train reference"):
         with autocast_context(device, precision):
-            z = encode_single_view(model, x, mask)
-        z64 = z.detach().float().cpu().numpy().astype(np.float64, copy=False)
-        if z64.ndim != 2 or z64.shape[1] != representation_dim:
-            raise RuntimeError(
-                f"Unexpected representation shape {z64.shape}; expected (*, {representation_dim})."
-            )
-        sum_z += z64.sum(axis=0)
-        sum_zz += z64.T @ z64
-        selected += len(z64)
-
-    if remaining_total != 0 or remaining_fit != 0 or selected != fit_count:
-        raise RuntimeError(
-            "Exact fit-subset selection failed: "
-            f"remaining_total={remaining_total}, remaining_fit={remaining_fit}, "
-            f"selected={selected}, target={fit_count}."
-        )
-
-    mean = sum_z / selected
-    covariance = (sum_zz - selected * np.outer(mean, mean)) / (selected - 1)
-    covariance = 0.5 * (covariance + covariance.T)
-    regularized = covariance + cov_eps * np.eye(representation_dim, dtype=np.float64)
-    precision_matrix = np.linalg.pinv(regularized)
-    raw_eig = np.linalg.eigvalsh(covariance)
-    reg_eig = np.linalg.eigvalsh(regularized)
-    positive = raw_eig[raw_eig > 0]
-    diagnostics: Dict[str, object] = {
-        "num_fit_events": int(selected),
-        "fit_fraction_realized": float(selected / total_events),
-        "latent_dim": int(representation_dim),
-        "cov_eps": float(cov_eps),
-        "raw_min_eigenvalue": float(raw_eig.min()),
-        "raw_max_eigenvalue": float(raw_eig.max()),
-        "raw_condition_number_positive_spectrum": (
-            float(raw_eig.max() / positive.min()) if len(positive) else float("inf")
-        ),
-        "regularized_min_eigenvalue": float(reg_eig.min()),
-        "regularized_max_eigenvalue": float(reg_eig.max()),
-        "regularized_condition_number": float(reg_eig.max() / reg_eig.min()),
-    }
-    return mean, covariance, precision_matrix, diagnostics
+            z = encode_single_view(model, batch["x_particles"].to(device),
+                                   batch["padding_mask"].to(device))
+        chunks.append(z.detach().float().cpu())
+        for index in batch["y"].argmax(dim=1).tolist():
+            counts[label_axis[index]] += 1
+    if len(set(counts.values())) != 1:
+        raise RuntimeError(f"Unbalanced reference pool: {counts}")
+    actual = next(iter(counts.values()))
+    if actual < requested_per_class:
+        warnings.warn(f"Reference request {requested_per_class} jets/class exceeds smallest "
+                      f"available class m={actual}; stopped without refill. Counts: {counts}")
+    if not chunks:
+        raise RuntimeError("No complete class cycle available for reference pool.")
+    reference = torch.cat(chunks)
+    if not torch.isfinite(reference).all():
+        raise ValueError("Non-finite reference representations.")
+    print(f"Reference pool counts: {counts}; total={len(reference)}")
+    return reference, counts
 
 
-def mahalanobis_scores(
-    latents: np.ndarray,
-    mean: np.ndarray,
-    precision_matrix: np.ndarray,
-) -> np.ndarray:
-    centered = np.asarray(latents, dtype=np.float64) - mean
-    return np.einsum("ni,ij,nj->n", centered, precision_matrix, centered)
+@torch.no_grad()
+def knn_scores(query, reference, *, k, reduction, reference_batch_size):
+    """Exact kNN; keep the reference on CPU and transfer bounded blocks."""
+    if not 1 <= k <= len(reference):
+        raise ValueError(f"k={k} requires at least {k} reference jets, got {len(reference)}")
+    if reduction not in ("mean", "kth") or reference_batch_size < 1:
+        raise ValueError("Invalid kNN reduction or reference batch size.")
+    query = query.float()
+    if not torch.isfinite(query).all():
+        raise ValueError("Non-finite query representations.")
+    best = query.new_full((len(query), k), float("inf"))
+    for start in range(0, len(reference), reference_batch_size):
+        block = reference[start:start + reference_batch_size].to(query.device)
+        distances = torch.cdist(query, block)
+        candidates = distances.topk(min(k, len(block)), largest=False).values
+        best = torch.cat((best, candidates), dim=1).topk(k, largest=False).values
+    scores = best.mean(dim=1) if reduction == "mean" else best.max(dim=1).values
+    return scores.cpu().numpy()
+
+
+def validate_world_size():
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        world_size = max(world_size, torch.distributed.get_world_size())
+    if world_size != 1:
+        raise RuntimeError(f"Real-data kNN evaluation requires world size == 1; got {world_size}.")
 
 
 def _fraction_tag(fraction: float) -> str:
@@ -807,8 +754,10 @@ def score_and_select_top_events(
     model: torch.nn.Module,
     loader: DataLoader,
     total_events: int,
-    mean: np.ndarray,
-    precision_matrix: np.ndarray,
+    reference: torch.Tensor,
+    k: int,
+    reduction: str,
+    reference_batch_size: int,
     top_fraction: float,
     device: torch.device,
     precision: str,
@@ -823,7 +772,7 @@ def score_and_select_top_events(
     top_count = max(1, int(math.ceil(total_events * top_fraction)))
     tag = _fraction_tag(top_fraction)
 
-    all_scores_path = output_dir / "real_test_global_mahalanobis_scores.npy"
+    all_scores_path = output_dir / "real_test_knn_scores.npy"
     temp_events_path = output_dir / f".real_test_top_{tag}_events_unsorted.npy"
     final_events_path = output_dir / f"real_test_top_{tag}_events.npy"
     final_scores_path = output_dir / f"real_test_top_{tag}_event_scores.npy"
@@ -855,8 +804,8 @@ def score_and_select_top_events(
         mask = batch["padding_mask"].to(device, non_blocking=True)
         with autocast_context(device, precision):
             z = encode_single_view(model, x, mask)
-        z_np = z.detach().float().cpu().numpy()
-        scores = mahalanobis_scores(z_np, mean, precision_matrix)
+        scores = knn_scores(z, reference, k=k, reduction=reduction,
+                            reference_batch_size=reference_batch_size)
         scores32 = scores.astype(np.float32, copy=False)
         all_scores[offset : offset + batch_size] = scores32
 
@@ -996,7 +945,7 @@ def plot_score_distribution(
         label=f"top-event cut = {cutoff:.3g}",
     )
     ax.axvspan(cutoff, high, color="#B7657B", alpha=0.08)
-    ax.set_xlabel("Global squared Mahalanobis score")
+    ax.set_xlabel("Euclidean kNN score")
     ax.set_ylabel("Density")
     ax.set_title("Held-out CMS real-data anomaly-score distribution")
     ax.grid(False)
@@ -1094,6 +1043,7 @@ def run_plot_only(args: argparse.Namespace) -> None:
 
 def main() -> None:
     args = parse_args()
+    validate_world_size()
     if args.plot_events_npy is not None:
         run_plot_only(args)
         return
@@ -1150,23 +1100,18 @@ def main() -> None:
     )
     if requested_workers < 0:
         raise ValueError("--num-workers must be non-negative.")
-    num_workers = min(requested_workers, len(backend.test_files))
-    if num_workers != requested_workers:
-        warnings.warn(
-            f"Reduced num_workers from {requested_workers} to {num_workers} so "
-            "every worker receives at least one label_Real test shard."
-        )
-    fit_fraction = float(args.fit_fraction)
+    num_workers = 1
+    warnings.warn(f"Overriding evaluation num_workers={requested_workers} to 1; "
+                  "balanced finite reference sampling requires one worker.")
+    for name in ("reference_steps", "knn_k", "knn_reference_batch_size"):
+        if getattr(args, name) < 1:
+            raise ValueError(f"--{name.replace('_', '-')} must be positive.")
+    if args.eval_steps is not None and args.eval_steps < 1:
+        raise ValueError("--eval-steps must be positive.")
     top_fraction = float(args.top_fraction)
-    cov_eps = float(
-        args.mahalanobis_cov_eps
-        if args.mahalanobis_cov_eps is not None
-        else summary.get("mahalanobis_cov_eps", 1e-4)
-    )
-    if cov_eps <= 0:
-        raise ValueError("--mahalanobis-cov-eps must be positive.")
+    if not 0 < top_fraction < 1:
+        raise ValueError("--top-fraction must be between 0 and 1.")
     precision = str(summary.get("precision", "fp32"))
-    representation_dim = int(summary["representation_dim"])
     loader_seed = seed + 404
 
     print(f"Run directory: {run_dir}")
@@ -1175,7 +1120,7 @@ def main() -> None:
     print(f"Manifest: {backend.manifest_path}")
     print(f"label_Real test shards: {len(backend.test_files)}")
     print(f"Device: {device}; batch size: {batch_size}; workers: {num_workers}")
-    print(f"Fit fraction: {fit_fraction}; top fraction: {top_fraction}")
+    print(f"kNN k={args.knn_k}, reduction={args.knn_reduction}; top fraction={top_fraction}")
     if args.eval_steps is None:
         print("Evaluation scope: complete finite label_Real test split")
     else:
@@ -1190,42 +1135,36 @@ def main() -> None:
         )
 
     total_events = count_test_events(make_loader(), args.eval_steps)
-    if total_events < 4:
+    if total_events < 1:
         raise RuntimeError(f"Only {total_events} held-out test events were found.")
     print(f"Finite held-out test events: {total_events:,}")
 
     model = build_model(summary, backend, device)
     load_model_weights(model, checkpoint_path, device)
 
-    mean, covariance, precision_matrix, gaussian_diagnostics = fit_global_gaussian(
-        model=model,
-        loader=make_loader(),
-        total_events=total_events,
-        fit_fraction=fit_fraction,
-        seed=seed + 505,
-        device=device,
-        precision=precision,
-        cov_eps=cov_eps,
-        max_steps=args.eval_steps,
-        representation_dim=representation_dim,
+    model.eval().requires_grad_(False)
+    requested_per_class = args.reference_steps * batch_size // len(backend.reference_labels)
+    if requested_per_class < 1:
+        raise ValueError("Requested reference pool must contain at least one jet per class.")
+    reference, reference_counts = collect_reference_pool(
+        model, backend.make_reference_loader(
+            seed=seed + 505, batch_size=batch_size,
+            max_events=requested_per_class * len(backend.reference_labels),
+            pin_memory=device.type == "cuda"),
+        device=device, precision=precision, label_axis=backend.label_axis,
+        labels=backend.reference_labels, requested_per_class=requested_per_class,
     )
-    gaussian_path = output_dir / "real_test_global_gaussian.npz"
-    np.savez(
-        gaussian_path,
-        mean=mean,
-        covariance=covariance,
-        precision=precision_matrix,
-        fit_count=np.asarray(gaussian_diagnostics["num_fit_events"], dtype=np.int64),
-        fit_fraction=np.asarray(fit_fraction, dtype=np.float64),
-        cov_eps=np.asarray(cov_eps, dtype=np.float64),
-    )
+    if len(reference) < args.knn_k:
+        raise ValueError(f"Reference pool has {len(reference)} jets, fewer than k={args.knn_k}.")
+    reference_path = output_dir / "train_reference_latents.npy"
+    np.save(reference_path, reference.numpy())
 
     selection = score_and_select_top_events(
         model=model,
         loader=make_loader(),
         total_events=total_events,
-        mean=mean,
-        precision_matrix=precision_matrix,
+        reference=reference, k=args.knn_k, reduction=args.knn_reduction,
+        reference_batch_size=args.knn_reference_batch_size,
         top_fraction=top_fraction,
         device=device,
         precision=precision,
@@ -1287,9 +1226,13 @@ def main() -> None:
         "num_workers": num_workers,
         "eval_steps": args.eval_steps,
         "total_test_events": total_events,
-        "fit_fraction_requested": fit_fraction,
+        "reference_steps": args.reference_steps,
+        "reference_requested_per_class": requested_per_class,
+        "reference_counts": reference_counts,
+        "reference_labels": backend.reference_labels,
+        "knn_k": args.knn_k,
+        "knn_reduction": args.knn_reduction,
         "top_fraction_requested": top_fraction,
-        "gaussian": gaussian_diagnostics,
         "score_stats": selection["score_stats"],
         "histogram_stats": histogram_stats,
         "top_count": selection["top_count"],
@@ -1297,7 +1240,7 @@ def main() -> None:
         "top_cutoff": selection["cutoff"],
         "random_visualized_event_array_indices": selected_visual_indices,
         "files": {
-            "gaussian": gaussian_path,
+            "reference_latents": reference_path,
             "all_scores": selection["all_scores_path"],
             "top_events": selection["events_path"],
             "top_event_scores": selection["event_scores_path"],

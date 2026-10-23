@@ -44,8 +44,8 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 # "label_QCD,label_Hbb,label_Zqq,label_Wqq,label_Tbqq"
 # python -u \
 # "/HEP/export/home/hgao50/jet-anomaly-data/ak8-data"
-# --cms-val-fraction 0.05 \
-#     --cms-test-fraction 0.45 \
+# --cms-real-val-fraction 0.05 \
+#     --cms-real-test-fraction 0.45 \
 
 torchrun --standalone --nproc-per-node=2 \
     scripts/run_train_lejepa_part.py \
@@ -103,8 +103,8 @@ torchrun --standalone --nproc-per-node=2 \
     --model semi-sup-triplet \
     --checkpoint "plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt" \
     --background-labels "label_Real" \
-    --cms-val-fraction 0.05 \
-    --cms-test-fraction 0.45 \
+    --cms-real-val-fraction 0.05 \
+    --cms-real-test-fraction 0.45 \
     --embed-dim 128 \
     --representation-dim 128 \
     --dropout 0.02 \

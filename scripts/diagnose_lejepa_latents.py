@@ -292,6 +292,8 @@ class DiagnosticDatasetBackend:
                 val_fraction=float(self.summary.get("cms_val_fraction", 0.1)),
                 test_fraction=float(self.summary.get("cms_test_fraction", 0.1)),
                 seed=int(self.summary.get("cms_split_seed", 42)),
+                real_val_fraction=self.summary.get("cms_real_val_fraction"),
+                real_test_fraction=self.summary.get("cms_real_test_fraction"),
             )
             rebuilt_manifest = cms_streaming.cms_split_manifest(self.cms_splits)
             self.cms_manifest_sha256 = str(rebuilt_manifest["sha256"])
