@@ -56,7 +56,10 @@
     "label_Wqq"
   ],
   "signal_labels": [
-    "label_Hbb"
+    "label_Hbb",
+    "label_fQCD",
+    "label_Tbl",
+    "label_Hqql"
   ],
   "particle_features": [
     "part_px",

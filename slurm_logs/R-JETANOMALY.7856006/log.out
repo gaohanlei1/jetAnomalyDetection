@@ -1,0 +1,597 @@
+## SLURM PROLOG ###############################################################
+##    Job ID : 7856006
+##  Job Name : JETANOMALY
+##  Nodelist : gpu2106
+##      CPUs : 1
+##  Mem/Node : 65536 MB
+## Directory : /oscar/home/lwang223/jetAnomalyDetection
+##   Job Started : Fri Oct 23 12:26:07 PM EDT 2026
+###############################################################################
+
+==========================================
+Job started at: Fri Oct 23 12:26:07 PM EDT 2026
+Job ID: 7856006
+Node: gpu2106
+==========================================
+
+GPU Information (from host):
+Fri Oct 23 12:26:07 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA GeForce RTX 3090        On  |   00000000:81:00.0 Off |                  N/A |
+| 30%   30C    P8             24W /  350W |      19MiB /  24576MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A          181454      G   /usr/libexec/Xorg                         5MiB |
++-----------------------------------------------------------------------------------------+
+
+PyTorch version: 2.6.0+cu124
+Running k=1 → plots/jetclass/32-QcdTbqqHggWqq/latent_diagnostics_k_1
+Dataset backend: jetclass
+Dataset root: /HEP/export/home/lwang223/JetClass/JetClass/Pythia
+Loading /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/best_model.pth on cuda:0
+Sampling 100 x 128 events from each source stream
+Full-jet density latent space: representation
+Training labels: QCD+Tbqq+Hgg+Wqq
+Visualization signal labels: Hbb+fQCD+Tbl+Hqql
+Dataset label axis: ['label_QCD', 'label_Hbb', 'label_Hcc', 'label_Hgg', 'label_H4q', 'label_Hqql', 'label_Zqq', 'label_Wqq', 'label_Tbqq', 'label_Tbl', 'label_fQCD']
+Particle feature order:
+   0: part_px
+   1: part_py
+   2: part_pz
+   3: part_energy
+   4: part_pt
+   5: log_pt_fraction
+   6: part_deta
+   7: part_dphi
+   8: d0_sig
+   9: dz_sig
+  10: part_charge
+  11: part_isChargedHadron
+  12: part_isNeutralHadron
+  13: part_isPhoton
+  14: part_isElectron
+  15: part_isMuon
+Batch-standardized particle features: ['log_pt_fraction', 'd0_sig', 'dz_sig']
+
+Collecting validation representations once per source...
+Collected validation latents: background=12800, signal=12800
+
+Fitting validation background scores: label_QCD, label_Tbqq, label_Hgg, label_Wqq
+signal=Hbb, combined_mahalanobis: AUC=0.464890
+signal=Hbb, knn: AUC=0.578996
+signal=Hbb, gmm: AUC=0.574892
+signal=Hbb, labeled_gmm: AUC=0.610500
+signal=Hbb, joint_class_mahalanobis: AUC=0.470202
+signal=Hbb, joint_class_percentile_mahalanobis: AUC=0.495153
+signal=Hbb, joint_class_raw_mahalanobis: AUC=0.435011
+signal=fQCD, combined_mahalanobis: AUC=0.356223
+signal=fQCD, knn: AUC=0.411071
+signal=fQCD, gmm: AUC=0.410167
+signal=fQCD, labeled_gmm: AUC=0.378835
+signal=fQCD, joint_class_mahalanobis: AUC=0.503769
+signal=fQCD, joint_class_percentile_mahalanobis: AUC=0.558462
+signal=fQCD, joint_class_raw_mahalanobis: AUC=0.544893
+signal=Tbl, combined_mahalanobis: AUC=0.586644
+signal=Tbl, knn: AUC=0.776642
+signal=Tbl, gmm: AUC=0.722508
+signal=Tbl, labeled_gmm: AUC=0.673387
+signal=Tbl, joint_class_mahalanobis: AUC=0.564611
+signal=Tbl, joint_class_percentile_mahalanobis: AUC=0.501988
+signal=Tbl, joint_class_raw_mahalanobis: AUC=0.568914
+signal=Hqql, combined_mahalanobis: AUC=0.621909
+signal=Hqql, knn: AUC=0.822653
+signal=Hqql, gmm: AUC=0.733024
+signal=Hqql, labeled_gmm: AUC=0.756579
+signal=Hqql, joint_class_mahalanobis: AUC=0.577039
+signal=Hqql, joint_class_percentile_mahalanobis: AUC=0.425910
+signal=Hqql, joint_class_raw_mahalanobis: AUC=0.566892
+
+Saved diagnostics to /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/latent_diagnostics_k_1
+Running k=3 → plots/jetclass/32-QcdTbqqHggWqq/latent_diagnostics_k_3
+Dataset backend: jetclass
+Dataset root: /HEP/export/home/lwang223/JetClass/JetClass/Pythia
+Loading /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/best_model.pth on cuda:0
+Sampling 100 x 128 events from each source stream
+Full-jet density latent space: representation
+Training labels: QCD+Tbqq+Hgg+Wqq
+Visualization signal labels: Hbb+fQCD+Tbl+Hqql
+Dataset label axis: ['label_QCD', 'label_Hbb', 'label_Hcc', 'label_Hgg', 'label_H4q', 'label_Hqql', 'label_Zqq', 'label_Wqq', 'label_Tbqq', 'label_Tbl', 'label_fQCD']
+Particle feature order:
+   0: part_px
+   1: part_py
+   2: part_pz
+   3: part_energy
+   4: part_pt
+   5: log_pt_fraction
+   6: part_deta
+   7: part_dphi
+   8: d0_sig
+   9: dz_sig
+  10: part_charge
+  11: part_isChargedHadron
+  12: part_isNeutralHadron
+  13: part_isPhoton
+  14: part_isElectron
+  15: part_isMuon
+Batch-standardized particle features: ['log_pt_fraction', 'd0_sig', 'dz_sig']
+
+Collecting validation representations once per source...
+Collected validation latents: background=12800, signal=12800
+
+Fitting validation background scores: label_QCD, label_Tbqq, label_Hgg, label_Wqq
+signal=Hbb, combined_mahalanobis: AUC=0.464890
+signal=Hbb, knn: AUC=0.587304
+signal=Hbb, gmm: AUC=0.574892
+signal=Hbb, labeled_gmm: AUC=0.610500
+signal=Hbb, joint_class_mahalanobis: AUC=0.470202
+signal=Hbb, joint_class_percentile_mahalanobis: AUC=0.495153
+signal=Hbb, joint_class_raw_mahalanobis: AUC=0.435011
+signal=fQCD, combined_mahalanobis: AUC=0.356223
+signal=fQCD, knn: AUC=0.397465
+signal=fQCD, gmm: AUC=0.410167
+signal=fQCD, labeled_gmm: AUC=0.378835
+signal=fQCD, joint_class_mahalanobis: AUC=0.503769
+signal=fQCD, joint_class_percentile_mahalanobis: AUC=0.558462
+signal=fQCD, joint_class_raw_mahalanobis: AUC=0.544893
+signal=Tbl, combined_mahalanobis: AUC=0.586644
+signal=Tbl, knn: AUC=0.799845
+signal=Tbl, gmm: AUC=0.722508
+signal=Tbl, labeled_gmm: AUC=0.673387
+signal=Tbl, joint_class_mahalanobis: AUC=0.564611
+signal=Tbl, joint_class_percentile_mahalanobis: AUC=0.501988
+signal=Tbl, joint_class_raw_mahalanobis: AUC=0.568914
+signal=Hqql, combined_mahalanobis: AUC=0.621909
+signal=Hqql, knn: AUC=0.840284
+signal=Hqql, gmm: AUC=0.733024
+signal=Hqql, labeled_gmm: AUC=0.756579
+signal=Hqql, joint_class_mahalanobis: AUC=0.577039
+signal=Hqql, joint_class_percentile_mahalanobis: AUC=0.425910
+signal=Hqql, joint_class_raw_mahalanobis: AUC=0.566892
+
+Saved diagnostics to /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/latent_diagnostics_k_3
+Running k=5 → plots/jetclass/32-QcdTbqqHggWqq/latent_diagnostics_k_5
+Dataset backend: jetclass
+Dataset root: /HEP/export/home/lwang223/JetClass/JetClass/Pythia
+Loading /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/best_model.pth on cuda:0
+Sampling 100 x 128 events from each source stream
+Full-jet density latent space: representation
+Training labels: QCD+Tbqq+Hgg+Wqq
+Visualization signal labels: Hbb+fQCD+Tbl+Hqql
+Dataset label axis: ['label_QCD', 'label_Hbb', 'label_Hcc', 'label_Hgg', 'label_H4q', 'label_Hqql', 'label_Zqq', 'label_Wqq', 'label_Tbqq', 'label_Tbl', 'label_fQCD']
+Particle feature order:
+   0: part_px
+   1: part_py
+   2: part_pz
+   3: part_energy
+   4: part_pt
+   5: log_pt_fraction
+   6: part_deta
+   7: part_dphi
+   8: d0_sig
+   9: dz_sig
+  10: part_charge
+  11: part_isChargedHadron
+  12: part_isNeutralHadron
+  13: part_isPhoton
+  14: part_isElectron
+  15: part_isMuon
+Batch-standardized particle features: ['log_pt_fraction', 'd0_sig', 'dz_sig']
+
+Collecting validation representations once per source...
+Collected validation latents: background=12800, signal=12800
+
+Fitting validation background scores: label_QCD, label_Tbqq, label_Hgg, label_Wqq
+signal=Hbb, combined_mahalanobis: AUC=0.464890
+signal=Hbb, knn: AUC=0.589466
+signal=Hbb, gmm: AUC=0.574892
+signal=Hbb, labeled_gmm: AUC=0.610500
+signal=Hbb, joint_class_mahalanobis: AUC=0.470202
+signal=Hbb, joint_class_percentile_mahalanobis: AUC=0.495153
+signal=Hbb, joint_class_raw_mahalanobis: AUC=0.435011
+signal=fQCD, combined_mahalanobis: AUC=0.356223
+signal=fQCD, knn: AUC=0.391774
+signal=fQCD, gmm: AUC=0.410167
+signal=fQCD, labeled_gmm: AUC=0.378835
+signal=fQCD, joint_class_mahalanobis: AUC=0.503769
+signal=fQCD, joint_class_percentile_mahalanobis: AUC=0.558462
+signal=fQCD, joint_class_raw_mahalanobis: AUC=0.544893
+signal=Tbl, combined_mahalanobis: AUC=0.586644
+signal=Tbl, knn: AUC=0.805004
+signal=Tbl, gmm: AUC=0.722508
+signal=Tbl, labeled_gmm: AUC=0.673387
+signal=Tbl, joint_class_mahalanobis: AUC=0.564611
+signal=Tbl, joint_class_percentile_mahalanobis: AUC=0.501988
+signal=Tbl, joint_class_raw_mahalanobis: AUC=0.568914
+signal=Hqql, combined_mahalanobis: AUC=0.621909
+signal=Hqql, knn: AUC=0.843563
+signal=Hqql, gmm: AUC=0.733024
+signal=Hqql, labeled_gmm: AUC=0.756579
+signal=Hqql, joint_class_mahalanobis: AUC=0.577039
+signal=Hqql, joint_class_percentile_mahalanobis: AUC=0.425910
+signal=Hqql, joint_class_raw_mahalanobis: AUC=0.566892
+
+Saved diagnostics to /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/latent_diagnostics_k_5
+Running k=10 → plots/jetclass/32-QcdTbqqHggWqq/latent_diagnostics_k_10
+Dataset backend: jetclass
+Dataset root: /HEP/export/home/lwang223/JetClass/JetClass/Pythia
+Loading /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/best_model.pth on cuda:0
+Sampling 100 x 128 events from each source stream
+Full-jet density latent space: representation
+Training labels: QCD+Tbqq+Hgg+Wqq
+Visualization signal labels: Hbb+fQCD+Tbl+Hqql
+Dataset label axis: ['label_QCD', 'label_Hbb', 'label_Hcc', 'label_Hgg', 'label_H4q', 'label_Hqql', 'label_Zqq', 'label_Wqq', 'label_Tbqq', 'label_Tbl', 'label_fQCD']
+Particle feature order:
+   0: part_px
+   1: part_py
+   2: part_pz
+   3: part_energy
+   4: part_pt
+   5: log_pt_fraction
+   6: part_deta
+   7: part_dphi
+   8: d0_sig
+   9: dz_sig
+  10: part_charge
+  11: part_isChargedHadron
+  12: part_isNeutralHadron
+  13: part_isPhoton
+  14: part_isElectron
+  15: part_isMuon
+Batch-standardized particle features: ['log_pt_fraction', 'd0_sig', 'dz_sig']
+
+Collecting validation representations once per source...
+Collected validation latents: background=12800, signal=12800
+
+Fitting validation background scores: label_QCD, label_Tbqq, label_Hgg, label_Wqq
+signal=Hbb, combined_mahalanobis: AUC=0.464890
+signal=Hbb, knn: AUC=0.589502
+signal=Hbb, gmm: AUC=0.574892
+signal=Hbb, labeled_gmm: AUC=0.610500
+signal=Hbb, joint_class_mahalanobis: AUC=0.470202
+signal=Hbb, joint_class_percentile_mahalanobis: AUC=0.495153
+signal=Hbb, joint_class_raw_mahalanobis: AUC=0.435011
+signal=fQCD, combined_mahalanobis: AUC=0.356223
+signal=fQCD, knn: AUC=0.384398
+signal=fQCD, gmm: AUC=0.410167
+signal=fQCD, labeled_gmm: AUC=0.378835
+signal=fQCD, joint_class_mahalanobis: AUC=0.503769
+signal=fQCD, joint_class_percentile_mahalanobis: AUC=0.558462
+signal=fQCD, joint_class_raw_mahalanobis: AUC=0.544893
+signal=Tbl, combined_mahalanobis: AUC=0.586644
+signal=Tbl, knn: AUC=0.806932
+signal=Tbl, gmm: AUC=0.722508
+signal=Tbl, labeled_gmm: AUC=0.673387
+signal=Tbl, joint_class_mahalanobis: AUC=0.564611
+signal=Tbl, joint_class_percentile_mahalanobis: AUC=0.501988
+signal=Tbl, joint_class_raw_mahalanobis: AUC=0.568914
+signal=Hqql, combined_mahalanobis: AUC=0.621909
+signal=Hqql, knn: AUC=0.844542
+signal=Hqql, gmm: AUC=0.733024
+signal=Hqql, labeled_gmm: AUC=0.756579
+signal=Hqql, joint_class_mahalanobis: AUC=0.577039
+signal=Hqql, joint_class_percentile_mahalanobis: AUC=0.425910
+signal=Hqql, joint_class_raw_mahalanobis: AUC=0.566892
+
+Saved diagnostics to /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/latent_diagnostics_k_10
+Running k=20 → plots/jetclass/32-QcdTbqqHggWqq/latent_diagnostics_k_20
+Dataset backend: jetclass
+Dataset root: /HEP/export/home/lwang223/JetClass/JetClass/Pythia
+Loading /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/best_model.pth on cuda:0
+Sampling 100 x 128 events from each source stream
+Full-jet density latent space: representation
+Training labels: QCD+Tbqq+Hgg+Wqq
+Visualization signal labels: Hbb+fQCD+Tbl+Hqql
+Dataset label axis: ['label_QCD', 'label_Hbb', 'label_Hcc', 'label_Hgg', 'label_H4q', 'label_Hqql', 'label_Zqq', 'label_Wqq', 'label_Tbqq', 'label_Tbl', 'label_fQCD']
+Particle feature order:
+   0: part_px
+   1: part_py
+   2: part_pz
+   3: part_energy
+   4: part_pt
+   5: log_pt_fraction
+   6: part_deta
+   7: part_dphi
+   8: d0_sig
+   9: dz_sig
+  10: part_charge
+  11: part_isChargedHadron
+  12: part_isNeutralHadron
+  13: part_isPhoton
+  14: part_isElectron
+  15: part_isMuon
+Batch-standardized particle features: ['log_pt_fraction', 'd0_sig', 'dz_sig']
+
+Collecting validation representations once per source...
+Collected validation latents: background=12800, signal=12800
+
+Fitting validation background scores: label_QCD, label_Tbqq, label_Hgg, label_Wqq
+signal=Hbb, combined_mahalanobis: AUC=0.464890
+signal=Hbb, knn: AUC=0.586586
+signal=Hbb, gmm: AUC=0.574892
+signal=Hbb, labeled_gmm: AUC=0.610500
+signal=Hbb, joint_class_mahalanobis: AUC=0.470202
+signal=Hbb, joint_class_percentile_mahalanobis: AUC=0.495153
+signal=Hbb, joint_class_raw_mahalanobis: AUC=0.435011
+signal=fQCD, combined_mahalanobis: AUC=0.356223
+signal=fQCD, knn: AUC=0.376120
+signal=fQCD, gmm: AUC=0.410167
+signal=fQCD, labeled_gmm: AUC=0.378835
+signal=fQCD, joint_class_mahalanobis: AUC=0.503769
+signal=fQCD, joint_class_percentile_mahalanobis: AUC=0.558462
+signal=fQCD, joint_class_raw_mahalanobis: AUC=0.544893
+signal=Tbl, combined_mahalanobis: AUC=0.586644
+signal=Tbl, knn: AUC=0.804945
+signal=Tbl, gmm: AUC=0.722508
+signal=Tbl, labeled_gmm: AUC=0.673387
+signal=Tbl, joint_class_mahalanobis: AUC=0.564611
+signal=Tbl, joint_class_percentile_mahalanobis: AUC=0.501988
+signal=Tbl, joint_class_raw_mahalanobis: AUC=0.568914
+signal=Hqql, combined_mahalanobis: AUC=0.621909
+signal=Hqql, knn: AUC=0.841740
+signal=Hqql, gmm: AUC=0.733024
+signal=Hqql, labeled_gmm: AUC=0.756579
+signal=Hqql, joint_class_mahalanobis: AUC=0.577039
+signal=Hqql, joint_class_percentile_mahalanobis: AUC=0.425910
+signal=Hqql, joint_class_raw_mahalanobis: AUC=0.566892
+
+Saved diagnostics to /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/latent_diagnostics_k_20
+Running k=30 → plots/jetclass/32-QcdTbqqHggWqq/latent_diagnostics_k_30
+Dataset backend: jetclass
+Dataset root: /HEP/export/home/lwang223/JetClass/JetClass/Pythia
+Loading /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/best_model.pth on cuda:0
+Sampling 100 x 128 events from each source stream
+Full-jet density latent space: representation
+Training labels: QCD+Tbqq+Hgg+Wqq
+Visualization signal labels: Hbb+fQCD+Tbl+Hqql
+Dataset label axis: ['label_QCD', 'label_Hbb', 'label_Hcc', 'label_Hgg', 'label_H4q', 'label_Hqql', 'label_Zqq', 'label_Wqq', 'label_Tbqq', 'label_Tbl', 'label_fQCD']
+Particle feature order:
+   0: part_px
+   1: part_py
+   2: part_pz
+   3: part_energy
+   4: part_pt
+   5: log_pt_fraction
+   6: part_deta
+   7: part_dphi
+   8: d0_sig
+   9: dz_sig
+  10: part_charge
+  11: part_isChargedHadron
+  12: part_isNeutralHadron
+  13: part_isPhoton
+  14: part_isElectron
+  15: part_isMuon
+Batch-standardized particle features: ['log_pt_fraction', 'd0_sig', 'dz_sig']
+
+Collecting validation representations once per source...
+Collected validation latents: background=12800, signal=12800
+
+Fitting validation background scores: label_QCD, label_Tbqq, label_Hgg, label_Wqq
+signal=Hbb, combined_mahalanobis: AUC=0.464890
+signal=Hbb, knn: AUC=0.583290
+signal=Hbb, gmm: AUC=0.574892
+signal=Hbb, labeled_gmm: AUC=0.610500
+signal=Hbb, joint_class_mahalanobis: AUC=0.470202
+signal=Hbb, joint_class_percentile_mahalanobis: AUC=0.495153
+signal=Hbb, joint_class_raw_mahalanobis: AUC=0.435011
+signal=fQCD, combined_mahalanobis: AUC=0.356223
+signal=fQCD, knn: AUC=0.370849
+signal=fQCD, gmm: AUC=0.410167
+signal=fQCD, labeled_gmm: AUC=0.378835
+signal=fQCD, joint_class_mahalanobis: AUC=0.503769
+signal=fQCD, joint_class_percentile_mahalanobis: AUC=0.558462
+signal=fQCD, joint_class_raw_mahalanobis: AUC=0.544893
+signal=Tbl, combined_mahalanobis: AUC=0.586644
+signal=Tbl, knn: AUC=0.802417
+signal=Tbl, gmm: AUC=0.722508
+signal=Tbl, labeled_gmm: AUC=0.673387
+signal=Tbl, joint_class_mahalanobis: AUC=0.564611
+signal=Tbl, joint_class_percentile_mahalanobis: AUC=0.501988
+signal=Tbl, joint_class_raw_mahalanobis: AUC=0.568914
+signal=Hqql, combined_mahalanobis: AUC=0.621909
+signal=Hqql, knn: AUC=0.838514
+signal=Hqql, gmm: AUC=0.733024
+signal=Hqql, labeled_gmm: AUC=0.756579
+signal=Hqql, joint_class_mahalanobis: AUC=0.577039
+signal=Hqql, joint_class_percentile_mahalanobis: AUC=0.425910
+signal=Hqql, joint_class_raw_mahalanobis: AUC=0.566892
+
+Saved diagnostics to /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/latent_diagnostics_k_30
+Running k=50 → plots/jetclass/32-QcdTbqqHggWqq/latent_diagnostics_k_50
+Dataset backend: jetclass
+Dataset root: /HEP/export/home/lwang223/JetClass/JetClass/Pythia
+Loading /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/best_model.pth on cuda:0
+Sampling 100 x 128 events from each source stream
+Full-jet density latent space: representation
+Training labels: QCD+Tbqq+Hgg+Wqq
+Visualization signal labels: Hbb+fQCD+Tbl+Hqql
+Dataset label axis: ['label_QCD', 'label_Hbb', 'label_Hcc', 'label_Hgg', 'label_H4q', 'label_Hqql', 'label_Zqq', 'label_Wqq', 'label_Tbqq', 'label_Tbl', 'label_fQCD']
+Particle feature order:
+   0: part_px
+   1: part_py
+   2: part_pz
+   3: part_energy
+   4: part_pt
+   5: log_pt_fraction
+   6: part_deta
+   7: part_dphi
+   8: d0_sig
+   9: dz_sig
+  10: part_charge
+  11: part_isChargedHadron
+  12: part_isNeutralHadron
+  13: part_isPhoton
+  14: part_isElectron
+  15: part_isMuon
+Batch-standardized particle features: ['log_pt_fraction', 'd0_sig', 'dz_sig']
+
+Collecting validation representations once per source...
+Collected validation latents: background=12800, signal=12800
+
+Fitting validation background scores: label_QCD, label_Tbqq, label_Hgg, label_Wqq
+signal=Hbb, combined_mahalanobis: AUC=0.464890
+signal=Hbb, knn: AUC=0.578813
+signal=Hbb, gmm: AUC=0.574892
+signal=Hbb, labeled_gmm: AUC=0.610500
+signal=Hbb, joint_class_mahalanobis: AUC=0.470202
+signal=Hbb, joint_class_percentile_mahalanobis: AUC=0.495153
+signal=Hbb, joint_class_raw_mahalanobis: AUC=0.435011
+signal=fQCD, combined_mahalanobis: AUC=0.356223
+signal=fQCD, knn: AUC=0.364819
+signal=fQCD, gmm: AUC=0.410167
+signal=fQCD, labeled_gmm: AUC=0.378835
+signal=fQCD, joint_class_mahalanobis: AUC=0.503769
+signal=fQCD, joint_class_percentile_mahalanobis: AUC=0.558462
+signal=fQCD, joint_class_raw_mahalanobis: AUC=0.544893
+signal=Tbl, combined_mahalanobis: AUC=0.586644
+signal=Tbl, knn: AUC=0.798234
+signal=Tbl, gmm: AUC=0.722508
+signal=Tbl, labeled_gmm: AUC=0.673387
+signal=Tbl, joint_class_mahalanobis: AUC=0.564611
+signal=Tbl, joint_class_percentile_mahalanobis: AUC=0.501988
+signal=Tbl, joint_class_raw_mahalanobis: AUC=0.568914
+signal=Hqql, combined_mahalanobis: AUC=0.621909
+signal=Hqql, knn: AUC=0.833058
+signal=Hqql, gmm: AUC=0.733024
+signal=Hqql, labeled_gmm: AUC=0.756579
+signal=Hqql, joint_class_mahalanobis: AUC=0.577039
+signal=Hqql, joint_class_percentile_mahalanobis: AUC=0.425910
+signal=Hqql, joint_class_raw_mahalanobis: AUC=0.566892
+
+Saved diagnostics to /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/latent_diagnostics_k_50
+Running k=100 → plots/jetclass/32-QcdTbqqHggWqq/latent_diagnostics_k_100
+Dataset backend: jetclass
+Dataset root: /HEP/export/home/lwang223/JetClass/JetClass/Pythia
+Loading /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/best_model.pth on cuda:0
+Sampling 100 x 128 events from each source stream
+Full-jet density latent space: representation
+Training labels: QCD+Tbqq+Hgg+Wqq
+Visualization signal labels: Hbb+fQCD+Tbl+Hqql
+Dataset label axis: ['label_QCD', 'label_Hbb', 'label_Hcc', 'label_Hgg', 'label_H4q', 'label_Hqql', 'label_Zqq', 'label_Wqq', 'label_Tbqq', 'label_Tbl', 'label_fQCD']
+Particle feature order:
+   0: part_px
+   1: part_py
+   2: part_pz
+   3: part_energy
+   4: part_pt
+   5: log_pt_fraction
+   6: part_deta
+   7: part_dphi
+   8: d0_sig
+   9: dz_sig
+  10: part_charge
+  11: part_isChargedHadron
+  12: part_isNeutralHadron
+  13: part_isPhoton
+  14: part_isElectron
+  15: part_isMuon
+Batch-standardized particle features: ['log_pt_fraction', 'd0_sig', 'dz_sig']
+
+Collecting validation representations once per source...
+Collected validation latents: background=12800, signal=12800
+
+Fitting validation background scores: label_QCD, label_Tbqq, label_Hgg, label_Wqq
+signal=Hbb, combined_mahalanobis: AUC=0.464890
+signal=Hbb, knn: AUC=0.571273
+signal=Hbb, gmm: AUC=0.574892
+signal=Hbb, labeled_gmm: AUC=0.610500
+signal=Hbb, joint_class_mahalanobis: AUC=0.470202
+signal=Hbb, joint_class_percentile_mahalanobis: AUC=0.495153
+signal=Hbb, joint_class_raw_mahalanobis: AUC=0.435011
+signal=fQCD, combined_mahalanobis: AUC=0.356223
+signal=fQCD, knn: AUC=0.355888
+signal=fQCD, gmm: AUC=0.410167
+signal=fQCD, labeled_gmm: AUC=0.378835
+signal=fQCD, joint_class_mahalanobis: AUC=0.503769
+signal=fQCD, joint_class_percentile_mahalanobis: AUC=0.558462
+signal=fQCD, joint_class_raw_mahalanobis: AUC=0.544893
+signal=Tbl, combined_mahalanobis: AUC=0.586644
+signal=Tbl, knn: AUC=0.790080
+signal=Tbl, gmm: AUC=0.722508
+signal=Tbl, labeled_gmm: AUC=0.673387
+signal=Tbl, joint_class_mahalanobis: AUC=0.564611
+signal=Tbl, joint_class_percentile_mahalanobis: AUC=0.501988
+signal=Tbl, joint_class_raw_mahalanobis: AUC=0.568914
+signal=Hqql, combined_mahalanobis: AUC=0.621909
+signal=Hqql, knn: AUC=0.822560
+signal=Hqql, gmm: AUC=0.733024
+signal=Hqql, labeled_gmm: AUC=0.756579
+signal=Hqql, joint_class_mahalanobis: AUC=0.577039
+signal=Hqql, joint_class_percentile_mahalanobis: AUC=0.425910
+signal=Hqql, joint_class_raw_mahalanobis: AUC=0.566892
+
+Saved diagnostics to /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/latent_diagnostics_k_100
+Running k=200 → plots/jetclass/32-QcdTbqqHggWqq/latent_diagnostics_k_200
+Dataset backend: jetclass
+Dataset root: /HEP/export/home/lwang223/JetClass/JetClass/Pythia
+Loading /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/best_model.pth on cuda:0
+Sampling 100 x 128 events from each source stream
+Full-jet density latent space: representation
+Training labels: QCD+Tbqq+Hgg+Wqq
+Visualization signal labels: Hbb+fQCD+Tbl+Hqql
+Dataset label axis: ['label_QCD', 'label_Hbb', 'label_Hcc', 'label_Hgg', 'label_H4q', 'label_Hqql', 'label_Zqq', 'label_Wqq', 'label_Tbqq', 'label_Tbl', 'label_fQCD']
+Particle feature order:
+   0: part_px
+   1: part_py
+   2: part_pz
+   3: part_energy
+   4: part_pt
+   5: log_pt_fraction
+   6: part_deta
+   7: part_dphi
+   8: d0_sig
+   9: dz_sig
+  10: part_charge
+  11: part_isChargedHadron
+  12: part_isNeutralHadron
+  13: part_isPhoton
+  14: part_isElectron
+  15: part_isMuon
+Batch-standardized particle features: ['log_pt_fraction', 'd0_sig', 'dz_sig']
+
+Collecting validation representations once per source...
+Collected validation latents: background=12800, signal=12800
+
+Fitting validation background scores: label_QCD, label_Tbqq, label_Hgg, label_Wqq
+signal=Hbb, combined_mahalanobis: AUC=0.464890
+signal=Hbb, knn: AUC=0.560917
+signal=Hbb, gmm: AUC=0.574892
+signal=Hbb, labeled_gmm: AUC=0.610500
+signal=Hbb, joint_class_mahalanobis: AUC=0.470202
+signal=Hbb, joint_class_percentile_mahalanobis: AUC=0.495153
+signal=Hbb, joint_class_raw_mahalanobis: AUC=0.435011
+signal=fQCD, combined_mahalanobis: AUC=0.356223
+signal=fQCD, knn: AUC=0.346014
+signal=fQCD, gmm: AUC=0.410167
+signal=fQCD, labeled_gmm: AUC=0.378835
+signal=fQCD, joint_class_mahalanobis: AUC=0.503769
+signal=fQCD, joint_class_percentile_mahalanobis: AUC=0.558462
+signal=fQCD, joint_class_raw_mahalanobis: AUC=0.544893
+signal=Tbl, combined_mahalanobis: AUC=0.586644
+signal=Tbl, knn: AUC=0.776760
+signal=Tbl, gmm: AUC=0.722508
+signal=Tbl, labeled_gmm: AUC=0.673387
+signal=Tbl, joint_class_mahalanobis: AUC=0.564611
+signal=Tbl, joint_class_percentile_mahalanobis: AUC=0.501988
+signal=Tbl, joint_class_raw_mahalanobis: AUC=0.568914
+signal=Hqql, combined_mahalanobis: AUC=0.621909
+signal=Hqql, knn: AUC=0.806247
+signal=Hqql, gmm: AUC=0.733024
+signal=Hqql, labeled_gmm: AUC=0.756579
+signal=Hqql, joint_class_mahalanobis: AUC=0.577039
+signal=Hqql, joint_class_percentile_mahalanobis: AUC=0.425910
+signal=Hqql, joint_class_raw_mahalanobis: AUC=0.566892
+
+Saved diagnostics to /oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/latent_diagnostics_k_200

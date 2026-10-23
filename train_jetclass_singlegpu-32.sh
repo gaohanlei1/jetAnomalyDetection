@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --nodes=1               # node count
-#SBATCH --nodelist=gpu2709,gpu3002,gpu3003,gpu3004,gpu3006,gpu3101,gpu3106
+# SBATCH --nodelist=gpu2709,gpu3002,gpu3003,gpu3004,gpu3006,gpu3101,gpu3106
 #SBATCH -p gpu --gres=gpu:1     # number of gpus per node
 #SBATCH --ntasks-per-node=1     # total number of tasks across all nodes
 #SBATCH --cpus-per-task=6       # cpu-cores per task (>1 if multi-threaded tasks)
 #SBATCH -t 48:00:00             # total run time limit (HH:MM:SS)
 #SBATCH --mem=64GB           # CPU RAM
-#SBATCH --constraint=l40s
+# SBATCH --constraint=l40s
 # SBATCH --constraint=geforce3090
 # SBATCH --constraint=a6000
 #SBATCH --job-name='JETANOMALY'
@@ -303,3 +303,31 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #     --shuffle-active-shards 3 \
 #     --output-dir "plots/jetclass/32-CLR-QcdTbqqHggWqq"
 
+# python visualize/plot_random_jet_events.py \
+#     --dataset jetclass \
+#     --dataset-root "/HEP/export/home/lwang223/JetClass/JetClass/Pythia" \
+#     --labels label_fQCD \
+#     --rows 3 --cols 3 \
+#     --output "./fqcd_jets.png"
+
+# python -u scripts/diagnose_lejepa_latents.py \
+#     "plots/jetclass/32-QcdTbqqHggWqq"
+
+
+set -euo pipefail
+
+RUN_DIR="plots/jetclass/32-QcdTbqqHggWqq"
+K_VALUES=(1 3 5 10 20 30 50 100 200)
+
+for k in "${K_VALUES[@]}"; do
+    OUTPUT_DIR="${RUN_DIR}/latent_diagnostics_k_${k}"
+    mkdir -p "$OUTPUT_DIR"
+
+    echo "Running k=${k} → ${OUTPUT_DIR}"
+
+    python -u scripts/diagnose_lejepa_latents.py \
+        "$RUN_DIR" \
+        --knn-k "$k" \
+        --knn-reduction mean \
+        --output-dir "$OUTPUT_DIR"
+done
