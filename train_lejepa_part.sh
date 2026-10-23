@@ -96,13 +96,14 @@ torchrun --standalone --nproc-per-node=2 \
 python -u scripts/diagnose_lejepa_latents.py \
     "plots/largerun/cms-correct-deta-dphi-128"
 
+# mixed fine-tune
 torchrun --standalone --nproc-per-node=2 \
     scripts/run_train_lejepa_part.py \
     --dataset cms \
     --dataset-root "/HEP/export/home/lwang223/jet-anomaly-data/ak8-v5" \
     --model semi-sup-triplet \
     --checkpoint "plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt" \
-    --background-labels "label_Real" \
+    --background-labels label_Hbb,label_Tbqq,label_Wqq,label_Zqq,label_Real \
     --cms-real-val-fraction 0.05 \
     --cms-real-test-fraction 0.45 \
     --embed-dim 128 \
@@ -139,10 +140,10 @@ torchrun --standalone --nproc-per-node=2 \
     --num-workers 2 \
     --prefetch-factor 2 \
     --shuffle-active-shards 2 \
-    --output-dir "plots/largerun/cms-correct-real-finetune-128"
+    --output-dir "plots/largerun/cms-correct-mix-real-finetune-128"
 
 python -u scripts/evaluate_label_real_anomalies.py \
-    "plots/largerun/cms-correct-real-finetune-128" \
+    "plots/largerun/cms-correct-mix-real-finetune-128" \
     --top-fraction 0.02
 
 # python -u scripts/evaluate_label_real_anomalies.py \
