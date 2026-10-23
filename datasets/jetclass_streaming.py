@@ -1,3 +1,9 @@
+# Rectangle in (deta, dphi): eta grows rightward, phi grows upward.
+# Bounds are inclusive; the lower-right corner is (0.4, -0.4).
+FQCD_RECT_TOP_LEFT = (-0.85, 0.0)
+FQCD_RECT_ETA_LENGTH = 1.25
+FQCD_RECT_PHI_LENGTH = 0.4
+
 import numpy as np
 import awkward as ak
 import uproot
@@ -162,7 +168,7 @@ BATCH_NORMALIZED_FEATURES = [
 
 ###########################################
 
-JETCLASS_LABELS = [
+JETCLASS_ROOT_LABELS = [
     "label_QCD",
     "label_Hbb",
     "label_Hcc",
@@ -174,6 +180,9 @@ JETCLASS_LABELS = [
     "label_Tbqq",
     "label_Tbl",
 ]
+
+# Append synthetic classes so existing physical class indices stay stable.
+JETCLASS_LABELS = JETCLASS_ROOT_LABELS + ["label_fQCD"]
 
 AVAILABLE_PARTICLE_FEATURES = [
     "part_px",
@@ -226,6 +235,7 @@ REQUIRED_JET_FEATURES = [
 
 LABEL_TO_FILE_PREFIX = {
     "label_QCD": "ZJetsToNuNu",
+    "label_fQCD": "ZJetsToNuNu",
     "label_Hbb": "HToBB",
     "label_Hcc": "HToCC",
     "label_Hgg": "HToGG",
@@ -478,6 +488,7 @@ class JetClassIterableDataset(IterableDataset):
                                 filepath=filepath,
                                 particle_features=self.particle_features,
                                 max_num_particles=self.max_num_particles,
+                                label_name=label,
                             )
                         )
 
@@ -557,6 +568,7 @@ class JetClassIterableDataset(IterableDataset):
                             particle_features=self.particle_features,
                             max_num_particles=self.max_num_particles,
                             eps=1e-8,
+                            label_name=label,
                         )
                     )
 
@@ -688,6 +700,7 @@ def load_and_preprocess_jetclass_file(
     particle_features: Sequence[str],
     max_num_particles: int,
     eps: float = 1e-8,
+    label_name: Optional[str] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Load one ROOT shard and construct the requested model feature tensor.
 
@@ -697,6 +710,8 @@ def load_and_preprocess_jetclass_file(
     branches are never returned.
     """
 
+    if label_name is not None:
+        validate_requested_labels([label_name])
     requested = list(particle_features)
     supported = set(AVAILABLE_PARTICLE_FEATURES)
     unknown = sorted(set(requested) - supported)
@@ -716,7 +731,7 @@ def load_and_preprocess_jetclass_file(
         max_num_particles=max_num_particles,
         particle_features=loaded_particle_features,
         jet_features=REQUIRED_JET_FEATURES,
-        labels=JETCLASS_LABELS,
+        labels=JETCLASS_ROOT_LABELS,
     )
 
     x_particles = np.transpose(x_particles, (0, 2, 1)).astype(
@@ -725,6 +740,13 @@ def load_and_preprocess_jetclass_file(
     )
     x_jets = np.asarray(x_jets, dtype=np.float32)
     y = np.asarray(y, dtype=np.float32)
+    # Synthetic labels never reach read_file / ROOT branch lookup.
+    y = np.pad(y, ((0, 0), (0, len(JETCLASS_LABELS) - y.shape[1])))
+    if label_name == "label_fQCD":
+        if not np.all(y[:, JETCLASS_ROOT_LABELS.index("label_QCD")] == 1):
+            raise ValueError("label_fQCD must be constructed from a QCD shard.")
+        y[:] = 0.0
+        y[:, JETCLASS_LABELS.index("label_fQCD")] = 1.0
 
     jet_pt = x_jets[:, 0]
     jet_eta = x_jets[:, 1]
@@ -750,6 +772,16 @@ def load_and_preprocess_jetclass_file(
         & (part_energy > 0)
         & (np.sqrt(np.square(part_deta) + np.square(part_dphi)) < 0.8)
     )
+
+    if label_name == "label_fQCD":
+        eta_left, phi_top = FQCD_RECT_TOP_LEFT
+        inside_rectangle = (
+            (part_deta >= eta_left)
+            & (part_deta <= eta_left + FQCD_RECT_ETA_LENGTH)
+            & (part_dphi >= phi_top - FQCD_RECT_PHI_LENGTH)
+            & (part_dphi <= phi_top)
+        )
+        valid_particles &= ~inside_rectangle
 
     # Raw invalid rows are zeroed before derived quantities are exported.
     x_particles[~valid_particles] = 0.0
@@ -838,6 +870,10 @@ __all__ = [
     "PARTICLE_FEATURES",
     "BATCH_NORMALIZED_FEATURES",
     "JETCLASS_LABELS",
+    "JETCLASS_ROOT_LABELS",
+    "FQCD_RECT_TOP_LEFT",
+    "FQCD_RECT_ETA_LENGTH",
+    "FQCD_RECT_PHI_LENGTH",
     "JetClassIterableDataset",
     "collate_jetclass_tensors",
     "discover_jetclass_files",

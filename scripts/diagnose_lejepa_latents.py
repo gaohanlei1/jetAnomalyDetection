@@ -207,6 +207,13 @@ class DiagnosticDatasetBackend:
             default_axis = list(cms_streaming.CMS_LABELS)
         label_axis = _first_summary_list(summary, ("dataset_label_axis",)) or default_axis
 
+        if dataset_name == "jetclass":
+            # The streaming tensor uses the current canonical axis, even with
+            # old ten-class checkpoints. This does not resize the model head.
+            if label_axis not in (jetclass_streaming.JETCLASS_ROOT_LABELS, default_axis):
+                raise ValueError(f"Unexpected saved JetClass label axis: {label_axis}")
+            label_axis = default_axis
+
         max_num_particles = int(
             max_num_particles_override
             if max_num_particles_override is not None
@@ -493,6 +500,10 @@ def parse_args() -> argparse.Namespace:
         help="Override summary.json. Normally the saved dataset field is used.",
     )
     parser.add_argument("--dataset-root", type=Path, default=None)
+    parser.add_argument("--signal-labels", default=None,
+                        help="Comma-separated evaluation signals; overrides saved labels (e.g. label_fQCD).")
+    parser.add_argument("--background-labels", default=None,
+                        help="Comma-separated evaluation backgrounds; does not change the trained model head.")
     parser.add_argument(
         "--cms-split-manifest",
         type=Path,
@@ -1516,6 +1527,14 @@ def main() -> None:
 
     backgrounds = list(dict.fromkeys(summary["background_labels"]))
     signals = list(dict.fromkeys(summary.get("signal_labels", [])))
+    if args.background_labels is not None:
+        backgrounds = list(dict.fromkeys(x.strip() for x in args.background_labels.split(",") if x.strip()))
+        if not backgrounds:
+            raise ValueError("--background-labels must contain at least one label.")
+    if args.signal_labels is not None:
+        signals = list(dict.fromkeys(x.strip() for x in args.signal_labels.split(",") if x.strip()))
+        if not signals:
+            raise ValueError("--signal-labels must contain at least one label.")
     backend.validate_requested_labels(list(dict.fromkeys(backgrounds + signals)))
     if not backgrounds:
         raise ValueError("At least one background label is required.")
