@@ -88,28 +88,18 @@ class FakeQCDTest(unittest.TestCase):
                 event_labels=['label_fQCD'] * 4)
         self.assertEqual(len(selected), 4)
         self.assertGreater(output.stat().st_size, 1000)
-        # Restore a small genuine backbone checkpoint and execute the full CLI.
-        import json
+        # The plotting CLI requires only data, with no run metadata/checkpoint.
         import sys
-        from scripts.diagnose_lejepa_latents import build_model
-        from visualize.plot_random_jet_events import main
-        summary = dict(backend.summary, background_labels=['label_QCD'], signal_labels=[],
-                       embed_dim=16, num_heads=2, num_layers=1, num_class_layers=1,
-                       representation_dim=8, max_num_particles=8, num_workers=0,
-                       batch_size=4, use_pairwise_bias=False)
-        (self.root / 'summary.json').write_text(json.dumps(summary))
-        model = build_model(summary, backend, torch.device('cpu'))
-        torch.save(model.state_dict(), self.root / 'best_model.pth')
         import shutil
+        from visualize.plot_random_jet_events import main
         shutil.copy2(self.shard, self.root / 'val_5M' / self.shard.name)
-        with patch.object(sys, 'argv', ['plot_random_jet_events.py', str(self.root),
-                '--dataset', 'jetclass', '--labels', 'label_fQCD', '--rows', '2',
-                '--cols', '2', '--sample-events', '4', '--device', 'cpu',
-                '--output', str(self.root / 'cli.png')]):
+        with patch.object(sys, 'argv', ['plot_random_jet_events.py',
+                '--dataset-root', str(self.root), '--dataset', 'jetclass',
+                '--labels', 'label_fQCD', '--rows', '2', '--cols', '2',
+                '--sample-events', '4', '--output', str(self.root / 'cli.png')]):
             main()
-        latent = np.load(self.root / 'cli.latents.npy')
-        self.assertEqual(latent.shape, (4, 8))
-        self.assertTrue(np.isfinite(latent).all())
+        self.assertGreater((self.root / 'cli.png').stat().st_size, 1000)
+        self.assertFalse((self.root / 'cli.latents.npy').exists())
         # Original file-based CMS caller remains supported.
         features = [dict(d0_sig='Cpfcan_dxysig', dz_sig='Cpfcan_dzsig').get(n, n)
                     for n in jc.PARTICLE_FEATURES]

@@ -45,7 +45,7 @@ class LeJEPARun:
                 if name in restored["particle_features"]]
             warnings.warn("Legacy summary: using dataset-module batch-normalized features.")
         self.backend = DiagnosticDatasetBackend.from_summary(
-            summary=restored, run_dir=self.run_dir, dataset_override=getattr(args, "dataset", None),
+            summary=restored, run_dir=self.run_dir, dataset_override=None,
             dataset_root_override=args.dataset_root, cms_manifest_override=None,
             max_num_particles_override=None)
         self.checkpoint = (args.checkpoint or self.run_dir / "best_model.pth").expanduser().resolve()

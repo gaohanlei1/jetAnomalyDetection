@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plot random CMS or JetClass jets using the feature schema of a LeJEPA run."""
+"""Plot random CMS or JetClass jets directly from ROOT shards."""
 from __future__ import annotations
 
 import argparse
@@ -373,47 +373,64 @@ def plot_random_jet_events(
 
 
 def main() -> None:
-    from scripts.lejepa_run import LeJEPARun, add_backbone_arguments
+    from datasets import cms_streaming, jetclass_streaming
 
     parser = argparse.ArgumentParser(description=__doc__)
-    add_backbone_arguments(parser)
-    parser.add_argument("--dataset", choices=("jetclass", "cms"), default=None)
+    parser.add_argument("--dataset", choices=("jetclass", "cms"), default="jetclass")
+    parser.add_argument("--dataset-root", type=Path, required=True,
+                        help="JetClass root (or a split directory), or CMS root with class directories.")
+    parser.add_argument("--max-num-particles", type=int, default=128)
     parser.add_argument("--labels", default="label_fQCD", help="Comma-separated labels.")
     parser.add_argument("--rows", type=int, default=2)
     parser.add_argument("--cols", type=int, default=3)
-    parser.add_argument("--split", choices=("train", "val", "test"), default="val")
+    parser.add_argument("--split", choices=("train", "val", "test"), default=None,
+                        help="JetClass only: defaults to val when dataset-root is not a split directory.")
     parser.add_argument("--sample-events", type=int, default=256,
                         help="Size of the random candidate pool (at least rows * cols).")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output", type=Path, default=Path("plots/random_jet_events.png"))
     args = parser.parse_args()
-    if min(args.rows, args.cols, args.sample_events) < 1:
-        parser.error("rows, cols and sample-events must be positive")
+    if min(args.rows, args.cols, args.sample_events, args.max_num_particles) < 1:
+        parser.error("rows, cols, sample-events and max-num-particles must be positive")
     labels = list(dict.fromkeys(x.strip() for x in args.labels.split(",") if x.strip()))
     if not labels:
         parser.error("labels must not be empty")
-    run = LeJEPARun(args)
-    run.backend.validate_requested_labels(labels)
     count = max(args.sample_events, args.rows * args.cols)
-    loader = run.loader(args.split, labels, max_events=count, seed_offset=args.seed - run.seed)
-    chunks, label_chunks, latents = [], [], []
-    for batch in loader:
-        chunks.append(batch["x_particles"].numpy())
-        label_chunks.append(batch["y"].argmax(dim=-1).numpy())
-        latents.append(run.encode(batch).cpu().numpy())
+    root = args.dataset_root.expanduser().resolve()
+    common = dict(labels_to_load=labels, max_num_particles=args.max_num_particles,
+                  max_events=count, shuffle_files=True, shuffle_active_shards=len(labels),
+                  infinite=False, seed=args.seed)
+    if args.dataset == "jetclass":
+        module = jetclass_streaming
+        module.validate_requested_labels(labels)
+        split_dirs = dict(train="train_100M", val="val_5M", test="test_20M")
+        if args.split is not None or not any(root.glob("*.root")):
+            root = root / split_dirs[args.split or "val"]
+        label_axis = module.JETCLASS_LABELS
+        dataset = module.JetClassIterableDataset(
+            split_dir=str(root), particle_features=module.PARTICLE_FEATURES, **common)
+    else:
+        if args.split is not None:
+            parser.error("--split is JetClass-only; CMS reads the supplied class directories directly")
+        module = cms_streaming
+        label_axis = module.CMS_LABELS
+        dataset = module.CMSIterableDataset(
+            files_by_label=module.discover_cms_files(str(root), labels),
+            label_axis=label_axis, particle_features=module.PARTICLE_FEATURES, **common)
+    chunks, label_indices = [], []
+    for particles, target in dataset:
+        chunks.append(particles.numpy())
+        label_indices.append(int(target.argmax()))
     if not chunks:
         raise RuntimeError("No events available for the requested labels/split.")
-    events = np.concatenate(chunks)
-    event_labels = [run.backend.label_axis[i] for i in np.concatenate(label_chunks)]
+    events = np.stack(chunks)
+    event_labels = [label_axis[i] for i in label_indices]
     selected = plot_random_jet_events(
-        events=events, feature_names=run.backend.feature_names, output_path=args.output,
+        events=events, feature_names=module.PARTICLE_FEATURES, output_path=args.output,
         num_events=args.rows * args.cols, seed=args.seed, nrows=args.rows, ncols=args.cols,
-        event_labels=event_labels, title=f"{run.backend.dataset_name}: {', '.join(labels)}",
+        event_labels=event_labels, title=f"{args.dataset}: {', '.join(labels)}",
     )
-    # Save the matching representations to make the selected examples reusable.
-    latent_path = args.output.with_suffix(".latents.npy")
-    np.save(latent_path, np.concatenate(latents)[selected])
-    print(f"Saved {len(selected)} jets to {args.output}; representations to {latent_path}")
+    print(f"Saved {len(selected)} jets to {args.output}")
 
 
 if __name__ == "__main__":
