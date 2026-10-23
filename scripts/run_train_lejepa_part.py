@@ -67,9 +67,11 @@ python -u \
     --output-dir plots/finetune-cms
 
 Fine-tune a CMS MC checkpoint on real data with a fresh 50/5/45 split:
+Real shards live at <dataset-root>/real/data_*.root. To mix MC and real
+data, include both MC labels and label_Real in --background-labels.
 python -u scripts/run_train_lejepa_part.py \
     --dataset cms \
-    --dataset-root /path/to/shuffled/real-data \
+    --dataset-root /path/to/shuffled/dataset-root \
     --background-labels label_Real \
     --cms-val-fraction 0.05 \
     --cms-test-fraction 0.45 \
@@ -2684,7 +2686,7 @@ if __name__ == "__main__":
         default="/HEP/export/home/lwang223/JetClass/JetClass/Pythia",
         help=(
             "Dataset root. For JetClass this contains train_100M, val_5M, and "
-            "test_20M. For CMS this contains hbb/qcd/ttbar/wjets/zjets."
+            "test_20M. For CMS this contains hbb/qcd/ttbar/wjets/zjets/real label directories."
         ),
     )
     parser.add_argument(

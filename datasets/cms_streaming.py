@@ -1,7 +1,7 @@
 """CMS DeepNTuplizer AK8 reader and DDP-safe streaming dataset.
 
-The dataset root contains one directory per jet type for MC, or a flat
-directory of ``data_*.root`` shards for real data (``label_Real``). Every
+The dataset root contains one directory per label: hbb/qcd/ttbar/wjets/zjets
+for MC and real/ with ``data_*.root`` shards for real data (``label_Real``). Every
 ROOT shard has already been shuffled across production families and pT ranges,
 so train/val/test splits are random label-level file splits recorded in a
 manifest. Streaming uses one independent active shard pool per label, matching
@@ -149,8 +149,7 @@ CMS_LABEL_TO_DIRECTORY = {
     "label_Wqq": "wjets",
     "label_Zqq": "zjets",
     "label_Tbqq": "ttbar",
-    # Real data: flat dataset root with data_*.root shards (no physics subdirs).
-    "label_Real": ".",
+    "label_Real": "real",
 }
 
 CMS_LABEL_TO_FILENAME_PREFIX = {

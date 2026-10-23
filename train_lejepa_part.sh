@@ -99,7 +99,7 @@ python -u scripts/diagnose_lejepa_latents.py \
 torchrun --standalone --nproc-per-node=2 \
     scripts/run_train_lejepa_part.py \
     --dataset cms \
-    --dataset-root "/HEP/export/home/hgao50/jet-anomaly-data/ak8-data" \
+    --dataset-root "/HEP/export/home/lwang223/jet-anomaly-data/ak8-v5" \
     --model semi-sup-triplet \
     --checkpoint "plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt" \
     --background-labels "label_Real" \
