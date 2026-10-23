@@ -1,0 +1,431 @@
+{
+  "run_dir": "/oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-CLR-Wqq",
+  "checkpoint": "/oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-CLR-Wqq/best_model.pth",
+  "dataset": "jetclass",
+  "dataset_root": "/HEP/export/home/lwang223/JetClass/JetClass/Pythia",
+  "dataset_label_axis": [
+    "label_QCD",
+    "label_Hbb",
+    "label_Hcc",
+    "label_Hgg",
+    "label_H4q",
+    "label_Hqql",
+    "label_Zqq",
+    "label_Wqq",
+    "label_Tbqq",
+    "label_Tbl"
+  ],
+  "particle_features": [
+    "part_px",
+    "part_py",
+    "part_pz",
+    "part_energy",
+    "part_pt",
+    "log_pt_fraction",
+    "part_deta",
+    "part_dphi",
+    "d0_sig",
+    "dz_sig",
+    "part_charge",
+    "part_isChargedHadron",
+    "part_isNeutralHadron",
+    "part_isPhoton",
+    "part_isElectron",
+    "part_isMuon"
+  ],
+  "batch_standardized_particle_features": [
+    "log_pt_fraction",
+    "d0_sig",
+    "dz_sig"
+  ],
+  "cms_split_manifest_source": null,
+  "cms_split_manifest_sha256": null,
+  "device": "cuda:0",
+  "sampling": {
+    "eval_steps": 100,
+    "batch_size": 128,
+    "events_per_source_stream": 12800,
+    "num_workers": 4,
+    "split": "val",
+    "background_fit_and_evaluation_use_same_sample": true,
+    "seed": 42,
+    "max_num_particles": 128
+  },
+  "labels": {
+    "background": [
+      "label_Wqq"
+    ],
+    "signal": [
+      "label_Hbb"
+    ],
+    "effective_signal_rotation": [
+      "label_Hbb"
+    ]
+  },
+  "signal_was_configured": true,
+  "sample_counts": {
+    "background_validation_total": 12800,
+    "signal_validation_total": 12800
+  },
+  "score_parameters": {
+    "knn_k": 30,
+    "knn_reduction": "mean",
+    "score_batch_size": 1024,
+    "knn_reference_batch_size": 8192,
+    "gmm_n_components": 4,
+    "gmm_covariance_type": "full",
+    "gmm_reg_covar": 0.0001,
+    "gmm_max_iter": 100,
+    "gmm_tol": 0.001,
+    "gmm_n_init": 1,
+    "score_hist_bins": 80
+  },
+  "global_scores_by_signal": {
+    "label_Hbb": {
+      "combined_mahalanobis": {
+        "auc_validation_vs_signal": 0.5052900817871093,
+        "validation_background_scores": {
+          "count": 12800,
+          "mean": 31.717905908695876,
+          "std": 8.960255956382364,
+          "median": 30.297661336251526,
+          "q05": 19.627991805266852,
+          "q95": 48.490345419099704
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": 31.77586406889379,
+          "std": 8.87347488967372,
+          "median": 30.646306000285648,
+          "q05": 19.556876839496848,
+          "q95": 47.797316388516066
+        },
+        "fit": {
+          "num_fit_events": 12800,
+          "latent_dim": 32,
+          "cov_eps": 0.0001,
+          "regularized_min_eigenvalue": 0.004858643739784627,
+          "regularized_max_eigenvalue": 0.067652901992525
+        }
+      },
+      "knn": {
+        "auc_validation_vs_signal": 0.5089114257812499,
+        "validation_background_scores": {
+          "count": 12800,
+          "mean": 0.6848071993790605,
+          "std": 0.07474586297131534,
+          "median": 0.6735994430569814,
+          "q05": 0.5822925994876623,
+          "q95": 0.8225271193571463
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": 0.6871651497858615,
+          "std": 0.0753180806355221,
+          "median": 0.6764167335426363,
+          "q05": 0.5844304444585523,
+          "q95": 0.8258932441835549
+        },
+        "fit": {
+          "k": 30,
+          "reduction": "mean",
+          "exclude_background_self": true
+        }
+      },
+      "gmm": {
+        "auc_validation_vs_signal": 0.5151289733886719,
+        "validation_background_scores": {
+          "count": 12800,
+          "mean": -22.30127843120108,
+          "std": 4.329003916972578,
+          "median": -22.706264371317708,
+          "q05": -28.701811363532563,
+          "q95": -14.645586135722967
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": -22.073521938508566,
+          "std": 4.449776502399404,
+          "median": -22.428081459340415,
+          "q05": -28.756496833349946,
+          "q95": -14.32144576744849
+        },
+        "fit": {
+          "n_components": 4,
+          "covariance_type": "full",
+          "reg_covar": 0.0001,
+          "weights": [
+            0.20641603847986076,
+            0.28209864368386267,
+            0.07153838339308943,
+            0.4399469344431871
+          ],
+          "n_iter": 66,
+          "converged": true,
+          "mean_fit_log_density": 22.301278431201087
+        }
+      },
+      "labeled_gmm": {
+        "auc_validation_vs_signal": 0.5052900817871093,
+        "validation_background_scores": {
+          "count": 12800,
+          "mean": -21.693494070815127,
+          "std": 4.4804748671034815,
+          "median": -22.403672167161147,
+          "q05": -27.738917892352934,
+          "q95": -13.306625094203568
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": -21.66451275313746,
+          "std": 4.437081031812141,
+          "median": -22.229335579907637,
+          "q05": -27.774478181234826,
+          "q95": -13.65316231237115
+        },
+        "fit": {
+          "n_components": 1,
+          "covariance_type": "full",
+          "reg_covar": 0.0001,
+          "weights": [
+            1.0
+          ],
+          "n_iter": 0,
+          "converged": true,
+          "mean_fit_log_density": 21.693494070815127,
+          "component_labels": [
+            "label_Wqq"
+          ]
+        }
+      },
+      "joint_class_mahalanobis": {
+        "auc_validation_vs_signal": 0.5027791870117188,
+        "validation_background_scores": {
+          "count": 12800,
+          "mean": 0.5,
+          "std": 0.2886751310709465,
+          "median": 0.5,
+          "q05": 0.050070312499999985,
+          "q95": 0.9499296875
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": 0.5027791870117189,
+          "std": 0.28736279245449464,
+          "median": 0.50640625,
+          "q05": 0.05217187500000006,
+          "q95": 0.9531328124999999
+        },
+        "fit": {
+          "component_labels": [
+            "label_Wqq"
+          ],
+          "percentile": "(count_less + 0.5 * count_equal) / class_count",
+          "compatibility": "p_k = 2 * min(q_k, 1 - q_k)",
+          "anomaly_score": "1 - max_k(p_k)",
+          "calibration": "own-class background validation distances",
+          "num_calibration_events_by_class": {
+            "label_Wqq": 12800
+          }
+        }
+      },
+      "joint_class_percentile_mahalanobis": {
+        "auc_validation_vs_signal": 0.4973248779296875,
+        "validation_background_scores": {
+          "count": 12800,
+          "mean": 0.49999999999999994,
+          "std": 0.2886751247015578,
+          "median": 0.49999999999999994,
+          "q05": 0.05006640624999999,
+          "q95": 0.9499335937499999
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": 0.49732487792968755,
+          "std": 0.28811171316519846,
+          "median": 0.495625,
+          "q05": 0.05249999999999999,
+          "q95": 0.9524999999999999
+        },
+        "fit": {
+          "percentile_vector_labels": [
+            "label_Wqq"
+          ],
+          "percentile": "(count_less + 0.5 * count_equal) / class_count",
+          "first_layer": "own-class latent Mahalanobis distance percentiles",
+          "second_layer": "per-class Mahalanobis of full percentile vectors",
+          "calibration": "own-class background validation distances at both layers",
+          "compatibility": "p_k = 2 * min(q_k, 1 - q_k)",
+          "anomaly_score": "1 - max_k(p_k)",
+          "covariance_by_class": {
+            "label_Wqq": {
+              "num_fit_events": 12800,
+              "latent_dim": 1,
+              "cov_eps": 0.0001,
+              "regularized_min_eigenvalue": 0.08343984375000002,
+              "regularized_max_eigenvalue": 0.08343984375000002
+            }
+          }
+        }
+      },
+      "joint_class_raw_mahalanobis": {
+        "auc_validation_vs_signal": 0.5017357421875,
+        "validation_background_scores": {
+          "count": 12800,
+          "mean": 0.5,
+          "std": 0.28867513107094644,
+          "median": 0.5,
+          "q05": 0.050070312499999985,
+          "q95": 0.9499296875
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": 0.5017357421875,
+          "std": 0.28924195147890147,
+          "median": 0.507109375,
+          "q05": 0.04640624999999998,
+          "q95": 0.9481250000000001
+        },
+        "fit": {
+          "score_vector_labels": [
+            "label_Wqq"
+          ],
+          "first_layer": "raw squared latent Mahalanobis distances to all active classes",
+          "second_layer": "per-class Mahalanobis of full raw score vectors",
+          "calibration": "own-class background validation second-layer distances",
+          "percentile": "(count_less + 0.5 * count_equal) / class_count",
+          "compatibility": "p_k = 2 * min(q_k, 1 - q_k)",
+          "anomaly_score": "1 - max_k(p_k)",
+          "covariance_by_class": {
+            "label_Wqq": {
+              "num_fit_events": 12800,
+              "latent_dim": 1,
+              "cov_eps": 0.0001,
+              "regularized_min_eigenvalue": 80.29255965229595,
+              "regularized_max_eigenvalue": 80.29255965229595
+            }
+          }
+        }
+      }
+    }
+  },
+  "combined_mahalanobis": {
+    "label_Hbb": {
+      "auc_validation_vs_signal": 0.5052900817871093,
+      "validation_background_scores": {
+        "count": 12800,
+        "mean": 31.717905908695876,
+        "std": 8.960255956382364,
+        "median": 30.297661336251526,
+        "q05": 19.627991805266852,
+        "q95": 48.490345419099704
+      },
+      "validation_signal_scores": {
+        "count": 12800,
+        "mean": 31.77586406889379,
+        "std": 8.87347488967372,
+        "median": 30.646306000285648,
+        "q05": 19.556876839496848,
+        "q95": 47.797316388516066
+      },
+      "fit": {
+        "num_fit_events": 12800,
+        "latent_dim": 32,
+        "cov_eps": 0.0001,
+        "regularized_min_eigenvalue": 0.004858643739784627,
+        "regularized_max_eigenvalue": 0.067652901992525
+      }
+    }
+  },
+  "per_class": {
+    "label_Wqq": {
+      "auc_validation_vs_signal": 0.5052900817871093,
+      "validation_background_scores": {
+        "count": 12800,
+        "mean": 31.717905908695876,
+        "std": 8.960255956382364,
+        "median": 30.297661336251526,
+        "q05": 19.627991805266852,
+        "q95": 48.490345419099704
+      },
+      "validation_signal_scores": {
+        "count": 12800,
+        "mean": 31.77586406889379,
+        "std": 8.87347488967372,
+        "median": 30.646306000285648,
+        "q05": 19.556876839496848,
+        "q95": 47.797316388516066
+      },
+      "covariance": {
+        "num_fit_events": 12800,
+        "latent_dim": 32,
+        "cov_eps": 0.0001,
+        "regularized_min_eigenvalue": 0.004858643739784627,
+        "regularized_max_eigenvalue": 0.067652901992525
+      }
+    }
+  },
+  "pairwise_mahalanobis_by_signal": {
+    "label_Hbb": {
+      "label_Wqq": {
+        "auc_validation_vs_signal": 0.5052900817871093,
+        "validation_background_scores": {
+          "count": 12800,
+          "mean": 31.717905908695876,
+          "std": 8.960255956382364,
+          "median": 30.297661336251526,
+          "q05": 19.627991805266852,
+          "q95": 48.490345419099704
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": 31.77586406889379,
+          "std": 8.87347488967372,
+          "median": 30.646306000285648,
+          "q05": 19.556876839496848,
+          "q95": 47.797316388516066
+        },
+        "covariance": {
+          "num_fit_events": 12800,
+          "latent_dim": 32,
+          "cov_eps": 0.0001,
+          "regularized_min_eigenvalue": 0.004858643739784627,
+          "regularized_max_eigenvalue": 0.067652901992525
+        }
+      }
+    }
+  },
+  "pairwise_raw_mahalanobis_by_signal": {
+    "label_Hbb": {
+      "label_Wqq": {
+        "auc_validation_vs_signal": 0.49973626708984376,
+        "validation_background_scores": {
+          "count": 12800,
+          "mean": 0.9999206296518891,
+          "std": 1.9805702974746102,
+          "median": 0.41865543435248675,
+          "q05": 0.00398739788334942,
+          "q95": 3.6407271137667556
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": 0.9806875768687985,
+          "std": 1.8518805848830573,
+          "median": 0.42409466856829303,
+          "q05": 0.004192237903620702,
+          "q95": 3.486836071952741
+        },
+        "covariance": {
+          "num_fit_events": 12800,
+          "latent_dim": 1,
+          "cov_eps": 0.0001,
+          "regularized_min_eigenvalue": 80.29255965229595,
+          "regularized_max_eigenvalue": 80.29255965229595
+        },
+        "score_vector_labels": [
+          "label_Wqq"
+        ]
+      }
+    }
+  }
+}

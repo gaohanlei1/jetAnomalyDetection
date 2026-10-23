@@ -1,0 +1,2 @@
+/var/spool/slurmd/job7448890/slurm_script: line 181: syntax error near unexpected token `SIGNAL_NAME="${SIGNAL//label_/}"'
+/var/spool/slurmd/job7448890/slurm_script: line 181: `        SIGNAL_NAME="${SIGNAL//label_/}"'

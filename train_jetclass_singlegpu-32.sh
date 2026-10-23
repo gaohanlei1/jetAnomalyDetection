@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --nodes=1               # node count
-#SBATCH --nodelist=gpu2709,gpu3002,gpu3003,gpu3004,gpu3006,gpu3101,gpu3102,gpu3105,gpu3106
+#SBATCH --nodelist=gpu2709,gpu3002,gpu3003,gpu3004,gpu3006,gpu3101,gpu3106
 #SBATCH -p gpu --gres=gpu:1     # number of gpus per node
 #SBATCH --ntasks-per-node=1     # total number of tasks across all nodes
 #SBATCH --cpus-per-task=6       # cpu-cores per task (>1 if multi-threaded tasks)
@@ -92,29 +92,6 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #     --shuffle-active-shards 3 \
 #     --output-dir "plots/jetclass/32-Wqq"
 
-# # eval
-# for run_dir in \
-#     "plots/jetclass/32-QcdWqq"
-# do
-#     python -u scripts/diagnose_lejepa_latents.py \
-#         "$run_dir" \
-#         --knn-k 10 \
-#         --knn-reduction kth
-# done
-
-# # plot tsne
-# for run_dir in \
-#     "plots/jetclass/32-QcdWqq"
-# do
-#     python scripts/plot_lejepa_tsne.py \
-#         "$run_dir" \
-#         --perplexity 100
-# done
-
-# python -u scripts/diagnose_lejepa_latents.py \
-#     plots/jetclass/32-Qcd
-
-
 # "plots/jetclass/32-QcdWqq" \
 # "plots/jetclass/32-QcdTbqqHggWqq"
 # for BASE_DIR in \
@@ -155,48 +132,173 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #     done
 # done
 
+# linear probe
+# for BASE_DIR in \
+#     "plots/jetclass/32-CLR-Wqq" \
+#     plots/jetclass/32-CLR-QcdTbqqHggWqq
+# do
+#     for SIGNAL in \
+#         "label_Hbb,label_Hcc,label_Zqq" \
+#         "label_Hbb"
+#     do
+#         # label_Hbb,label_Hcc,label_Zqq -> hbb-hcc-zqq
+#         SIGNAL_NAME="${SIGNAL//label_/}"
+#         SIGNAL_NAME="${SIGNAL_NAME//,/-}"
+#         SIGNAL_NAME="${SIGNAL_NAME,,}"
 
+#         for FRAC in \
+#             0.0005
+#         do
+#             OUTPUT_DIR="$BASE_DIR/wqq-vs-${SIGNAL_NAME}-linear-cwola-$FRAC"
+
+#             python -u scripts/run_train_cwola.py \
+#                 "$BASE_DIR" \
+#                 --output-dir "$OUTPUT_DIR" \
+#                 --background-labels "label_Wqq" \
+#                 --signal-labels "$SIGNAL" \
+#                 --learning-rate 1e-3 \
+#                 --warmup-steps 10 \
+#                 --steps-per-epoch 400 \
+#                 --epochs 10 \
+#                 --batch-size 10240 \
+#                 --val-steps 400 \
+#                 --signal-fraction "$FRAC" \
+
+#             python -u scripts/evaluate_cwola.py "$OUTPUT_DIR"
+#         done
+#     done
+# done
+
+# lejepa multi linear probe
 for BASE_DIR in \
-    "plots/jetclass/32-QcdTbqqHggWqq" \
-    "plots/jetclass/32-Wqq"
+    plots/jetclass/32-QcdTbqqHggWqq \
+    plots/jetclass/32-Wqq
 do
-    python -u scripts/run_train_cwola.py \
-        "$BASE_DIR" \
-        --output-dir "$BASE_DIR"/wqq-vs-hbb-hcc-zqq-linear-white-cwola-0.0005 \
-        --background-labels "label_Wqq" \
-        --signal-labels "label_Hbb,label_Hcc,label_Zqq" \
-        --learning-rate 1e-3 \
-        --warmup-steps 10 \
-        --steps-per-epoch 400 \
-        --epochs 10 \
-        --batch-size 10240 \
-        --val-steps 400 \
-        --signal-fraction 0.0005 \
-        --whiten-background-latents \
-        --whitening-events 100000 \
-        --whitening-batch-size 1024 \
-        --whitening-eps 1e-5
+    for SIGNAL in \
+        "label_Hbb,label_Hcc,label_Zqq" \
+    do
+        # label_Hbb,label_Hcc,label_Zqq -> hbb-hcc-zqq
+        SIGNAL_NAME="${SIGNAL//label_/}"
+        SIGNAL_NAME="${SIGNAL_NAME//,/-}"
+        SIGNAL_NAME="${SIGNAL_NAME,,}"
 
-    python -u scripts/evaluate_cwola.py \
-        "$BASE_DIR"/wqq-vs-hbb-hcc-zqq-linear-white-cwola-0.0005
+        for FRAC in \
+            0.0005
+        do
+            OUTPUT_DIR="$BASE_DIR/wqq-vs-${SIGNAL_NAME}-linear-cwola-$FRAC"
 
-    python -u scripts/run_train_cwola.py \
-        "$BASE_DIR" \
-        --output-dir "$BASE_DIR"/wqq-vs-hbb-hcc-zqq-linear-white-cwola-0.0001 \
-        --background-labels "label_Wqq" \
-        --signal-labels "label_Hbb,label_Hcc,label_Zqq" \
-        --learning-rate 1e-3 \
-        --warmup-steps 10 \
-        --steps-per-epoch 400 \
-        --epochs 10 \
-        --batch-size 10240 \
-        --val-steps 400 \
-        --signal-fraction 0.0001 \
-        --whiten-background-latents \
-        --whitening-events 100000 \
-        --whitening-batch-size 1024 \
-        --whitening-eps 1e-5
+            python -u scripts/run_train_cwola.py \
+                "$BASE_DIR" \
+                --output-dir "$OUTPUT_DIR" \
+                --background-labels "label_Wqq" \
+                --signal-labels "$SIGNAL" \
+                --learning-rate 1e-3 \
+                --warmup-steps 10 \
+                --steps-per-epoch 400 \
+                --epochs 10 \
+                --batch-size 10240 \
+                --val-steps 400 \
+                --signal-fraction "$FRAC" \
 
-    python -u scripts/evaluate_cwola.py \
-        "$BASE_DIR"/wqq-vs-hbb-hcc-zqq-linear-white-cwola-0.0001
+            python -u scripts/evaluate_cwola.py "$OUTPUT_DIR"
+        done
+    done
 done
+
+# supervised
+# for BASE_DIR in \
+#     "plots/jetclass/32-CLR-Wqq" \
+#     plots/jetclass/32-CLR-QcdTbqqHggWqq \
+#     plots/jetclass/32-QcdTbqqHggWqq \
+#     plots/jetclass/32-Wqq
+# do
+#     for SIGNAL in \
+#         "label_Hbb,label_Hcc,label_Zqq" \
+#         "label_Hbb"
+#     do
+#         # label_Hbb,label_Hcc,label_Zqq -> hbb-hcc-zqq
+#         SIGNAL_NAME="${SIGNAL//label_/}"
+#         SIGNAL_NAME="${SIGNAL_NAME//,/-}"
+#         SIGNAL_NAME="${SIGNAL_NAME,,}"
+
+#         for FRAC in \
+#             0.0005
+#         do
+#             OUTPUT_DIR="$BASE_DIR/wqq-vs-${SIGNAL_NAME}-linear-scwola-$FRAC"
+
+#             python -u scripts/run_train_supervised_mlp.py \
+#                 "$BASE_DIR" \
+#                 --output-dir "$OUTPUT_DIR" \
+#                 --background-labels "label_Wqq" \
+#                 --signal-labels "$SIGNAL" \
+#                 --learning-rate 1e-3 \
+#                 --warmup-steps 10 \
+#                 --steps-per-epoch 400 \
+#                 --epochs 10 \
+#                 --batch-size 10240 \
+#                 --val-steps 400 \
+#                 --signal-fraction "$FRAC" \
+
+#             python -u scripts/evaluate_cwola.py "$OUTPUT_DIR"
+#         done
+#     done
+# done
+
+
+
+
+# python -u scripts/run_train_lejepa_part.py \
+#     --dataset jetclass \
+#     --dataset-root "/HEP/export/home/lwang223/JetClass/JetClass/Pythia" \
+#     --model jetclr \
+#     --background-labels "label_Wqq" \
+#     --signal-labels "label_Hbb" \
+#     --embed-dim 32 \
+#     --representation-dim 32 \
+#     --dropout 0.01 \
+#     --num-layers 4 \
+#     --num-heads 8 \
+#     --batch-size 128 \
+#     --steps-per-epoch 2000 \
+#     --val-steps 100 \
+#     --eval-steps 100 \
+#     --epochs 40 \
+#     --learning-rate 1e-3 \
+#     --weight-decay 5e-2 \
+#     --precision bf16 \
+#     --num-global-views 1 \
+#     --num-local-views 1 \
+#     --anomaly-score mahalanobis \
+#     --pairwise-hidden-dim 32 \
+#     --num-workers 4 \
+#     --prefetch-factor 2 \
+#     --shuffle-active-shards 3 \
+#     --output-dir "plots/jetclass/32-CLR-Wqq"
+
+# python -u scripts/run_train_lejepa_part.py \
+#     --dataset jetclass \
+#     --dataset-root "/HEP/export/home/lwang223/JetClass/JetClass/Pythia" \
+#     --model jetclr \
+#     --background-labels "label_QCD,label_Wqq,label_Hgg,label_Tbqq" \
+#     --signal-labels "label_Hbb" \
+#     --embed-dim 32 \
+#     --representation-dim 32 \
+#     --dropout 0.01 \
+#     --num-layers 4 \
+#     --num-heads 8 \
+#     --batch-size 128 \
+#     --steps-per-epoch 2000 \
+#     --val-steps 100 \
+#     --eval-steps 100 \
+#     --epochs 40 \
+#     --learning-rate 1e-3 \
+#     --weight-decay 5e-2 \
+#     --precision bf16 \
+#     --num-global-views 1 \
+#     --num-local-views 1 \
+#     --anomaly-score mahalanobis \
+#     --pairwise-hidden-dim 32 \
+#     --num-workers 4 \
+#     --prefetch-factor 2 \
+#     --shuffle-active-shards 3 \
+#     --output-dir "plots/jetclass/32-CLR-QcdTbqqHggWqq"
