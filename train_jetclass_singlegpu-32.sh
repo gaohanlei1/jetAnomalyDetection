@@ -169,41 +169,41 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #     done
 # done
 
-# lejepa multi linear probe
-for BASE_DIR in \
-    plots/jetclass/32-QcdTbqqHggWqq \
-    plots/jetclass/32-Wqq
-do
-    for SIGNAL in \
-        "label_Hbb,label_Hcc,label_Zqq" \
-    do
-        # label_Hbb,label_Hcc,label_Zqq -> hbb-hcc-zqq
-        SIGNAL_NAME="${SIGNAL//label_/}"
-        SIGNAL_NAME="${SIGNAL_NAME//,/-}"
-        SIGNAL_NAME="${SIGNAL_NAME,,}"
+# # lejepa multi linear probe
+# for BASE_DIR in \
+#     plots/jetclass/32-QcdTbqqHggWqq \
+#     plots/jetclass/32-Wqq
+# do
+#     for SIGNAL in \
+#         "label_Hbb,label_Hcc,label_Zqq" \
+#     do
+#         # label_Hbb,label_Hcc,label_Zqq -> hbb-hcc-zqq
+#         SIGNAL_NAME="${SIGNAL//label_/}"
+#         SIGNAL_NAME="${SIGNAL_NAME//,/-}"
+#         SIGNAL_NAME="${SIGNAL_NAME,,}"
 
-        for FRAC in \
-            0.0005
-        do
-            OUTPUT_DIR="$BASE_DIR/wqq-vs-${SIGNAL_NAME}-linear-cwola-$FRAC"
+#         for FRAC in \
+#             0.0005
+#         do
+#             OUTPUT_DIR="$BASE_DIR/wqq-vs-${SIGNAL_NAME}-linear-cwola-$FRAC"
 
-            python -u scripts/run_train_cwola.py \
-                "$BASE_DIR" \
-                --output-dir "$OUTPUT_DIR" \
-                --background-labels "label_Wqq" \
-                --signal-labels "$SIGNAL" \
-                --learning-rate 1e-3 \
-                --warmup-steps 10 \
-                --steps-per-epoch 400 \
-                --epochs 10 \
-                --batch-size 10240 \
-                --val-steps 400 \
-                --signal-fraction "$FRAC" \
+#             python -u scripts/run_train_cwola.py \
+#                 "$BASE_DIR" \
+#                 --output-dir "$OUTPUT_DIR" \
+#                 --background-labels "label_Wqq" \
+#                 --signal-labels "$SIGNAL" \
+#                 --learning-rate 1e-3 \
+#                 --warmup-steps 10 \
+#                 --steps-per-epoch 400 \
+#                 --epochs 10 \
+#                 --batch-size 10240 \
+#                 --val-steps 400 \
+#                 --signal-fraction "$FRAC" \
 
-            python -u scripts/evaluate_cwola.py "$OUTPUT_DIR"
-        done
-    done
-done
+#             python -u scripts/evaluate_cwola.py "$OUTPUT_DIR"
+#         done
+#     done
+# done
 
 # supervised
 # for BASE_DIR in \
@@ -302,3 +302,4 @@ done
 #     --prefetch-factor 2 \
 #     --shuffle-active-shards 3 \
 #     --output-dir "plots/jetclass/32-CLR-QcdTbqqHggWqq"
+
