@@ -150,7 +150,7 @@ python -u scripts/evaluate_label_real_anomalies.py \
     --knn-reduction mean \
     --top-fraction 0.0005 \
     --bottom-fraction 0.0010 \
-    --num-visualize 24
+    --num-visualize 96
 
 # python -u scripts/evaluate_label_real_anomalies.py \
 #     --plot-events-npy plots/largerun/cms-correct-real-finetune/real_data_evaluation/real_test_top_2pct_events.npy \
