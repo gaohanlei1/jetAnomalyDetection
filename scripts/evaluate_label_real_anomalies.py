@@ -749,6 +749,17 @@ def _fraction_tag(fraction: float) -> str:
     return f"{percent:.3f}".rstrip("0").rstrip(".").replace(".", "p") + "pct"
 
 
+def leading_muon_veto(events: np.ndarray, feature_names: Sequence[str]) -> np.ndarray:
+    """Veto a leading-pT muon above 30% of jet pT; ties use the first token."""
+    pt_index = list(feature_names).index("part_pt")
+    muon_index = list(feature_names).index("part_isMuon")
+    valid = np.any(events != 0, axis=-1)
+    pt = np.where(valid, events[..., pt_index], -np.inf)
+    leading = pt.argmax(axis=1)
+    rows = np.arange(len(events))
+    return (pt[rows, leading] > 0.30) & (events[rows, leading, muon_index] > 0.5)
+
+
 def score_and_select_top_events(
     *,
     model: torch.nn.Module,
@@ -765,10 +776,14 @@ def score_and_select_top_events(
     output_dir: Path,
     max_num_particles: int,
     num_features: int,
+    feature_names: Sequence[str],
     heap_progress_every: int,
 ) -> Dict[str, object]:
     if not 0.0 < top_fraction < 1.0:
         raise ValueError("--top-fraction must lie strictly between 0 and 1.")
+    for name in ("part_pt", "part_isMuon"):
+        if name not in feature_names:
+            raise ValueError(f"Leading-muon veto requires feature {name}")
     top_count = max(1, int(math.ceil(total_events * top_fraction)))
     tag = _fraction_tag(top_fraction)
 
@@ -854,6 +869,21 @@ def score_and_select_top_events(
     temp_events.flush()
 
     heap.sort(key=lambda item: item[0], reverse=True)
+    # Keep the original score cut. Veto only selected events; never backfill
+    # with lower-scoring events to restore the requested top fraction.
+    cutoff = float(heap[-1][0])
+    pre_veto_count = top_count
+    retained = []
+    for start in range(0, len(heap), 256):
+        candidates = heap[start:start + 256]
+        slots = np.asarray([item[1] for item in candidates], dtype=np.int64)
+        veto = leading_muon_veto(temp_events[slots], feature_names)
+        retained.extend(item for item, reject in zip(candidates, veto) if not reject)
+    heap = retained
+    top_count = len(heap)
+    vetoed_count = pre_veto_count - top_count
+    print(f"Leading-muon veto after score cut: removed {vetoed_count}/{pre_veto_count}; "
+          f"retained {top_count} events.")
     final_events = np.lib.format.open_memmap(
         final_events_path,
         mode="w+",
@@ -873,7 +903,6 @@ def score_and_select_top_events(
         )
     final_events.flush()
     final_scores.flush()
-    cutoff = float(heap[-1][0])
 
     del final_events, final_scores, temp_events, all_scores
     temp_events_path.unlink(missing_ok=True)
@@ -884,6 +913,8 @@ def score_and_select_top_events(
         "all_scores_path": all_scores_path,
         "events_path": final_events_path,
         "event_scores_path": final_scores_path,
+        "top_count_before_muon_veto": pre_veto_count,
+        "leading_muon_veto_count": vetoed_count,
         "top_count": int(top_count),
         "top_fraction_realized": float(top_count / total_events),
         "cutoff": cutoff,
@@ -1172,6 +1203,7 @@ def main() -> None:
         output_dir=output_dir,
         max_num_particles=backend.max_num_particles,
         num_features=len(backend.feature_names),
+        feature_names=backend.feature_names,
         heap_progress_every=args.heap_progress_every,
     )
 
@@ -1198,14 +1230,20 @@ def main() -> None:
         histogram_sample_size=args.histogram_sample_size,
     )
     visualization_path = output_dir / "real_test_top_events_random_visualization.png"
-    selected_visual_indices = plot_random_jet_events(
-        events_path=events_path,
-        feature_names=backend.feature_names,
-        output_path=visualization_path,
-        num_events=args.num_visualize,
-        seed=seed + 707,
-        scores_path=Path(selection["event_scores_path"]),
-    )
+    selected_visual_indices = []
+    if selection["top_count"]:
+        selected_visual_indices = plot_random_jet_events(
+            events_path=events_path,
+            feature_names=backend.feature_names,
+            output_path=visualization_path,
+            num_events=args.num_visualize,
+            seed=seed + 707,
+            scores_path=Path(selection["event_scores_path"]),
+        )
+    else:
+        warnings.warn("All score-selected events failed the leading-muon veto; skipping jet visualization.")
+        visualization_path = None
+
 
     results = {
         "run_dir": run_dir,
@@ -1235,6 +1273,9 @@ def main() -> None:
         "top_fraction_requested": top_fraction,
         "score_stats": selection["score_stats"],
         "histogram_stats": histogram_stats,
+        "top_count_before_muon_veto": selection["top_count_before_muon_veto"],
+        "leading_muon_veto_count": selection["leading_muon_veto_count"],
+        "leading_muon_veto_pt_fraction": 0.30,
         "top_count": selection["top_count"],
         "top_fraction_realized": selection["top_fraction_realized"],
         "top_cutoff": selection["cutoff"],
