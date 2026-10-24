@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --nodes=1               # node count
 # SBATCH --nodelist=gpu2708      # the L40S GPU!! 3001-3005, 3101-3106, 2708-2709 are L40S
-#SBATCH -p gpu --gres=gpu:2     # number of gpus per node
+#SBATCH -p gpu --gres=gpu:1     # number of gpus per node
 #SBATCH --ntasks-per-node=1     # total number of tasks across all nodes
 #SBATCH --cpus-per-task=6       # cpu-cores per task (>1 if multi-threaded tasks)
 #SBATCH -t 48:00:00             # total run time limit (HH:MM:SS)
 #SBATCH --mem=128GB           # CPU RAM
-#SBATCH --constraint=l40s
+# SBATCH --constraint=l40s
 #SBATCH --job-name='JETANOMALY'
 #SBATCH --output=slurm_logs/R-%x.%j/log.out
 #SBATCH --error=slurm_logs/R-%x.%j/log.err
@@ -97,58 +97,59 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 #     "plots/largerun/cms-correct-deta-dphi-128"
 
 # mixed fine-tune
-torchrun --standalone --nproc-per-node=2 \
-    scripts/run_train_lejepa_part.py \
-    --dataset cms \
-    --dataset-root "/HEP/export/home/lwang223/jet-anomaly-data/ak8-v5" \
-    --model semi-sup-triplet \
-    --checkpoint "plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt" \
-    --background-labels label_Hbb,label_Tbqq,label_Wqq,label_Zqq,label_Real \
-    --cms-real-val-fraction 0.05 \
-    --cms-real-test-fraction 0.45 \
-    --embed-dim 128 \
-    --representation-dim 128 \
-    --dropout 0.02 \
-    --num-layers 8 \
-    --num-heads 8 \
-    --batch-size 128 \
-    --steps-per-epoch 1000 \
-    --val-steps 1000 \
-    --epochs 10 \
-    --learning-rate 5e-5 \
-    --weight-decay 5e-2 \
-    --precision bf16 \
-    --num-global-views 2 \
-    --num-local-views 4 \
-    --num-negative-views 4 \
-    --batch-mix-prob 0.4 \
-    --pt-resample-prob 0.25 \
-    --node-deta-dphi-rotation-prob 0.1 \
-    --deta-dphi-shuffle-prob 0.1 \
-    --identity-shuffle-prob 0.15 \
-    --global-drop-pt-frac-min 0.0 \
-    --global-drop-pt-frac-max 0.3 \
-    --local-drop-pt-frac-min 0.3 \
-    --local-drop-pt-frac-max 0.75 \
-    --batch-mix-anchor-frac-min 0.4 \
-    --batch-mix-anchor-frac-max 0.6 \
-    --anomaly-score mahalanobis \
-    --pairwise-hidden-dim 64 \
-    --triplet-weight 0.1 \
-    --triplet-margin 0.2 \
-    --classification-weight 0.0 \
-    --num-workers 2 \
-    --prefetch-factor 2 \
-    --shuffle-active-shards 2 \
-    --output-dir "plots/largerun/cms-correct-mix-real-finetune-128"
+# torchrun --standalone --nproc-per-node=2 \
+#     scripts/run_train_lejepa_part.py \
+#     --dataset cms \
+#     --dataset-root "/HEP/export/home/lwang223/jet-anomaly-data/ak8-v5" \
+#     --model semi-sup-triplet \
+#     --checkpoint "plots/largerun/cms-correct-deta-dphi-128/last_checkpoint.pt" \
+#     --background-labels label_Hbb,label_Tbqq,label_Wqq,label_Zqq,label_Real \
+#     --cms-real-val-fraction 0.05 \
+#     --cms-real-test-fraction 0.45 \
+#     --embed-dim 128 \
+#     --representation-dim 128 \
+#     --dropout 0.02 \
+#     --num-layers 8 \
+#     --num-heads 8 \
+#     --batch-size 128 \
+#     --steps-per-epoch 1000 \
+#     --val-steps 1000 \
+#     --epochs 10 \
+#     --learning-rate 5e-5 \
+#     --weight-decay 5e-2 \
+#     --precision bf16 \
+#     --num-global-views 2 \
+#     --num-local-views 4 \
+#     --num-negative-views 4 \
+#     --batch-mix-prob 0.4 \
+#     --pt-resample-prob 0.25 \
+#     --node-deta-dphi-rotation-prob 0.1 \
+#     --deta-dphi-shuffle-prob 0.1 \
+#     --identity-shuffle-prob 0.15 \
+#     --global-drop-pt-frac-min 0.0 \
+#     --global-drop-pt-frac-max 0.3 \
+#     --local-drop-pt-frac-min 0.3 \
+#     --local-drop-pt-frac-max 0.75 \
+#     --batch-mix-anchor-frac-min 0.4 \
+#     --batch-mix-anchor-frac-max 0.6 \
+#     --anomaly-score mahalanobis \
+#     --pairwise-hidden-dim 64 \
+#     --triplet-weight 0.1 \
+#     --triplet-margin 0.2 \
+#     --classification-weight 0.0 \
+#     --num-workers 2 \
+#     --prefetch-factor 2 \
+#     --shuffle-active-shards 2 \
+#     --output-dir "plots/largerun/cms-correct-mix-real-finetune-128"
 
 python -u scripts/evaluate_label_real_anomalies.py \
     "plots/largerun/cms-correct-mix-real-finetune-128" \
-    --reference-steps 100 \
+    --reference-steps 1000 \
     --batch-size 256 \
     --knn-k 10 \
     --knn-reduction mean \
-    --top-fraction 0.02
+    --top-fraction 0.0005 \
+    --num-visualize 24
 
 # python -u scripts/evaluate_label_real_anomalies.py \
 #     --plot-events-npy plots/largerun/cms-correct-real-finetune/real_data_evaluation/real_test_top_2pct_events.npy \
