@@ -47,54 +47,54 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 # --cms-real-val-fraction 0.05 \
 #     --cms-real-test-fraction 0.45 \
 
-torchrun --standalone --nproc-per-node=2 \
-    scripts/run_train_lejepa_part.py \
-    --dataset cms \
-    --dataset-root "/HEP/export/home/lwang223/jet-anomaly-data/ak8-v5" \
-    --model semi-sup-triplet \
-    --background-labels "label_QCD,label_Hbb,label_Zqq,label_Wqq,label_Tbqq" \
-    --signal-labels "label_QCD,label_Hbb,label_Zqq,label_Wqq,label_Tbqq" \
-    --cms-val-fraction 0.1 \
-    --cms-test-fraction 0.1 \
-    --embed-dim 128 \
-    --representation-dim 128 \
-    --dropout 0.02 \
-    --num-layers 8 \
-    --num-heads 8 \
-    --batch-size 256 \
-    --steps-per-epoch 4000 \
-    --val-steps 1000 \
-    --eval-steps 1000 \
-    --epochs 40 \
-    --learning-rate 1e-3 \
-    --weight-decay 5e-2 \
-    --precision bf16 \
-    --num-global-views 2 \
-    --num-local-views 4 \
-    --num-negative-views 4 \
-    --batch-mix-prob 0.4 \
-    --pt-resample-prob 0.25 \
-    --node-deta-dphi-rotation-prob 0.1 \
-    --deta-dphi-shuffle-prob 0.1 \
-    --identity-shuffle-prob 0.15 \
-    --global-drop-pt-frac-min 0.0 \
-    --global-drop-pt-frac-max 0.3 \
-    --local-drop-pt-frac-min 0.3 \
-    --local-drop-pt-frac-max 0.75 \
-    --batch-mix-anchor-frac-min 0.4 \
-    --batch-mix-anchor-frac-max 0.6 \
-    --anomaly-score mahalanobis \
-    --pairwise-hidden-dim 64 \
-    --triplet-weight 0.1 \
-    --triplet-margin 0.2 \
-    --classification-weight 0.1 \
-    --num-workers 2 \
-    --prefetch-factor 2 \
-    --shuffle-active-shards 2 \
-    --output-dir "plots/largerun/cms-correct-deta-dphi-128"
+# torchrun --standalone --nproc-per-node=2 \
+#     scripts/run_train_lejepa_part.py \
+#     --dataset cms \
+#     --dataset-root "/HEP/export/home/lwang223/jet-anomaly-data/ak8-v5" \
+#     --model semi-sup-triplet \
+#     --background-labels "label_QCD,label_Hbb,label_Zqq,label_Wqq,label_Tbqq" \
+#     --signal-labels "label_QCD,label_Hbb,label_Zqq,label_Wqq,label_Tbqq" \
+#     --cms-val-fraction 0.1 \
+#     --cms-test-fraction 0.1 \
+#     --embed-dim 128 \
+#     --representation-dim 128 \
+#     --dropout 0.02 \
+#     --num-layers 8 \
+#     --num-heads 8 \
+#     --batch-size 256 \
+#     --steps-per-epoch 4000 \
+#     --val-steps 1000 \
+#     --eval-steps 1000 \
+#     --epochs 40 \
+#     --learning-rate 1e-3 \
+#     --weight-decay 5e-2 \
+#     --precision bf16 \
+#     --num-global-views 2 \
+#     --num-local-views 4 \
+#     --num-negative-views 4 \
+#     --batch-mix-prob 0.4 \
+#     --pt-resample-prob 0.25 \
+#     --node-deta-dphi-rotation-prob 0.1 \
+#     --deta-dphi-shuffle-prob 0.1 \
+#     --identity-shuffle-prob 0.15 \
+#     --global-drop-pt-frac-min 0.0 \
+#     --global-drop-pt-frac-max 0.3 \
+#     --local-drop-pt-frac-min 0.3 \
+#     --local-drop-pt-frac-max 0.75 \
+#     --batch-mix-anchor-frac-min 0.4 \
+#     --batch-mix-anchor-frac-max 0.6 \
+#     --anomaly-score mahalanobis \
+#     --pairwise-hidden-dim 64 \
+#     --triplet-weight 0.1 \
+#     --triplet-margin 0.2 \
+#     --classification-weight 0.1 \
+#     --num-workers 2 \
+#     --prefetch-factor 2 \
+#     --shuffle-active-shards 2 \
+#     --output-dir "plots/largerun/cms-correct-deta-dphi-128"
 
-python -u scripts/diagnose_lejepa_latents.py \
-    "plots/largerun/cms-correct-deta-dphi-128"
+# python -u scripts/diagnose_lejepa_latents.py \
+#     "plots/largerun/cms-correct-deta-dphi-128"
 
 # mixed fine-tune
 torchrun --standalone --nproc-per-node=2 \
@@ -111,10 +111,10 @@ torchrun --standalone --nproc-per-node=2 \
     --dropout 0.02 \
     --num-layers 8 \
     --num-heads 8 \
-    --batch-size 256 \
+    --batch-size 128 \
     --steps-per-epoch 1000 \
     --val-steps 1000 \
-    --epochs 5 \
+    --epochs 10 \
     --learning-rate 5e-5 \
     --weight-decay 5e-2 \
     --precision bf16 \
@@ -144,6 +144,10 @@ torchrun --standalone --nproc-per-node=2 \
 
 python -u scripts/evaluate_label_real_anomalies.py \
     "plots/largerun/cms-correct-mix-real-finetune-128" \
+    --reference-steps 100 \
+    --batch-size 256 \
+    --knn-k 10 \
+    --knn-reduction mean \
     --top-fraction 0.02
 
 # python -u scripts/evaluate_label_real_anomalies.py \

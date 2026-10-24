@@ -1,0 +1,100 @@
+{
+  "run_dir": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128",
+  "checkpoint": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/best_model.pth",
+  "dataset": "cms",
+  "label": "label_Real",
+  "dataset_root": "/HEP/export/home/lwang223/jet-anomaly-data/ak8-v5",
+  "cms_split_manifest": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/cms_split_manifest.json",
+  "cms_split_manifest_sha256": "e2d04f2c54732a7a84803023314d57a5f5cbe1d4e4e56ddf6d50595181c78abc",
+  "test_root_shards": 45,
+  "particle_features": [
+    "part_px",
+    "part_py",
+    "part_pz",
+    "part_energy",
+    "part_pt",
+    "log_pt_fraction",
+    "part_deta",
+    "part_dphi",
+    "Cpfcan_dxysig",
+    "Cpfcan_dzsig",
+    "part_charge",
+    "part_isChargedHadron",
+    "part_isNeutralHadron",
+    "part_isPhoton",
+    "part_isElectron",
+    "part_isMuon"
+  ],
+  "batch_standardized_particle_features": [
+    "log_pt_fraction",
+    "Cpfcan_dxysig",
+    "Cpfcan_dzsig"
+  ],
+  "max_num_particles": 128,
+  "device": "cuda:0",
+  "precision": "bf16",
+  "seed": 42,
+  "batch_size": 256,
+  "num_workers": 1,
+  "eval_steps": null,
+  "total_test_events": 184344,
+  "reference_steps": 100,
+  "reference_requested_per_class": 5120,
+  "reference_counts": {
+    "label_Hbb": 5120,
+    "label_Tbqq": 5120,
+    "label_Wqq": 5120,
+    "label_Zqq": 5120,
+    "label_Real": 5120
+  },
+  "reference_labels": [
+    "label_Hbb",
+    "label_Tbqq",
+    "label_Wqq",
+    "label_Zqq",
+    "label_Real"
+  ],
+  "knn_k": 10,
+  "knn_reduction": "mean",
+  "top_fraction_requested": 0.02,
+  "score_stats": {
+    "count": 184344,
+    "mean": 6.7713027995706865,
+    "std": 1.1452240914920064,
+    "min": 0.45678025484085083,
+    "max": 12.477192878723145
+  },
+  "histogram_stats": {
+    "histogram_low": 2.336685605764389,
+    "histogram_high": 9.901536250114443,
+    "sample_q05": 4.9822636365890505,
+    "sample_median": 6.746267795562744,
+    "sample_q95": 8.690757656097414
+  },
+  "top_count": 3687,
+  "top_fraction_realized": 0.020000650956906653,
+  "top_cutoff": 9.200593948364258,
+  "random_visualized_event_array_indices": [
+    532,
+    613,
+    713,
+    900,
+    1144,
+    1679,
+    1742,
+    2328,
+    2509,
+    3052,
+    3522,
+    3605
+  ],
+  "files": {
+    "reference_latents": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/train_reference_latents.npy",
+    "all_scores": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_knn_scores.npy",
+    "top_events": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_top_2pct_events.npy",
+    "top_event_scores": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_top_2pct_event_scores.npy",
+    "top_event_features": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_top_2pct_events_features.json",
+    "score_distribution": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_score_distribution.png",
+    "random_visualization": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_top_events_random_visualization.png"
+  }
+}
