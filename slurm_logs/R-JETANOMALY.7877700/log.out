@@ -1,21 +1,21 @@
 ## SLURM PROLOG ###############################################################
-##    Job ID : 7877197
+##    Job ID : 7877700
 ##  Job Name : JETANOMALY
-##  Nodelist : gpu2501
+##  Nodelist : gpu2258
 ##      CPUs : 1
-##  Mem/Node : 131072 MB
+##  Mem/Node : 65536 MB
 ## Directory : /oscar/home/lwang223/jetAnomalyDetection
-##   Job Started : Fri Oct 23 09:46:38 PM EDT 2026
+##   Job Started : Fri Oct 23 10:09:32 PM EDT 2026
 ###############################################################################
 
 ==========================================
-Job started at: Fri Oct 23 09:46:38 PM EDT 2026
-Job ID: 7877197
-Node: gpu2501
+Job started at: Fri Oct 23 10:09:32 PM EDT 2026
+Job ID: 7877700
+Node: gpu2258
 ==========================================
 
 GPU Information (from host):
-Fri Oct 23 21:46:38 2026       
+Fri Oct 23 22:09:32 2026       
 +-----------------------------------------------------------------------------------------+
 | NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
 |-----------------------------------------+------------------------+----------------------+
@@ -23,8 +23,8 @@ Fri Oct 23 21:46:38 2026
 | Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
 |                                         |                        |               MIG M. |
 |=========================================+========================+======================|
-|   0  NVIDIA RTX A5500               On  |   00000000:03:00.0 Off |                    0 |
-| 30%   37C    P8             20W /  230W |      26MiB /  23028MiB |      0%      Default |
+|   0  NVIDIA RTX A5000               On  |   00000000:84:00.0 Off |                    0 |
+| 30%   24C    P8             20W /  230W |      21MiB /  23028MiB |      0%      Default |
 |                                         |                        |                  N/A |
 +-----------------------------------------+------------------------+----------------------+
                                                                                          
@@ -33,7 +33,7 @@ Fri Oct 23 21:46:38 2026
 |  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
 |        ID   ID                                                               Usage      |
 |=========================================================================================|
-|    0   N/A  N/A          159570      G   /usr/libexec/Xorg                         8MiB |
+|    0   N/A  N/A          181490      G   /usr/libexec/Xorg                         8MiB |
 +-----------------------------------------------------------------------------------------+
 
 PyTorch version: 2.6.0+cu124
@@ -48,10 +48,10 @@ Evaluation scope: complete finite label_Real test split
 Finite held-out test events: 184,344
 Reference pool counts: {'label_Hbb': 51200, 'label_Tbqq': 51200, 'label_Wqq': 51200, 'label_Zqq': 51200, 'label_Real': 51200}; total=256000
 Processed 100,096/184,344 events; current top cut=8.49661
-Leading-muon veto after score cut: removed 1/93; retained 92 events.
-Bottom leading-muon veto: removed 75/93; retained 18.
-Bottom-event cut: 0.810391
-Bottom events: 18 -> /oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_bottom_0p05pct_events.npy
+Top leading-lepton veto: removed 3/93; retained 90 events.
+Bottom leading-lepton veto: removed 131/185; retained 54.
+Bottom-event cut: 1.12652
+Bottom events: 54 -> /oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_bottom_0p1pct_events.npy
 Saved evaluation outputs to /oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation
 Top-event cut: 8.72131
-Top events: 92 -> /oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_top_0p05pct_events.npy
+Top events: 90 -> /oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_top_0p05pct_events.npy

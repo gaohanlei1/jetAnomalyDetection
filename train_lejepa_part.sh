@@ -5,7 +5,7 @@
 #SBATCH --ntasks-per-node=1     # total number of tasks across all nodes
 #SBATCH --cpus-per-task=6       # cpu-cores per task (>1 if multi-threaded tasks)
 #SBATCH -t 48:00:00             # total run time limit (HH:MM:SS)
-#SBATCH --mem=128GB           # CPU RAM
+#SBATCH --mem=64GB           # CPU RAM
 # SBATCH --constraint=l40s
 #SBATCH --job-name='JETANOMALY'
 #SBATCH --output=slurm_logs/R-%x.%j/log.out
@@ -149,6 +149,7 @@ python -u scripts/evaluate_label_real_anomalies.py \
     --knn-k 10 \
     --knn-reduction mean \
     --top-fraction 0.0005 \
+    --bottom-fraction 0.0010 \
     --num-visualize 24
 
 # python -u scripts/evaluate_label_real_anomalies.py \
