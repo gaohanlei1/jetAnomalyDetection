@@ -751,15 +751,82 @@ def _fraction_tag(fraction: float) -> str:
     return f"{percent:.3f}".rstrip("0").rstrip(".").replace(".", "p") + "pct"
 
 
-def leading_muon_veto(events: np.ndarray, feature_names: Sequence[str]) -> np.ndarray:
-    """Veto a leading-pT muon above 30% of jet pT; ties use the first token."""
+def leading_lepton_veto(events: np.ndarray, feature_names: Sequence[str]) -> np.ndarray:
+    """Veto a leading-pT electron or muon above 20% of jet pT; ties use the first token."""
     pt_index = list(feature_names).index("part_pt")
     muon_index = list(feature_names).index("part_isMuon")
+    electron_index = list(feature_names).index("part_isElectron")
     valid = np.any(events != 0, axis=-1)
     pt = np.where(valid, events[..., pt_index], -np.inf)
     leading = pt.argmax(axis=1)
     rows = np.arange(len(events))
-    return (pt[rows, leading] > 0.30) & (events[rows, leading, muon_index] > 0.5)
+    is_lepton = ((events[rows, leading, muon_index] > 0.5)
+                 | (events[rows, leading, electron_index] > 0.5))
+    return (pt[rows, leading] > 0.20) & is_lepton
+
+
+def save_lepton_partition(events, ordered, feature_names, events_path, scores_path):
+    """Partition score-ordered candidates, saving both groups in that same order."""
+    groups = {"retained": [], "vetoed": []}
+    for start in range(0, len(ordered), 256):
+        items = ordered[start:start + 256]
+        slots = np.asarray([slot for _, slot in items], dtype=np.int64)
+        veto = leading_lepton_veto(events[slots], feature_names)
+        for item, reject in zip(items, veto):
+            groups["vetoed" if reject else "retained"].append(item)
+    prefix = events_path.stem.removesuffix("_events")
+    veto_events_path = events_path.with_name(prefix + "_lepton_vetoed_events.npy")
+    veto_scores_path = events_path.with_name(prefix + "_lepton_vetoed_event_scores.npy")
+    for group, event_file, score_file in (
+        ("retained", events_path, scores_path),
+        ("vetoed", veto_events_path, veto_scores_path),
+    ):
+        items = groups[group]
+        output = np.lib.format.open_memmap(event_file, mode="w+", dtype=np.float32,
+                                          shape=(len(items), *events.shape[1:]))
+        scores = np.lib.format.open_memmap(score_file, mode="w+", dtype=np.float32,
+                                          shape=(len(items),))
+        for start in range(0, len(items), 256):
+            chunk = items[start:start + 256]
+            slots = np.asarray([slot for _, slot in chunk], dtype=np.int64)
+            output[start:start + len(chunk)] = events[slots]
+            scores[start:start + len(chunk)] = [score for score, _ in chunk]
+        output.flush()
+        scores.flush()
+        del output, scores
+    return dict(retained_count=len(groups["retained"]),
+                leading_lepton_veto_count=len(groups["vetoed"]),
+                vetoed_events_path=veto_events_path, vetoed_event_scores_path=veto_scores_path)
+
+
+def plot_lepton_groups(selection, *, tail, output_dir, feature_names,
+                       feature_payload, num_events, seed):
+    """Use the same random sampling and score-order plotting for both groups."""
+    plots = {}
+    for group, count, events_path, scores_path in (
+        ("retained", selection[f"{tail}_count"], selection["events_path"], selection["event_scores_path"]),
+        ("vetoed", selection["leading_lepton_veto_count"],
+         selection["vetoed_events_path"], selection["vetoed_event_scores_path"]),
+    ):
+        events_path = Path(events_path)
+        features_path = events_path.with_name(events_path.stem + "_features.json")
+        features_path.write_text(json.dumps(feature_payload, indent=2))
+        suffix = "" if group == "retained" else "_lepton_vetoed"
+        path = output_dir / f"real_test_{tail}{suffix}_events_random_visualization.png"
+        indices = []
+        if count:
+            direction = "highest" if tail == "top" else "lowest"
+            status = "lepton-vetoed" if group == "vetoed" else "retained"
+            indices = plot_random_jet_events(
+                events_path=events_path, feature_names=feature_names, output_path=path,
+                num_events=num_events, seed=seed, scores_path=Path(scores_path),
+                title=f"Random {status} sample from {direction}-scoring real-data jets",
+            )
+        else:
+            warnings.warn(f"No {tail} {group} events; skipping corresponding jet visualization.")
+            path = None
+        plots[group] = dict(path=path, indices=indices, features_path=features_path)
+    return plots
 
 
 class BottomEventSelection:
@@ -795,30 +862,17 @@ class BottomEventSelection:
         # Descending negative score is ascending actual score.
         ordered = sorted(self.heap, key=lambda item: item[0], reverse=True)
         cutoff = -ordered[-1][0]
-        retained = []
-        for start in range(0, len(ordered), 256):
-            candidates = ordered[start:start + 256]
-            slots = np.asarray([item[1] for item in candidates], dtype=np.int64)
-            veto = leading_muon_veto(self.events[slots], feature_names)
-            retained.extend(item for item, reject in zip(candidates, veto) if not reject)
-        count = len(retained)
-        output = np.lib.format.open_memmap(self.events_path, mode="w+", dtype=np.float32,
-                                          shape=(count, *self.shape))
-        scores = np.lib.format.open_memmap(self.scores_path, mode="w+", dtype=np.float32,
-                                          shape=(count,))
-        for start in range(0, count, 256):
-            items = retained[start:start + 256]
-            slots = np.asarray([item[1] for item in items], dtype=np.int64)
-            output[start:start + len(items)] = self.events[slots]
-            scores[start:start + len(items)] = [-item[0] for item in items]
-        output.flush()
-        scores.flush()
-        del output, scores, self.events
+        partition = save_lepton_partition(
+            self.events, [(-priority, slot) for priority, slot in ordered],
+            feature_names, self.events_path, self.scores_path,
+        )
+        count = partition.pop("retained_count")
+        del self.events
         self.temp_path.unlink(missing_ok=True)
-        print(f"Bottom leading-muon veto: removed {self.count - count}/{self.count}; retained {count}.")
+        print(f"Bottom leading-lepton veto: removed {self.count - count}/{self.count}; retained {count}.")
         return dict(events_path=self.events_path, event_scores_path=self.scores_path,
-                    bottom_count_before_muon_veto=self.count,
-                    leading_muon_veto_count=self.count - count, bottom_count=count,
+                    bottom_count_before_lepton_veto=self.count,
+                    bottom_count=count, **partition,
                     bottom_fraction_realized=count / self.total_events, cutoff=float(cutoff))
 
 
@@ -847,9 +901,9 @@ def score_and_select_top_events(
     bottom_fraction = top_fraction if bottom_fraction is None else bottom_fraction
     if not 0.0 < bottom_fraction < 1.0:
         raise ValueError("--bottom-fraction must lie strictly between 0 and 1.")
-    for name in ("part_pt", "part_isMuon"):
+    for name in ("part_pt", "part_isMuon", "part_isElectron"):
         if name not in feature_names:
-            raise ValueError(f"Leading-muon veto requires feature {name}")
+            raise ValueError(f"Leading-lepton veto requires feature {name}")
     top_count = max(1, int(math.ceil(total_events * top_fraction)))
     tag = _fraction_tag(top_fraction)
 
@@ -942,38 +996,12 @@ def score_and_select_top_events(
     # with lower-scoring events to restore the requested top fraction.
     cutoff = float(heap[-1][0])
     pre_veto_count = top_count
-    retained = []
-    for start in range(0, len(heap), 256):
-        candidates = heap[start:start + 256]
-        slots = np.asarray([item[1] for item in candidates], dtype=np.int64)
-        veto = leading_muon_veto(temp_events[slots], feature_names)
-        retained.extend(item for item, reject in zip(candidates, veto) if not reject)
-    heap = retained
-    top_count = len(heap)
-    vetoed_count = pre_veto_count - top_count
-    print(f"Leading-muon veto after score cut: removed {vetoed_count}/{pre_veto_count}; "
+    partition = save_lepton_partition(temp_events, heap, feature_names,
+                                      final_events_path, final_scores_path)
+    top_count = partition.pop("retained_count")
+    print(f"Top leading-lepton veto: removed {pre_veto_count - top_count}/{pre_veto_count}; "
           f"retained {top_count} events.")
-    final_events = np.lib.format.open_memmap(
-        final_events_path,
-        mode="w+",
-        dtype=np.float32,
-        shape=(top_count, max_num_particles, num_features),
-    )
-    final_scores = np.lib.format.open_memmap(
-        final_scores_path, mode="w+", dtype=np.float32, shape=(top_count,)
-    )
-    copy_chunk = 256
-    for start in tqdm(range(0, top_count, copy_chunk), desc="Order selected events"):
-        stop = min(start + copy_chunk, top_count)
-        slots = np.asarray([heap[i][1] for i in range(start, stop)], dtype=np.int64)
-        final_events[start:stop] = temp_events[slots]
-        final_scores[start:stop] = np.asarray(
-            [heap[i][0] for i in range(start, stop)], dtype=np.float32
-        )
-    final_events.flush()
-    final_scores.flush()
-
-    del final_events, final_scores, temp_events, all_scores
+    del temp_events, all_scores
     temp_events_path.unlink(missing_ok=True)
 
     bottom_selection = bottom.finish(feature_names)
@@ -984,8 +1012,8 @@ def score_and_select_top_events(
         "all_scores_path": all_scores_path,
         "events_path": final_events_path,
         "event_scores_path": final_scores_path,
-        "top_count_before_muon_veto": pre_veto_count,
-        "leading_muon_veto_count": vetoed_count,
+        "top_count_before_lepton_veto": pre_veto_count,
+        **partition,
         "top_count": int(top_count),
         "top_fraction_realized": float(top_count / total_events),
         "cutoff": cutoff,
@@ -1308,21 +1336,13 @@ def main() -> None:
         seed=seed + 606,
         histogram_sample_size=args.histogram_sample_size,
     )
-    visualization_path = output_dir / "real_test_top_events_random_visualization.png"
-    selected_visual_indices = []
-    if selection["top_count"]:
-        selected_visual_indices = plot_random_jet_events(
-            events_path=events_path,
-            feature_names=backend.feature_names,
-            output_path=visualization_path,
-            num_events=args.num_visualize,
-            seed=seed + 707,
-            scores_path=Path(selection["event_scores_path"]),
-        )
-    else:
-        warnings.warn("All score-selected events failed the leading-muon veto; skipping jet visualization.")
-        visualization_path = None
-
+    feature_payload = json.loads(feature_list_path.read_text())
+    top_plots = plot_lepton_groups(
+        selection, tail="top", output_dir=output_dir, feature_names=backend.feature_names,
+        feature_payload=feature_payload, num_events=args.num_visualize, seed=seed + 707,
+    )
+    visualization_path = top_plots["retained"]["path"]
+    selected_visual_indices = top_plots["retained"]["indices"]
 
     results = {
         "run_dir": run_dir,
@@ -1352,13 +1372,14 @@ def main() -> None:
         "top_fraction_requested": top_fraction,
         "score_stats": selection["score_stats"],
         "histogram_stats": histogram_stats,
-        "top_count_before_muon_veto": selection["top_count_before_muon_veto"],
-        "leading_muon_veto_count": selection["leading_muon_veto_count"],
-        "leading_muon_veto_pt_fraction": 0.30,
+        "top_count_before_lepton_veto": selection["top_count_before_lepton_veto"],
+        "leading_lepton_veto_count": selection["leading_lepton_veto_count"],
+        "leading_lepton_veto_pt_fraction": 0.20,
         "top_count": selection["top_count"],
         "top_fraction_realized": selection["top_fraction_realized"],
         "top_cutoff": selection["cutoff"],
         "random_visualized_event_array_indices": selected_visual_indices,
+        "vetoed_random_visualized_event_array_indices": top_plots["vetoed"]["indices"],
         "files": {
             "reference_latents": reference_path,
             "all_scores": selection["all_scores_path"],
@@ -1367,6 +1388,10 @@ def main() -> None:
             "top_event_features": feature_list_path,
             "score_distribution": distribution_path,
             "random_visualization": visualization_path,
+            "lepton_vetoed_events": selection["vetoed_events_path"],
+            "lepton_vetoed_event_scores": selection["vetoed_event_scores_path"],
+            "lepton_vetoed_event_features": top_plots["vetoed"]["features_path"],
+            "lepton_vetoed_random_visualization": top_plots["vetoed"]["path"],
         },
     }
     results_path = output_dir / "real_test_evaluation.json"
@@ -1385,39 +1410,36 @@ def main() -> None:
         output_path=bottom_distribution_path, seed=seed + 606,
         histogram_sample_size=args.histogram_sample_size, tail="bottom",
     )
-    bottom_visualization_path = output_dir / "real_test_bottom_events_random_visualization.png"
-    bottom_visual_indices = []
-    if bottom_selection["bottom_count"]:
-        # The saved array is ascending by score. The plotter samples random
-        # indices then sorts indices, preserving ascending subplot order.
-        bottom_visual_indices = plot_random_jet_events(
-            events_path=bottom_events_path, feature_names=backend.feature_names,
-            output_path=bottom_visualization_path, num_events=args.num_visualize,
-            seed=seed + 707, scores_path=Path(bottom_selection["event_scores_path"]),
-            title="Random sample from lowest-scoring held-out real-data jets",
-        )
-    else:
-        warnings.warn("All bottom-selected events failed the leading-muon veto; skipping jet visualization.")
-        bottom_visualization_path = None
+    bottom_plots = plot_lepton_groups(
+        bottom_selection, tail="bottom", output_dir=output_dir, feature_names=backend.feature_names,
+        feature_payload=feature_payload, num_events=args.num_visualize, seed=seed + 707,
+    )
+    bottom_visualization_path = bottom_plots["retained"]["path"]
+    bottom_visual_indices = bottom_plots["retained"]["indices"]
     # Mirror the top manifest, with bottom-specific selection metadata/files.
     bottom_results = {key: value for key, value in results.items()
                       if not key.startswith("top_") and key not in (
-                          "files", "histogram_stats", "leading_muon_veto_count",
+                          "files", "histogram_stats", "leading_lepton_veto_count",
                           "random_visualized_event_array_indices")}
     bottom_results.update(
         bottom_fraction_requested=bottom_fraction,
-        bottom_count_before_muon_veto=bottom_selection["bottom_count_before_muon_veto"],
-        leading_muon_veto_count=bottom_selection["leading_muon_veto_count"],
+        bottom_count_before_lepton_veto=bottom_selection["bottom_count_before_lepton_veto"],
+        leading_lepton_veto_count=bottom_selection["leading_lepton_veto_count"],
         bottom_count=bottom_selection["bottom_count"],
         bottom_fraction_realized=bottom_selection["bottom_fraction_realized"],
         bottom_cutoff=bottom_selection["cutoff"], histogram_stats=bottom_histogram,
         random_visualized_event_array_indices=bottom_visual_indices,
+        vetoed_random_visualized_event_array_indices=bottom_plots["vetoed"]["indices"],
         files=dict(reference_latents=reference_path, all_scores=selection["all_scores_path"],
                    bottom_events=bottom_events_path,
                    bottom_event_scores=bottom_selection["event_scores_path"],
                    bottom_event_features=bottom_features_path,
                    score_distribution=bottom_distribution_path,
-                   random_visualization=bottom_visualization_path),
+                   random_visualization=bottom_visualization_path,
+                   lepton_vetoed_events=bottom_selection["vetoed_events_path"],
+                   lepton_vetoed_event_scores=bottom_selection["vetoed_event_scores_path"],
+                   lepton_vetoed_event_features=bottom_plots["vetoed"]["features_path"],
+                   lepton_vetoed_random_visualization=bottom_plots["vetoed"]["path"]),
     )
     bottom_manifest_path = output_dir / "real_test_bottom_evaluation.json"
     bottom_manifest_path.write_text(json.dumps(safe_json(bottom_results), indent=2))
