@@ -159,6 +159,16 @@ class MixedEvaluationTest(unittest.TestCase):
         np.testing.assert_allclose(selected,np.sort(scores)[::-1][:2])
         self.assertTrue(np.isfinite(scores).all())
         self.assertTrue((output/'real_test_top_events_random_visualization.png').is_file())
+        bottom=json.loads((output/'real_test_bottom_evaluation.json').read_text())
+        self.assertEqual(bottom['bottom_fraction_requested'],.5)
+        self.assertEqual(bottom['bottom_count'],2)
+        bottom_scores=np.load(output/'real_test_bottom_50pct_event_scores.npy')
+        np.testing.assert_allclose(bottom_scores,np.sort(scores)[:2])
+        self.assertTrue((output/'real_test_bottom_events_random_visualization.png').is_file())
+        self.assertTrue((output/'real_test_bottom_score_distribution.png').is_file())
+        indices=bottom['random_visualized_event_array_indices']
+        self.assertEqual(indices, sorted(indices))
+
 
 
 if __name__=='__main__':

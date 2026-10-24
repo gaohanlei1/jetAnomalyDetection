@@ -139,6 +139,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--knn-reduction", choices=("mean", "kth"), default="mean")
     parser.add_argument("--knn-reference-batch-size", type=int, default=8192)
     parser.add_argument("--top-fraction", type=float, default=0.05)
+    parser.add_argument("--bottom-fraction", type=float, default=None,
+                        help="Lowest-score fraction to retain; defaults to --top-fraction.")
     parser.add_argument("--max-num-particles", type=int, default=None)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--num-visualize", type=int, default=12)
@@ -760,6 +762,66 @@ def leading_muon_veto(events: np.ndarray, feature_names: Sequence[str]) -> np.nd
     return (pt[rows, leading] > 0.30) & (events[rows, leading, muon_index] > 0.5)
 
 
+class BottomEventSelection:
+    """Bounded max-heap for lowest scores; apply veto only after score selection."""
+
+    def __init__(self, output_dir, fraction, total_events, max_num_particles, num_features):
+        self.count = max(1, int(math.ceil(total_events * fraction)))
+        self.total_events = total_events
+        self.shape = (max_num_particles, num_features)
+        tag = _fraction_tag(fraction)
+        self.temp_path = output_dir / f".real_test_bottom_{tag}_events_unsorted.npy"
+        self.events_path = output_dir / f"real_test_bottom_{tag}_events.npy"
+        self.scores_path = output_dir / f"real_test_bottom_{tag}_event_scores.npy"
+        self.events = np.lib.format.open_memmap(self.temp_path, mode="w+", dtype=np.float32,
+                                               shape=(self.count, *self.shape))
+        self.heap = []
+
+    def update(self, events, scores):
+        for i, score in enumerate(scores):
+            priority = -float(score)
+            if len(self.heap) < self.count:
+                slot = len(self.heap)
+                self.events[slot] = events[i]
+                heapq.heappush(self.heap, (priority, slot))
+            elif priority > self.heap[0][0]:
+                slot = self.heap[0][1]
+                heapq.heapreplace(self.heap, (priority, slot))
+                self.events[slot] = events[i]
+
+    def finish(self, feature_names):
+        if len(self.heap) != self.count:
+            raise RuntimeError("Bottom-event heap did not reach the expected count.")
+        # Descending negative score is ascending actual score.
+        ordered = sorted(self.heap, key=lambda item: item[0], reverse=True)
+        cutoff = -ordered[-1][0]
+        retained = []
+        for start in range(0, len(ordered), 256):
+            candidates = ordered[start:start + 256]
+            slots = np.asarray([item[1] for item in candidates], dtype=np.int64)
+            veto = leading_muon_veto(self.events[slots], feature_names)
+            retained.extend(item for item, reject in zip(candidates, veto) if not reject)
+        count = len(retained)
+        output = np.lib.format.open_memmap(self.events_path, mode="w+", dtype=np.float32,
+                                          shape=(count, *self.shape))
+        scores = np.lib.format.open_memmap(self.scores_path, mode="w+", dtype=np.float32,
+                                          shape=(count,))
+        for start in range(0, count, 256):
+            items = retained[start:start + 256]
+            slots = np.asarray([item[1] for item in items], dtype=np.int64)
+            output[start:start + len(items)] = self.events[slots]
+            scores[start:start + len(items)] = [-item[0] for item in items]
+        output.flush()
+        scores.flush()
+        del output, scores, self.events
+        self.temp_path.unlink(missing_ok=True)
+        print(f"Bottom leading-muon veto: removed {self.count - count}/{self.count}; retained {count}.")
+        return dict(events_path=self.events_path, event_scores_path=self.scores_path,
+                    bottom_count_before_muon_veto=self.count,
+                    leading_muon_veto_count=self.count - count, bottom_count=count,
+                    bottom_fraction_realized=count / self.total_events, cutoff=float(cutoff))
+
+
 def score_and_select_top_events(
     *,
     model: torch.nn.Module,
@@ -778,9 +840,13 @@ def score_and_select_top_events(
     num_features: int,
     feature_names: Sequence[str],
     heap_progress_every: int,
+    bottom_fraction: Optional[float] = None,
 ) -> Dict[str, object]:
     if not 0.0 < top_fraction < 1.0:
         raise ValueError("--top-fraction must lie strictly between 0 and 1.")
+    bottom_fraction = top_fraction if bottom_fraction is None else bottom_fraction
+    if not 0.0 < bottom_fraction < 1.0:
+        raise ValueError("--bottom-fraction must lie strictly between 0 and 1.")
     for name in ("part_pt", "part_isMuon"):
         if name not in feature_names:
             raise ValueError(f"Leading-muon veto requires feature {name}")
@@ -802,6 +868,8 @@ def score_and_select_top_events(
         shape=(top_count, max_num_particles, num_features),
     )
 
+    bottom = BottomEventSelection(output_dir, bottom_fraction, total_events,
+                                  max_num_particles, num_features)
     heap: List[Tuple[float, int]] = []
     offset = 0
     score_sum = 0.0
@@ -823,6 +891,7 @@ def score_and_select_top_events(
                             reference_batch_size=reference_batch_size)
         scores32 = scores.astype(np.float32, copy=False)
         all_scores[offset : offset + batch_size] = scores32
+        bottom.update(x_cpu.numpy(), scores)
 
         score_sum += float(scores.sum(dtype=np.float64))
         score_sumsq += float(np.square(scores, dtype=np.float64).sum(dtype=np.float64))
@@ -907,9 +976,11 @@ def score_and_select_top_events(
     del final_events, final_scores, temp_events, all_scores
     temp_events_path.unlink(missing_ok=True)
 
+    bottom_selection = bottom.finish(feature_names)
     mean_score = score_sum / total_events
     variance = max(0.0, score_sumsq / total_events - mean_score * mean_score)
     return {
+        "bottom": bottom_selection,
         "all_scores_path": all_scores_path,
         "events_path": final_events_path,
         "event_scores_path": final_scores_path,
@@ -935,6 +1006,7 @@ def plot_score_distribution(
     output_path: Path,
     seed: int,
     histogram_sample_size: int,
+    tail: str = "top",
 ) -> Dict[str, float]:
     scores = np.load(scores_path, mmap_mode="r")
     total = len(scores)
@@ -951,6 +1023,8 @@ def plot_score_distribution(
         low = float(np.min(sample))
         high = float(np.max(sample))
     high = max(high, cutoff)
+    if tail == "bottom":
+        low = min(low, cutoff)
     if high <= low:
         high = low + 1.0
     bins = np.linspace(low, high, 121)
@@ -973,9 +1047,10 @@ def plot_score_distribution(
         color="#B7657B",
         linewidth=1.8,
         linestyle="--",
-        label=f"top-event cut = {cutoff:.3g}",
+        label=f"{tail}-event cut = {cutoff:.3g}",
     )
-    ax.axvspan(cutoff, high, color="#B7657B", alpha=0.08)
+    ax.axvspan(*( (low, cutoff) if tail == "bottom" else (cutoff, high) ),
+               color="#B7657B", alpha=0.08)
     ax.set_xlabel("Euclidean kNN score")
     ax.set_ylabel("Density")
     ax.set_title("Held-out CMS real-data anomaly-score distribution")
@@ -1142,6 +1217,9 @@ def main() -> None:
     top_fraction = float(args.top_fraction)
     if not 0 < top_fraction < 1:
         raise ValueError("--top-fraction must be between 0 and 1.")
+    bottom_fraction = top_fraction if args.bottom_fraction is None else float(args.bottom_fraction)
+    if not 0 < bottom_fraction < 1:
+        raise ValueError("--bottom-fraction must be between 0 and 1.")
     precision = str(summary.get("precision", "fp32"))
     loader_seed = seed + 404
 
@@ -1205,6 +1283,7 @@ def main() -> None:
         num_features=len(backend.feature_names),
         feature_names=backend.feature_names,
         heap_progress_every=args.heap_progress_every,
+        bottom_fraction=bottom_fraction,
     )
 
     events_path = Path(selection["events_path"])
@@ -1293,6 +1372,57 @@ def main() -> None:
     results_path = output_dir / "real_test_evaluation.json"
     with results_path.open("w") as handle:
         json.dump(safe_json(results), handle, indent=2)
+
+    bottom_selection = selection["bottom"]
+    bottom_events_path = Path(bottom_selection["events_path"])
+    bottom_features_path = bottom_events_path.with_name(bottom_events_path.stem + "_features.json")
+    with feature_list_path.open() as handle:
+        feature_payload = json.load(handle)
+    bottom_features_path.write_text(json.dumps(feature_payload, indent=2))
+    bottom_distribution_path = output_dir / "real_test_bottom_score_distribution.png"
+    bottom_histogram = plot_score_distribution(
+        scores_path=Path(selection["all_scores_path"]), cutoff=bottom_selection["cutoff"],
+        output_path=bottom_distribution_path, seed=seed + 606,
+        histogram_sample_size=args.histogram_sample_size, tail="bottom",
+    )
+    bottom_visualization_path = output_dir / "real_test_bottom_events_random_visualization.png"
+    bottom_visual_indices = []
+    if bottom_selection["bottom_count"]:
+        # The saved array is ascending by score. The plotter samples random
+        # indices then sorts indices, preserving ascending subplot order.
+        bottom_visual_indices = plot_random_jet_events(
+            events_path=bottom_events_path, feature_names=backend.feature_names,
+            output_path=bottom_visualization_path, num_events=args.num_visualize,
+            seed=seed + 707, scores_path=Path(bottom_selection["event_scores_path"]),
+            title="Random sample from lowest-scoring held-out real-data jets",
+        )
+    else:
+        warnings.warn("All bottom-selected events failed the leading-muon veto; skipping jet visualization.")
+        bottom_visualization_path = None
+    # Mirror the top manifest, with bottom-specific selection metadata/files.
+    bottom_results = {key: value for key, value in results.items()
+                      if not key.startswith("top_") and key not in (
+                          "files", "histogram_stats", "leading_muon_veto_count",
+                          "random_visualized_event_array_indices")}
+    bottom_results.update(
+        bottom_fraction_requested=bottom_fraction,
+        bottom_count_before_muon_veto=bottom_selection["bottom_count_before_muon_veto"],
+        leading_muon_veto_count=bottom_selection["leading_muon_veto_count"],
+        bottom_count=bottom_selection["bottom_count"],
+        bottom_fraction_realized=bottom_selection["bottom_fraction_realized"],
+        bottom_cutoff=bottom_selection["cutoff"], histogram_stats=bottom_histogram,
+        random_visualized_event_array_indices=bottom_visual_indices,
+        files=dict(reference_latents=reference_path, all_scores=selection["all_scores_path"],
+                   bottom_events=bottom_events_path,
+                   bottom_event_scores=bottom_selection["event_scores_path"],
+                   bottom_event_features=bottom_features_path,
+                   score_distribution=bottom_distribution_path,
+                   random_visualization=bottom_visualization_path),
+    )
+    bottom_manifest_path = output_dir / "real_test_bottom_evaluation.json"
+    bottom_manifest_path.write_text(json.dumps(safe_json(bottom_results), indent=2))
+    print(f"Bottom-event cut: {bottom_selection['cutoff']:.6g}")
+    print(f"Bottom events: {bottom_selection['bottom_count']:,} -> {bottom_events_path}")
 
     print(f"Saved evaluation outputs to {output_dir}")
     print(f"Top-event cut: {float(selection['cutoff']):.6g}")
