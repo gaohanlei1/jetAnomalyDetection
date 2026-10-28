@@ -83,6 +83,7 @@ class QualityFilterTest(unittest.TestCase):
                     self.assertEqual(plots[group]['indices'],list(range(4)))
                     import json
                     exported=json.loads(plots[group]['json_path'].read_text())
+                    self.assertEqual([e['event_index'] for e in exported],plots[group]['indices'])
                     self.assertEqual([e['jet_pt'] for e in exported],[500,501,502,503])
                     self.assertEqual(exported[0]['pdgId'],[11])
                     self.assertEqual(exported[0]['pt'],[10])
@@ -93,6 +94,12 @@ class QualityFilterTest(unittest.TestCase):
                 again=ev.plot_quality_groups(selection,tail=tail,output_dir=root,feature_names=features,
                     feature_payload={'particle_features':features},num_events=10,seed=999)
                 self.assertEqual(again['retained']['indices'],plots['retained']['indices'])
+                # A nonconsecutive selection must retain array indices, not panel numbers.
+                subset_path=root/f'{tail}_subset.json'
+                ev.dump_visualized_events(selection['events_path'],[1,3],subset_path,features)
+                subset=json.loads(subset_path.read_text())
+                self.assertEqual([e['event_index'] for e in subset],[1,3])
+                self.assertEqual([e['jet_pt'] for e in subset],[501,503])
 
 
 if __name__=='__main__': unittest.main()

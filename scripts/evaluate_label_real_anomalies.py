@@ -827,6 +827,7 @@ def dump_visualized_events(events_path, indices, output_path, feature_names):
         for column, key in enumerate(("pt", "deta", "dphi", "charge", "pdgId", "dzsig", "dxysig")):
             values = particles[:, column]
             record[key] = values.astype(np.int64).tolist() if key == "pdgId" else values.tolist()
+        record["event_index"] = int(index)
         record["pt_frac"] = pt_frac.tolist()
         records.append(record)
     output_path.write_text(json.dumps(records, indent=2, allow_nan=False))
