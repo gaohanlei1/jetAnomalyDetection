@@ -1,0 +1,432 @@
+{
+  "run_dir": "/oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq",
+  "checkpoint": "/oscar/home/lwang223/jetAnomalyDetection/plots/jetclass/32-QcdTbqqHggWqq/best_model.pth",
+  "dataset": "jetclass",
+  "dataset_root": "/HEP/export/home/lwang223/JetClass/JetClass/Pythia",
+  "dataset_label_axis": [
+    "label_QCD",
+    "label_Hbb",
+    "label_Hcc",
+    "label_Hgg",
+    "label_H4q",
+    "label_Hqql",
+    "label_Zqq",
+    "label_Wqq",
+    "label_Tbqq",
+    "label_Tbl",
+    "label_fQCD"
+  ],
+  "particle_features": [
+    "part_px",
+    "part_py",
+    "part_pz",
+    "part_energy",
+    "part_pt",
+    "log_pt_fraction",
+    "part_deta",
+    "part_dphi",
+    "d0_sig",
+    "dz_sig",
+    "part_charge",
+    "part_isChargedHadron",
+    "part_isNeutralHadron",
+    "part_isPhoton",
+    "part_isElectron",
+    "part_isMuon"
+  ],
+  "batch_standardized_particle_features": [
+    "log_pt_fraction",
+    "d0_sig",
+    "dz_sig"
+  ],
+  "cms_split_manifest_source": null,
+  "cms_split_manifest_sha256": null,
+  "device": "cuda:0",
+  "sampling": {
+    "eval_steps": 100,
+    "batch_size": 128,
+    "events_per_source_stream": 12800,
+    "num_workers": 4,
+    "split": "val",
+    "background_fit_and_evaluation_use_same_sample": true,
+    "seed": 42,
+    "max_num_particles": 128
+  },
+  "labels": {
+    "background": [
+      "label_QCD"
+    ],
+    "signal": [
+      "label_fQCD"
+    ],
+    "effective_signal_rotation": [
+      "label_fQCD"
+    ]
+  },
+  "signal_was_configured": true,
+  "sample_counts": {
+    "background_validation_total": 12800,
+    "signal_validation_total": 12800
+  },
+  "score_parameters": {
+    "knn_k": 30,
+    "knn_reduction": "mean",
+    "score_batch_size": 1024,
+    "knn_reference_batch_size": 8192,
+    "gmm_n_components": 4,
+    "gmm_covariance_type": "full",
+    "gmm_reg_covar": 0.0001,
+    "gmm_max_iter": 100,
+    "gmm_tol": 0.001,
+    "gmm_n_init": 1,
+    "score_hist_bins": 80
+  },
+  "global_scores_by_signal": {
+    "label_fQCD": {
+      "combined_mahalanobis": {
+        "auc_validation_vs_signal": 0.5587956176757812,
+        "validation_background_scores": {
+          "count": 12800,
+          "mean": 31.01618762799286,
+          "std": 15.56408353818124,
+          "median": 26.188045674541993,
+          "q05": 12.990076626620219,
+          "q95": 60.559299890898515
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": 33.5467306987755,
+          "std": 14.826855226591492,
+          "median": 31.200151696367932,
+          "q05": 13.995882693949566,
+          "q95": 60.04369688030259
+        },
+        "fit": {
+          "num_fit_events": 12800,
+          "latent_dim": 32,
+          "cov_eps": 0.0001,
+          "regularized_min_eigenvalue": 0.00010241512487687443,
+          "regularized_max_eigenvalue": 2.109896246648908
+        }
+      },
+      "knn": {
+        "auc_validation_vs_signal": 0.5565001098632812,
+        "validation_background_scores": {
+          "count": 12800,
+          "mean": 2.8679373958725733,
+          "std": 0.8194651236962931,
+          "median": 2.8674286580100015,
+          "q05": 1.5581429496815835,
+          "q95": 4.2301627939043085
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": 3.028796236026452,
+          "std": 0.8276881388178605,
+          "median": 3.068941147311622,
+          "q05": 1.6761651819793515,
+          "q95": 4.3144776650423475
+        },
+        "fit": {
+          "k": 30,
+          "reduction": "mean",
+          "exclude_background_self": true
+        }
+      },
+      "gmm": {
+        "auc_validation_vs_signal": 0.5783498962402344,
+        "validation_background_scores": {
+          "count": 12800,
+          "mean": 19.975432460858443,
+          "std": 16.24940818835459,
+          "median": 21.681088195717333,
+          "q05": -7.932740840969797,
+          "q95": 41.13124672091983
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": 23.853099426761723,
+          "std": 16.381462988813066,
+          "median": 28.409832756437766,
+          "q05": -6.58577167254533,
+          "q95": 43.783424687711275
+        },
+        "fit": {
+          "n_components": 4,
+          "covariance_type": "full",
+          "reg_covar": 0.0001,
+          "weights": [
+            0.18222568654939172,
+            0.25961525124127804,
+            0.2537564845003557,
+            0.3044025777089745
+          ],
+          "n_iter": 40,
+          "converged": true,
+          "mean_fit_log_density": -19.975432460858446
+        }
+      },
+      "labeled_gmm": {
+        "auc_validation_vs_signal": 0.5587955932617188,
+        "validation_background_scores": {
+          "count": 12800,
+          "mean": 35.25023213151325,
+          "std": 7.782649495456028,
+          "median": 32.83597278719418,
+          "q05": 26.23647154822936,
+          "q95": 50.02294154791865
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": 36.51560242080607,
+          "std": 7.414006566751419,
+          "median": 35.34222128762416,
+          "q05": 26.739414545895325,
+          "q95": 49.76512054329613
+        },
+        "fit": {
+          "n_components": 1,
+          "covariance_type": "full",
+          "reg_covar": 0.0001,
+          "weights": [
+            1.0
+          ],
+          "n_iter": 0,
+          "converged": true,
+          "mean_fit_log_density": -35.25023213151325,
+          "component_labels": [
+            "label_QCD"
+          ]
+        }
+      },
+      "joint_class_mahalanobis": {
+        "auc_validation_vs_signal": 0.4799972412109375,
+        "validation_background_scores": {
+          "count": 12800,
+          "mean": 0.5,
+          "std": 0.2886751310709465,
+          "median": 0.5,
+          "q05": 0.050070312499999985,
+          "q95": 0.9499296875
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": 0.4799972412109375,
+          "std": 0.27692980648128396,
+          "median": 0.47,
+          "q05": 0.05093749999999997,
+          "q95": 0.9278124999999999
+        },
+        "fit": {
+          "component_labels": [
+            "label_QCD"
+          ],
+          "percentile": "(count_less + 0.5 * count_equal) / class_count",
+          "compatibility": "p_k = 2 * min(q_k, 1 - q_k)",
+          "anomaly_score": "1 - max_k(p_k)",
+          "calibration": "own-class background validation distances",
+          "num_calibration_events_by_class": {
+            "label_QCD": 12800
+          }
+        }
+      },
+      "joint_class_percentile_mahalanobis": {
+        "auc_validation_vs_signal": 0.4765046875000001,
+        "validation_background_scores": {
+          "count": 12800,
+          "mean": 0.5,
+          "std": 0.28867512471642415,
+          "median": 0.49999999999999994,
+          "q05": 0.05006640624999999,
+          "q95": 0.9499335937499999
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": 0.4765046875,
+          "std": 0.2851389049187546,
+          "median": 0.4650000000000001,
+          "q05": 0.045937499999999964,
+          "q95": 0.9378125
+        },
+        "fit": {
+          "percentile_vector_labels": [
+            "label_QCD"
+          ],
+          "percentile": "(count_less + 0.5 * count_equal) / class_count",
+          "first_layer": "own-class latent Mahalanobis distance percentiles",
+          "second_layer": "per-class Mahalanobis of full percentile vectors",
+          "calibration": "own-class background validation distances at both layers",
+          "compatibility": "p_k = 2 * min(q_k, 1 - q_k)",
+          "anomaly_score": "1 - max_k(p_k)",
+          "covariance_by_class": {
+            "label_QCD": {
+              "num_fit_events": 12800,
+              "latent_dim": 1,
+              "cov_eps": 0.0001,
+              "regularized_min_eigenvalue": 0.08343984374999998,
+              "regularized_max_eigenvalue": 0.08343984374999998
+            }
+          }
+        }
+      },
+      "joint_class_raw_mahalanobis": {
+        "auc_validation_vs_signal": 0.51708994140625,
+        "validation_background_scores": {
+          "count": 12800,
+          "mean": 0.5,
+          "std": 0.2886751310709465,
+          "median": 0.5,
+          "q05": 0.050070312499999985,
+          "q95": 0.9499296875
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": 0.51708994140625,
+          "std": 0.2879609159532925,
+          "median": 0.529765625,
+          "q05": 0.0546875,
+          "q95": 0.9493828124999999
+        },
+        "fit": {
+          "score_vector_labels": [
+            "label_QCD"
+          ],
+          "first_layer": "raw squared latent Mahalanobis distances to all active classes",
+          "second_layer": "per-class Mahalanobis of full raw score vectors",
+          "calibration": "own-class background validation second-layer distances",
+          "percentile": "(count_less + 0.5 * count_equal) / class_count",
+          "compatibility": "p_k = 2 * min(q_k, 1 - q_k)",
+          "anomaly_score": "1 - max_k(p_k)",
+          "covariance_by_class": {
+            "label_QCD": {
+              "num_fit_events": 12800,
+              "latent_dim": 1,
+              "cov_eps": 0.0001,
+              "regularized_min_eigenvalue": 242.2597229165246,
+              "regularized_max_eigenvalue": 242.2597229165246
+            }
+          }
+        }
+      }
+    }
+  },
+  "combined_mahalanobis": {
+    "label_fQCD": {
+      "auc_validation_vs_signal": 0.5587956176757812,
+      "validation_background_scores": {
+        "count": 12800,
+        "mean": 31.01618762799286,
+        "std": 15.56408353818124,
+        "median": 26.188045674541993,
+        "q05": 12.990076626620219,
+        "q95": 60.559299890898515
+      },
+      "validation_signal_scores": {
+        "count": 12800,
+        "mean": 33.5467306987755,
+        "std": 14.826855226591492,
+        "median": 31.200151696367932,
+        "q05": 13.995882693949566,
+        "q95": 60.04369688030259
+      },
+      "fit": {
+        "num_fit_events": 12800,
+        "latent_dim": 32,
+        "cov_eps": 0.0001,
+        "regularized_min_eigenvalue": 0.00010241512487687443,
+        "regularized_max_eigenvalue": 2.109896246648908
+      }
+    }
+  },
+  "per_class": {
+    "label_QCD": {
+      "auc_validation_vs_signal": 0.5587956176757812,
+      "validation_background_scores": {
+        "count": 12800,
+        "mean": 31.01618762799286,
+        "std": 15.56408353818124,
+        "median": 26.188045674541993,
+        "q05": 12.990076626620219,
+        "q95": 60.559299890898515
+      },
+      "validation_signal_scores": {
+        "count": 12800,
+        "mean": 33.5467306987755,
+        "std": 14.826855226591492,
+        "median": 31.200151696367932,
+        "q05": 13.995882693949566,
+        "q95": 60.04369688030259
+      },
+      "covariance": {
+        "num_fit_events": 12800,
+        "latent_dim": 32,
+        "cov_eps": 0.0001,
+        "regularized_min_eigenvalue": 0.00010241512487687443,
+        "regularized_max_eigenvalue": 2.109896246648908
+      }
+    }
+  },
+  "pairwise_mahalanobis_by_signal": {
+    "label_fQCD": {
+      "label_QCD": {
+        "auc_validation_vs_signal": 0.5587956176757812,
+        "validation_background_scores": {
+          "count": 12800,
+          "mean": 31.01618762799286,
+          "std": 15.56408353818124,
+          "median": 26.188045674541993,
+          "q05": 12.990076626620219,
+          "q95": 60.559299890898515
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": 33.5467306987755,
+          "std": 14.826855226591492,
+          "median": 31.200151696367932,
+          "q05": 13.995882693949566,
+          "q95": 60.04369688030259
+        },
+        "covariance": {
+          "num_fit_events": 12800,
+          "latent_dim": 32,
+          "cov_eps": 0.0001,
+          "regularized_min_eigenvalue": 0.00010241512487687443,
+          "regularized_max_eigenvalue": 2.109896246648908
+        }
+      }
+    }
+  },
+  "pairwise_raw_mahalanobis_by_signal": {
+    "label_fQCD": {
+      "label_QCD": {
+        "auc_validation_vs_signal": 0.47525897216796875,
+        "validation_background_scores": {
+          "count": 12800,
+          "mean": 0.9999214622521183,
+          "std": 1.353281689358493,
+          "median": 0.6212103492242949,
+          "q05": 0.007766120248129504,
+          "q95": 3.602726341117589
+        },
+        "validation_signal_scores": {
+          "count": 12800,
+          "mean": 0.9338708119522812,
+          "std": 1.2780807657547593,
+          "median": 0.5356997533113965,
+          "q05": 0.00642786106270476,
+          "q95": 3.478070088226336
+        },
+        "covariance": {
+          "num_fit_events": 12800,
+          "latent_dim": 1,
+          "cov_eps": 0.0001,
+          "regularized_min_eigenvalue": 242.2597229165246,
+          "regularized_max_eigenvalue": 242.2597229165246
+        },
+        "score_vector_labels": [
+          "label_QCD"
+        ]
+      }
+    }
+  }
+}
