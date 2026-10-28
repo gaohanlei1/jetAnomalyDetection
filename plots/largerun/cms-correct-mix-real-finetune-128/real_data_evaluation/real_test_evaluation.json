@@ -59,8 +59,8 @@
   "top_fraction_requested": 0.0005,
   "score_stats": {
     "count": 184344,
-    "mean": 4.898765136153496,
-    "std": 1.0847062590705776,
+    "mean": 4.8987651322586165,
+    "std": 1.084707768252717,
     "min": 0.23715758323669434,
     "max": 10.75818157196045
   },
@@ -68,8 +68,8 @@
     "histogram_low": 1.1266906625032425,
     "histogram_high": 8.721305847167969,
     "sample_q05": 3.244502031803131,
-    "sample_median": 4.8312156200408936,
-    "sample_q95": 6.776731014251709
+    "sample_median": 4.83124566078186,
+    "sample_q95": 6.776787805557252
   },
   "top_count_before_quality_filter": 93,
   "quality_filter_count": 16,
