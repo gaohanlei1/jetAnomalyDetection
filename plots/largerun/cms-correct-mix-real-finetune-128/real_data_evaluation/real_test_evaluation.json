@@ -59,8 +59,8 @@
   "top_fraction_requested": 0.0005,
   "score_stats": {
     "count": 184344,
-    "mean": 4.898765061261144,
-    "std": 1.0847073394530011,
+    "mean": 4.898765136153496,
+    "std": 1.0847062590705776,
     "min": 0.23715758323669434,
     "max": 10.75818157196045
   },
@@ -68,14 +68,14 @@
     "histogram_low": 1.1266906625032425,
     "histogram_high": 8.721305847167969,
     "sample_q05": 3.244502031803131,
-    "sample_median": 4.831230640411377,
+    "sample_median": 4.8312156200408936,
     "sample_q95": 6.776731014251709
   },
-  "top_count_before_lepton_veto": 93,
-  "leading_lepton_veto_count": 3,
-  "leading_lepton_veto_pt_fraction": 0.2,
-  "top_count": 90,
-  "top_fraction_realized": 0.0004882176799895847,
+  "top_count_before_quality_filter": 93,
+  "quality_filter_count": 16,
+  "quality_filter_pt_fraction": 0.8,
+  "top_count": 77,
+  "top_fraction_realized": 0.00041769734843553354,
   "top_cutoff": 8.721305847167969,
   "random_visualized_event_array_indices": [
     0,
@@ -154,25 +154,25 @@
     73,
     74,
     75,
-    76,
-    77,
-    78,
-    79,
-    80,
-    81,
-    82,
-    83,
-    84,
-    85,
-    86,
-    87,
-    88,
-    89
+    76
   ],
   "vetoed_random_visualized_event_array_indices": [
     0,
     1,
-    2
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
   ],
   "files": {
     "reference_latents": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/train_reference_latents.npy",
@@ -182,9 +182,11 @@
     "top_event_features": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_top_0p05pct_events_features.json",
     "score_distribution": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_score_distribution.png",
     "random_visualization": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_top_events_random_visualization.png",
-    "lepton_vetoed_events": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_top_0p05pct_lepton_vetoed_events.npy",
-    "lepton_vetoed_event_scores": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_top_0p05pct_lepton_vetoed_event_scores.npy",
-    "lepton_vetoed_event_features": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_top_0p05pct_lepton_vetoed_events_features.json",
-    "lepton_vetoed_random_visualization": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_top_lepton_vetoed_events_random_visualization.png"
+    "visualized_jets_json": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_top_events_random_visualization.json",
+    "quality_filtered_visualized_jets_json": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_top_quality_filtered_events_random_visualization.json",
+    "quality_filtered_events": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_top_0p05pct_quality_filtered_events.npy",
+    "quality_filtered_event_scores": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_top_0p05pct_quality_filtered_event_scores.npy",
+    "quality_filtered_event_features": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_top_0p05pct_quality_filtered_events_features.json",
+    "quality_filtered_random_visualization": "/oscar/home/lwang223/jetAnomalyDetection/plots/largerun/cms-correct-mix-real-finetune-128/real_data_evaluation/real_test_top_quality_filtered_events_random_visualization.png"
   }
 }
