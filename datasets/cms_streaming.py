@@ -65,6 +65,8 @@ BATCH_NORMALIZED_FEATURES = [
 
 
 AVAILABLE_PARTICLE_FEATURES = [
+    "part_pt_absolute",
+    "part_pdgId",
     "part_px",
     "part_py",
     "part_pz",
@@ -362,6 +364,8 @@ def _build_particle_table(
         "part_pz": part_pz,
         "part_energy": part_energy,
         "part_pt": part_pt,
+        "part_pt_absolute": ak.concatenate([charged_pt_abs, neutral_pt_abs], axis=1),
+        "part_pdgId": part_pdg,
         "log_pt_fraction": log_pt_fraction,
         "part_deta": part_deta,
         "part_dphi": part_dphi,
@@ -924,14 +928,23 @@ def load_and_preprocess_cms_file(
     max_events: Optional[int] = None,
     entry_start: Optional[int] = None,
     entry_stop: Optional[int] = None,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Load one shard and return canonical ``(events, particles, features)`` arrays."""
+    include_event_metadata: bool = False,
+) -> tuple:
+    """Return (x, y), optionally followed by an aligned float32 metadata array.
+
+    Each metadata row contains jet pt/eta/phi followed by flattened particle
+    rows (absolute pt, deta, dphi, charge, PDG ID, dzsig, dxysig). PDG IDs use
+    the standard-ID mapping already used for CMS particle identities.
+    """
     del eps
-    x_particles, _, y = read_file(
+    export_features = ["part_pt_absolute", "part_deta", "part_dphi", "part_charge",
+                       "part_pdgId", "Cpfcan_dzsig", "Cpfcan_dxysig"]
+    requested = list(particle_features) + (export_features if include_event_metadata else [])
+    x_particles, jets, y = read_file(
         filepath,
         max_num_particles=max_num_particles,
-        particle_features=particle_features,
-        jet_features=["jet_pt"],
+        particle_features=requested,
+        jet_features=["jet_pt", "jet_eta", "jet_phi"] if include_event_metadata else ["jet_pt"],
         labels=label_axis,
         lowerpt=lowerpt,
         upperpt=upperpt,
@@ -943,13 +956,24 @@ def load_and_preprocess_cms_file(
     x_particles = np.transpose(x_particles, (0, 2, 1)).astype(
         np.float32, copy=False
     )
+    metadata = None
+    if include_event_metadata:
+        # Packed sidecar: jet pt/eta/phi, then P rows of the seven export features.
+        # read_file applies identical event/particle cuts, ordering and padding.
+        export = x_particles[:, :, len(particle_features):]
+        metadata = np.concatenate([jets, export.reshape(len(jets), max_num_particles * 7)], axis=1)
+        x_particles = x_particles[:, :, :len(particle_features)]
     y = np.asarray(y, dtype=np.float32)
     valid_counts = np.count_nonzero(np.any(x_particles != 0, axis=-1), axis=1)
     keep = valid_counts >= int(min_nodes)
-    return (
+    result = (
         np.ascontiguousarray(x_particles[keep], dtype=np.float32),
         np.ascontiguousarray(y[keep], dtype=np.float32),
     )
+
+    if include_event_metadata:
+        return result + (np.ascontiguousarray(metadata[keep], dtype=np.float32),)
+    return result
 
 
 class CMSIterableDataset(IterableDataset):
@@ -981,6 +1005,7 @@ class CMSIterableDataset(IterableDataset):
         rank: int = 0,
         world_size: int = 1,
         stop_on_first_exhaustion: bool = False,
+        include_event_metadata: bool = False,
     ):
         super().__init__()
         validate_cms_labels(labels_to_load)
@@ -1032,6 +1057,7 @@ class CMSIterableDataset(IterableDataset):
         )
         self.effective_active_shards = self.shuffle_active_shards
         self.stop_on_first_exhaustion = bool(stop_on_first_exhaustion)
+        self.include_event_metadata = bool(include_event_metadata)
         self.infinite = bool(infinite)
         self.seed = int(seed)
         self.rank = int(rank)
@@ -1050,6 +1076,7 @@ class CMSIterableDataset(IterableDataset):
                 self.max_num_particles, min_nodes=self.min_nodes,
                 lowerpt=self.lowerpt, upperpt=self.upperpt, shuffle_files=True,
                 shuffle_active_shards=1, infinite=False, seed=self.seed,
+                include_event_metadata=self.include_event_metadata,
             )
             streams.append(iter(child))
         quota = None if self.max_events is None else self.max_events // len(streams)
@@ -1127,7 +1154,7 @@ class CMSIterableDataset(IterableDataset):
                 for label in self.labels_to_load:
                     label_events: List[Tuple[torch.Tensor, torch.Tensor]] = []
                     for shard_slice in slices_by_label[label]:
-                        x_particles, y = load_and_preprocess_cms_file(
+                        loaded = load_and_preprocess_cms_file(
                             shard_slice.filepath,
                             label_name=label,
                             label_axis=self.label_axis,
@@ -1138,13 +1165,11 @@ class CMSIterableDataset(IterableDataset):
                             min_nodes=self.min_nodes,
                             entry_start=shard_slice.entry_start,
                             entry_stop=shard_slice.entry_stop,
+                            include_event_metadata=self.include_event_metadata,
                         )
                         label_events.extend(
-                            (
-                                torch.from_numpy(event_x.copy()),
-                                torch.from_numpy(event_y.copy()),
-                            )
-                            for event_x, event_y in zip(x_particles, y)
+                            tuple(torch.from_numpy(array[i].copy()) for array in loaded)
+                            for i in range(len(loaded[0]))
                         )
                     loaded_by_label[label] = label_events
 
@@ -1235,7 +1260,7 @@ class CMSIterableDataset(IterableDataset):
                                 return None
 
                         shard_slice = slice_queues_by_label[label].pop()
-                        x_particles, y = load_and_preprocess_cms_file(
+                        loaded = load_and_preprocess_cms_file(
                             shard_slice.filepath,
                             label_name=label,
                             label_axis=self.label_axis,
@@ -1246,7 +1271,9 @@ class CMSIterableDataset(IterableDataset):
                             min_nodes=self.min_nodes,
                             entry_start=shard_slice.entry_start,
                             entry_stop=shard_slice.entry_stop,
+                            include_event_metadata=self.include_event_metadata,
                         )
+                        x_particles, y = loaded[:2]
                         if len(x_particles) == 0:
                             empty_slice_streak[label] += 1
                             if (
@@ -1267,6 +1294,7 @@ class CMSIterableDataset(IterableDataset):
                         order = np.arange(len(x_particles), dtype=np.int64)
                         np.random.default_rng(rng.randrange(2**32)).shuffle(order)
                         return {
+                            "metadata": loaded[2] if self.include_event_metadata else None,
                             "x": x_particles,
                             "y": y,
                             "order": order,
@@ -1312,10 +1340,13 @@ class CMSIterableDataset(IterableDataset):
                         shard["cursor"] = cursor + 1
                         x_particles = shard["x"]
                         y = shard["y"]
-                        yield (
+                        event = (
                             torch.from_numpy(x_particles[event_index].copy()),
                             torch.from_numpy(y[event_index].copy()),
                         )
+                        if self.include_event_metadata:
+                            event += (torch.from_numpy(shard["metadata"][event_index].copy()),)
+                        yield event
                         yielded += 1
 
                         if int(shard["cursor"]) >= len(order):
@@ -1354,11 +1385,14 @@ def collate_cms_tensors(
     batch: Sequence[Tuple[torch.Tensor, torch.Tensor]],
 ) -> Dict[str, torch.Tensor]:
     """Stack fixed-size events and derive the all-zero particle padding mask."""
-    xs, ys = zip(*batch)
+    xs, ys = zip(*(item[:2] for item in batch))
     x_particles = torch.stack(xs, dim=0)
     y = torch.stack(ys, dim=0)
     padding_mask = x_particles.eq(0).all(dim=-1)
-    return {"x_particles": x_particles, "padding_mask": padding_mask, "y": y}
+    result = {"x_particles": x_particles, "padding_mask": padding_mask, "y": y}
+    if len(batch[0]) == 3:
+        result["event_metadata"] = torch.stack([item[2] for item in batch])
+    return result
 
 
 __all__ = [

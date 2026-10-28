@@ -16,7 +16,7 @@ from datasets import cms_streaming as cms
 from scripts import evaluate_label_real_anomalies as ev
 
 
-def write_root(path, n, offset=0, invalid_first=False):
+def write_root(path, n, offset=0, invalid_first=False, varied_jets=False):
     path.parent.mkdir(parents=True, exist_ok=True)
     arrays = {}
     for key in cms._REQUIRED_PARTICLE_BRANCHES:
@@ -32,6 +32,10 @@ def write_root(path, n, offset=0, invalid_first=False):
             if key.endswith(('_px', '_pt', '_e')):
                 values[:] = np.arange(n)[:, None] + offset + 2
             arrays[key] = ak.Array(values.tolist())
+    if varied_jets:
+        arrays['jet_pt'] += np.arange(n,dtype=np.float32)
+        arrays['jet_eta'] = np.arange(n,dtype=np.float32)*.01
+        arrays['jet_phi'] = -np.arange(n,dtype=np.float32)*.02
     if invalid_first:
         arrays['jet_pt'][0] = -1
     with uproot.recreate(path) as handle:
@@ -77,6 +81,30 @@ class MixedEvaluationTest(unittest.TestCase):
         # Empty slices must not refill or fail; an entirely empty class ends the pool.
         write_root(self.qcd, 1, invalid_first=True)
         self.assertEqual(list(self.dataset(max_events=30)), [])
+
+    def test_export_alignment_after_cuts_and_shuffle(self):
+        write_root(self.qcd,3,invalid_first=True,varied_jets=True)
+        write_root(self.real,5,offset=10,varied_jets=True)
+        for shuffle in (False, True):
+            dataset = cms.CMSIterableDataset(self.files,list(self.files),cms.CMS_LABELS,
+                cms.PARTICLE_FEATURES,8,infinite=False,shuffle_files=shuffle,
+                include_event_metadata=True)
+            first=list(dataset)
+            second=list(dataset)
+            self.assertEqual(len(first),7)
+            for (x,y,metadata),(xx,yy,mm) in zip(first,second):
+                np.testing.assert_array_equal(metadata,mm)
+                np.testing.assert_array_equal(x,xx)
+                parts=metadata[3:].reshape(8,7)
+                event_index=int(metadata[0])-500
+                offset=0 if y.argmax().item()==0 else 10
+                self.assertAlmostEqual(metadata[1].item(),event_index*.01,places=6)
+                self.assertAlmostEqual(metadata[2].item(),-event_index*.02,places=6)
+                self.assertAlmostEqual(parts[0,0].item(),event_index+offset+2)
+
+                np.testing.assert_allclose(parts[:,0],x[:,cms.PARTICLE_FEATURES.index('part_pt')]*metadata[0])
+                np.testing.assert_allclose(parts[:,1],x[:,cms.PARTICLE_FEATURES.index('part_deta')])
+                np.testing.assert_array_equal(parts[:4,4],[211,211,130,130])
 
     def test_split_inheritance(self):
         files = {}
@@ -166,6 +194,16 @@ class MixedEvaluationTest(unittest.TestCase):
         np.testing.assert_allclose(bottom_scores,np.sort(scores)[:2])
         self.assertTrue((output/'real_test_bottom_events_random_visualization.png').is_file())
         self.assertTrue((output/'real_test_bottom_score_distribution.png').is_file())
+        for stats_group in (stats,bottom):
+            exported=json.loads(Path(stats_group['files']['visualized_jets_json']).read_text())
+            tail='top' if 'top_count' in stats_group else 'bottom'
+            events=np.load(stats_group['files'][tail+'_events'])
+            for record,index in zip(exported,stats_group['random_visualized_event_array_indices']):
+                self.assertEqual(record['jet_pt'],500)
+                self.assertEqual(record['jet_eta'],0)
+                self.assertEqual(record['jet_phi'],0)
+                np.testing.assert_allclose(record['pt'],events[index,:4,cms.PARTICLE_FEATURES.index('part_pt')]*500)
+                self.assertEqual(len(record['pdgId']),4)
         indices=bottom['random_visualized_event_array_indices']
         self.assertEqual(indices, sorted(indices))
 

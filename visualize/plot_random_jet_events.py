@@ -161,7 +161,8 @@ def plot_random_jet_events(
         raise ValueError(f"Events file is empty: {events_path}")
     n = min(max(1, int(num_events)), len(events))
     rng = np.random.default_rng(seed)
-    selected_indices = np.sort(rng.choice(len(events), size=n, replace=False))
+    selected_indices = (np.arange(len(events)) if n == len(events)
+                        else np.sort(rng.choice(len(events), size=n, replace=False)))
     selected = np.asarray(events[selected_indices], dtype=np.float32)
     scores = None
     if scores_path is not None:

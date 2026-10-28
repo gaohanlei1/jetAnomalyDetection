@@ -22,17 +22,18 @@ class BottomSelectionTest(unittest.TestCase):
                 events=np.zeros((8,2,4),dtype=np.float32)
                 events[:,0,0]=.4
                 events[:,0,2]=scores  # Track correspondence between saved events and scores.
-                events[scores==2,0,3]=1
-                if veto_all: events[scores<=4,0,1]=1
+                events[scores==2,0,0]=.9
+                if veto_all: events[scores<=4,0,0]=.9
                 for start in range(0,8,3):
-                    selector.update(events[start:start+3],scores[start:start+3])
+                    selector.update(events[start:start+3],scores[start:start+3], scores[start:start+3,None])
                 result=selector.finish(['part_pt','part_isMuon','identifier','part_isElectron'])
                 self.assertEqual(result['cutoff'],4)
-                self.assertEqual(result['bottom_count_before_lepton_veto'],4)
+                self.assertEqual(result['bottom_count_before_quality_filter'],4)
                 expected=[] if veto_all else [1,3,4]
                 np.testing.assert_array_equal(np.load(result['event_scores_path']),expected)
                 np.testing.assert_array_equal(np.load(result['events_path'])[:,0,2],expected)
                 self.assertEqual(result['bottom_count'],len(expected))
+                np.testing.assert_array_equal(np.load(result['events_path'].with_name(result['events_path'].stem+'_metadata.npy'))[:,0],expected)
                 np.testing.assert_array_equal(np.load(result['vetoed_event_scores_path']),
                                               [1,2,3,4] if veto_all else [2])
 
